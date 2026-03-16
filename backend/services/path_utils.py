@@ -9,7 +9,7 @@ def get_data_dir() -> Path:
 
     # User data storage outside the project folder (and safe for packaged .exe builds).
     # By default: ~/FinancialTrackerData
-    env_override = (os.environ.get("FINANCIAL_TRACKER_DATA_DIR") or "").strip()
+    env_override = (os.environ.get("FINLEDGE_DATA_DIR") or os.environ.get("FINANCIAL_TRACKER_DATA_DIR") or "").strip()
     is_frozen = bool(getattr(sys, "frozen", False))
     if env_override:
         data_dir = Path(env_override).expanduser()

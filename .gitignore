@@ -3,7 +3,7 @@ node_modules/
 frontendwebapp/node_modules/
 frontendwebapp/dist/
 
-
+docs/
 # Python
 venv/
 __pycache__/

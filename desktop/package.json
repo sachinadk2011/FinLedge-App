@@ -1,13 +1,54 @@
 {
-  "name": "financial-tracker-desktop",
+  "name": "finledge-desktop",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
+  "description": "Finledge - Financial Tracker desktop application",
   "main": "main.js",
   "scripts": {
-    "start": "electron ."
+    "start": "electron .",
+    "build": "electron-builder"
   },
   "devDependencies": {
-    "electron": "^30.0.0"
+    "electron": "^30.0.0",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "com.finledge.tracker",
+    "productName": "Finledge",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "finledge_icon.png",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "../backend",
+        "to": "backend",
+        "filter": ["**/*", "!__pycache__/**", "!**/*.pyc"]
+      },
+      {
+        "from": "../venv",
+        "to": "venv"
+      },
+      {
+        "from": "../frontendwebapp/dist",
+        "to": "frontendwebapp/dist"
+      }
+    ],
+    "win": {
+      "target": ["nsis"],
+      "icon": "finledge_icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    }
   }
 }
 
