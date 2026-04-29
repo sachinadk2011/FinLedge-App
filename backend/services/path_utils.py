@@ -1,6 +1,5 @@
 import os
 import shutil
-import sys
 from functools import lru_cache
 from pathlib import Path
 
