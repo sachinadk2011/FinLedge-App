@@ -1,6 +1,6 @@
 "use strict";
 
-const { app, BrowserWindow, Menu } = require("electron");
+const { app, BrowserWindow, Menu, ipcMain } = require("electron");
 const path = require("path");
 const fs = require("fs");
 const os = require("os");
@@ -36,7 +36,26 @@ process.on("unhandledRejection", (reason) => {
 
 logLine("[main] Finledge Electron starting...", { logFile: LOG_FILE });
 
-const BACKEND_PORT = 8000;
+function getPortFromEnv(envVarName, defaultPort) {
+  const rawValue = process.env[envVarName];
+  if (rawValue == null || rawValue.trim() === "") {
+    return defaultPort;
+  }
+
+  const parsedPort = Number(rawValue);
+  if (Number.isFinite(parsedPort)) {
+    return parsedPort;
+  }
+
+  logLine(`[main] Invalid ${envVarName} value, falling back to default port`, {
+    rawValue,
+    defaultPort,
+  });
+  return defaultPort;
+}
+
+const BACKEND_PORT = getPortFromEnv("FINLEDGE_BACKEND_PORT", 8000);
+const FRONTEND_PORT = getPortFromEnv("FINLEDGE_FRONTEND_PORT", 5173);
 const BACKEND_READY_TIMEOUT_MS = 30_000;
 const POLL_INTERVAL_MS = 500;
 
@@ -49,6 +68,40 @@ let frontendProcess = null;
 let mainWindow = null;
 let devFrontendUrl = null;
 const IS_ELECTRON_DEV = String(process.env.ELECTRON_DEV || "") === "1";
+
+function loadDotEnv() {
+  const envPath = path.join(PROJECT_ROOT, ".env");
+  if (!fs.existsSync(envPath)) return;
+
+  for (const rawLine of fs.readFileSync(envPath, "utf8").split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith("#")) continue;
+
+    const separator = line.indexOf("=");
+    if (separator <= 0) continue;
+
+    const key = line.slice(0, separator).trim();
+    let value = line.slice(separator + 1).trim();
+    if (
+      (value.startsWith('"') && value.endsWith('"')) ||
+      (value.startsWith("'") && value.endsWith("'"))
+    ) {
+      value = value.slice(1, -1);
+    }
+
+    if (key && !Object.prototype.hasOwnProperty.call(process.env, key)) {
+      process.env[key] = value;
+    }
+  }
+}
+
+loadDotEnv();
+process.env.FINLEDGE_MODE = String(process.env.FINLEDGE_MODE || (IS_ELECTRON_DEV ? "development" : "production"))
+  .trim()
+  .toLowerCase();
+logLine("[main] mode", process.env.FINLEDGE_MODE);
+logLine("[main] backendPort", BACKEND_PORT);
+logLine("[main] frontendPort", FRONTEND_PORT);
 
 // Ensure the userData folder is named "Finledge" even in dev.
 app.setName("Finledge");
@@ -147,37 +200,10 @@ function ensureIconExists() {
   }
 }
 
-function migrateLegacyData(userDataDir) {
-  // On first run, copy any existing Excel files from backend/data into userDataDir.
-  const legacyDir = path.join(PROJECT_ROOT, "backend", "data");
-  if (!fs.existsSync(legacyDir)) return;
-
-  const mappings = [
-    { target: "bank_transactions.xlsx", candidates: ["bank_transactions.xlsx", "bank.xlsx"] },
-    { target: "share_transactions.xlsx", candidates: ["share_transactions.xlsx", "share.xlsx"] },
-  ];
-
-  for (const map of mappings) {
-    const targetPath = path.join(userDataDir, map.target);
-    if (fs.existsSync(targetPath)) continue;
-    for (const name of map.candidates) {
-      const candidate = path.join(legacyDir, name);
-      if (fs.existsSync(candidate)) {
-        fs.copyFileSync(candidate, targetPath);
-        break;
-      }
-    }
-  }
-}
-
 function startBackend() {
-  const userDataDir = app.getPath("userData");
-  migrateLegacyData(userDataDir);
-
   const env = {
     ...process.env,
-    // Backend reads this to decide where to store Excel files.
-    FINLEDGE_DATA_DIR: userDataDir,
+    FINLEDGE_MODE: String(process.env.FINLEDGE_MODE || "production").trim().toLowerCase(),
   };
 
   backendProcess = spawn(
@@ -204,7 +230,7 @@ function startFrontendDevServer() {
   if (frontendProcess) return;
 
   const frontendDir = path.join(PROJECT_ROOT, "frontendwebapp");
-  const viteDevArgs = ["run", "dev", "--", "--host", "127.0.0.1"];
+  const viteDevArgs = ["run", "dev", "--", "--host", "127.0.0.1", "--port", String(FRONTEND_PORT)];
 
   try {
     if (process.platform === "win32") {
@@ -320,7 +346,7 @@ function getFrontendUrl() {
   const builtIndex = path.join(PROJECT_ROOT, "frontendwebapp", "dist", "index.html");
   if (fs.existsSync(builtIndex)) return pathToFileURL(builtIndex).toString();
 
-  return devFrontendUrl || "http://localhost:5173";
+  return devFrontendUrl || `http://127.0.0.1:${FRONTEND_PORT}`;
 }
 
 function getLoadingUrl() {
@@ -368,6 +394,7 @@ function createWindow() {
     title: "Finledge \u2013 Financial Tracker",
     icon: ICON_PATH,
     show: false,
+    backgroundColor: "#f8fafc",
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
@@ -409,6 +436,20 @@ function navigateToFrontend(url) {
   }
 }
 
+ipcMain.handle("app:refresh", async () => {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    return false;
+  }
+
+  try {
+    mainWindow.webContents.reloadIgnoringCache();
+    return true;
+  } catch (err) {
+    logLine("[main] refresh failed", String(err && err.stack ? err.stack : err));
+    return false;
+  }
+});
+
 app.whenReady().then(async () => {
   try {
     logLine("[main] whenReady()");
@@ -432,16 +473,25 @@ app.whenReady().then(async () => {
 
     if (IS_ELECTRON_DEV) {
       logLine("[main] starting Vite dev server...");
-      // If a dev server is already running, use it quickly; otherwise start one and wait in the background.
-      waitForHttpOk("http://localhost:5173", 1200)
+      const preferredDevUrl = `http://127.0.0.1:${FRONTEND_PORT}`;
+      const preferredLocalhostDevUrl = `http://localhost:${FRONTEND_PORT}`;
+      // If the exact dev server port is already running, use it quickly; otherwise start one and wait in the background.
+      waitForHttpOk(preferredLocalhostDevUrl, 1200)
         .then(() => {
-          devFrontendUrl = "http://localhost:5173";
+          devFrontendUrl = preferredLocalhostDevUrl;
+          logLine("[main] Vite already running", devFrontendUrl);
+          navigateToFrontend(devFrontendUrl);
+        })
+        .catch(() => waitForHttpOk(preferredDevUrl, 1200))
+        .then(() => {
+          if (devFrontendUrl) return;
+          devFrontendUrl = preferredDevUrl;
           logLine("[main] Vite already running", devFrontendUrl);
           navigateToFrontend(devFrontendUrl);
         })
         .catch(() => {
           startFrontendDevServer();
-          waitForAnyLocalPortOk([5173, 5174, 5175, 5176, 5177, 5178, 5179, 5180, 5181, 5182, 5183], 30_000)
+          waitForAnyLocalPortOk([FRONTEND_PORT], 30_000)
             .then((url) => {
               devFrontendUrl = url;
               logLine("[main] Vite ready", devFrontendUrl);

@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 
 import { deleteShareRecord, getShareData, updateShareAllotment } from "../api/shareApi";
 import BarChart from "../components/BarChart";
+import ConfirmDialog from "../components/ConfirmDialog";
 import StatGrid from "../components/StatGrid";
 import TransactionsTable from "../components/TransactionsTable";
 
@@ -23,9 +24,12 @@ function ShareDashboard() {
   const [updateMessage, setUpdateMessage] = useState("");
   const [updateError, setUpdateError] = useState("");
   const [deletingId, setDeletingId] = useState(null);
+  const [pendingDeleteRow, setPendingDeleteRow] = useState(null);
 
-  const loadData = () => {
-    setLoading(true);
+  const loadData = ({ background = false } = {}) => {
+    if (!background) {
+      setLoading(true);
+    }
     setError("");
     getShareData()
       .then((response) => {
@@ -35,7 +39,9 @@ function ShareDashboard() {
         setError(err.message || "Unable to load share data.");
       })
       .finally(() => {
-        setLoading(false);
+        if (!background) {
+          setLoading(false);
+        }
       });
   };
 
@@ -173,7 +179,7 @@ function ShareDashboard() {
       setUpdateMessage(`Updated IPO entry for ${updatedLabel}: ${previousAllotted} -> ${currentAllotted}.`);
       setSearchName("");
       setNewAllotted("");
-      loadData();
+      loadData({ background: true });
     } catch (err) {
       const rawMessage = err.message || "Unable to update IPO allotment.";
       const normalized = String(rawMessage).toLowerCase();
@@ -189,14 +195,13 @@ function ShareDashboard() {
 
   async function handleDelete(recordId) {
     if (!recordId) return;
-    const ok = window.confirm("Delete this share entry? This will update the Excel file.");
-    if (!ok) return;
 
     setDeletingId(recordId);
     setError("");
     try {
       await deleteShareRecord(recordId);
-      loadData();
+      setPendingDeleteRow(null);
+      loadData({ background: true });
     } catch (err) {
       setError(err.message || "Unable to delete share record.");
     } finally {
@@ -253,10 +258,10 @@ function ShareDashboard() {
                   <button
                     type="button"
                     className="ghost danger"
-                    onClick={() => handleDelete(row.id)}
+                    onClick={() => setPendingDeleteRow(row)}
                     disabled={deletingId === row.id}
                   >
-                    {deletingId === row.id ? "Deleting..." : "Delete"}
+                    Delete
                   </button>
                 </>
               )}
@@ -308,6 +313,18 @@ function ShareDashboard() {
               </div>
             ) : null}
           </section>
+          <ConfirmDialog
+            open={Boolean(pendingDeleteRow)}
+            title="Delete share entry?"
+            message={
+              pendingDeleteRow
+                ? `This will remove the ${pendingDeleteRow.share_name} entry from ${pendingDeleteRow.date}.`
+                : ""
+            }
+            confirming={deletingId === pendingDeleteRow?.id}
+            onCancel={() => setPendingDeleteRow(null)}
+            onConfirm={() => handleDelete(pendingDeleteRow?.id)}
+          />
         </>
       ) : null}
     </main>

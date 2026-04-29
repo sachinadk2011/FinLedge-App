@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 
 import { deleteBankRecord, getBankData } from "../api/bankApi";
 import BarChart from "../components/BarChart";
+import ConfirmDialog from "../components/ConfirmDialog";
 import StatGrid from "../components/StatGrid";
 import TransactionsTable from "../components/TransactionsTable";
 
@@ -17,9 +18,12 @@ function BankDashboard() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [deletingId, setDeletingId] = useState(null);
+  const [pendingDeleteRow, setPendingDeleteRow] = useState(null);
 
-  const loadData = () => {
-    setLoading(true);
+  const loadData = ({ background = false } = {}) => {
+    if (!background) {
+      setLoading(true);
+    }
     setError("");
     getBankData()
       .then((response) => {
@@ -29,7 +33,9 @@ function BankDashboard() {
         setError(err.message || "Unable to load bank data.");
       })
       .finally(() => {
-        setLoading(false);
+        if (!background) {
+          setLoading(false);
+        }
       });
   };
 
@@ -84,14 +90,13 @@ function BankDashboard() {
 
   async function handleDelete(recordId) {
     if (!recordId) return;
-    const ok = window.confirm("Delete this bank entry? This will update the Excel file.");
-    if (!ok) return;
 
     setDeletingId(recordId);
     setError("");
     try {
       await deleteBankRecord(recordId);
-      loadData();
+      setPendingDeleteRow(null);
+      loadData({ background: true });
     } catch (err) {
       setError(err.message || "Unable to delete bank record.");
     } finally {
@@ -138,16 +143,28 @@ function BankDashboard() {
                   <button
                     type="button"
                     className="ghost danger"
-                    onClick={() => handleDelete(row.id)}
+                    onClick={() => setPendingDeleteRow(row)}
                     disabled={deletingId === row.id}
                   >
-                    {deletingId === row.id ? "Deleting..." : "Delete"}
+                    Delete
                   </button>
                 </>
               )}
             />
           </section>
           <BarChart title="Category totals" data={chartData} />
+          <ConfirmDialog
+            open={Boolean(pendingDeleteRow)}
+            title="Delete bank entry?"
+            message={
+              pendingDeleteRow
+                ? `This will remove the ${pendingDeleteRow.category} entry from ${pendingDeleteRow.date}.`
+                : ""
+            }
+            confirming={deletingId === pendingDeleteRow?.id}
+            onCancel={() => setPendingDeleteRow(null)}
+            onConfirm={() => handleDelete(pendingDeleteRow?.id)}
+          />
         </>
       ) : null}
     </main>

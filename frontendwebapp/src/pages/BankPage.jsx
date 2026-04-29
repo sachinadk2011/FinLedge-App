@@ -3,7 +3,20 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 
 import { addBankEntry, getBankData, updateBankEntry } from "../api/bankApi";
 import BankForm from "../components/BankForm";
+import { BANK_CATEGORIES } from "../constants/options";
 import { getTodayInputValue } from "../utils/date";
+
+const VALID_BANK_CATEGORIES = new Set(
+  (BANK_CATEGORIES || [])
+    .map((category) =>
+      String(
+        typeof category === "string" ? category : category?.value ?? category?.label ?? "",
+      )
+        .trim()
+        .toLowerCase(),
+    )
+    .filter(Boolean),
+);
 
 function BankPage() {
   const navigate = useNavigate();
@@ -32,9 +45,12 @@ function BankPage() {
         if (!record) {
           throw new Error("Bank record not found for editing.");
         }
+        const normalizedCategory = VALID_BANK_CATEGORIES.has(String(record.category || "").trim().toLowerCase())
+          ? String(record.category || "").trim().toLowerCase()
+          : "income";
         setForm({
           dates: record.date || getTodayInputValue(),
-          category: record.category || "income",
+          category: normalizedCategory,
           // Keep the UI as positive entry; API normalizes sign based on category.
           amount: String(Math.abs(Number(record.amount || 0))),
           description: record.description || "",
