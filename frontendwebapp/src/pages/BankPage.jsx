@@ -3,9 +3,20 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 
 import { addBankEntry, getBankData, updateBankEntry } from "../api/bankApi";
 import BankForm from "../components/BankForm";
+import { BANK_CATEGORIES } from "../constants/options";
 import { getTodayInputValue } from "../utils/date";
 
-const VALID_BANK_CATEGORIES = new Set(["income", "service cost", "investment cost", "operation cost"]);
+const VALID_BANK_CATEGORIES = new Set(
+  (BANK_CATEGORIES || [])
+    .map((category) =>
+      String(
+        typeof category === "string" ? category : category?.value ?? category?.label ?? "",
+      )
+        .trim()
+        .toLowerCase(),
+    )
+    .filter(Boolean),
+);
 
 function BankPage() {
   const navigate = useNavigate();
