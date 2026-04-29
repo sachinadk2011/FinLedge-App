@@ -6,6 +6,7 @@ const fs = require("fs");
 const os = require("os");
 const http = require("http");
 const zlib = require("zlib");
+const { pathToFileURL } = require("url");
 const { spawn } = require("child_process");
 
 const LOG_FILE = path.join(os.tmpdir(), "finledge-electron.log");
@@ -47,6 +48,7 @@ let backendProcess = null;
 let frontendProcess = null;
 let mainWindow = null;
 let devFrontendUrl = null;
+const IS_ELECTRON_DEV = String(process.env.ELECTRON_DEV || "") === "1";
 
 // Ensure the userData folder is named "Finledge" even in dev.
 app.setName("Finledge");
@@ -202,19 +204,20 @@ function startFrontendDevServer() {
   if (frontendProcess) return;
 
   const frontendDir = path.join(PROJECT_ROOT, "frontendwebapp");
+  const viteDevArgs = ["run", "dev", "--", "--host", "127.0.0.1"];
 
   try {
     if (process.platform === "win32") {
       // Run npm from the frontend directory. This avoids --prefix quoting issues on Windows paths with spaces.
       const comspec = process.env.ComSpec || "cmd.exe";
-      frontendProcess = spawn(comspec, ["/d", "/c", "npm.cmd", "run", "dev"], {
+      frontendProcess = spawn(comspec, ["/d", "/c", "npm.cmd", ...viteDevArgs], {
         cwd: frontendDir,
         env: process.env,
         windowsHide: true,
         stdio: ["ignore", "pipe", "pipe"],
       });
     } else {
-      frontendProcess = spawn("npm", ["run", "dev"], {
+      frontendProcess = spawn("npm", viteDevArgs, {
         cwd: frontendDir,
         env: process.env,
         stdio: ["ignore", "pipe", "pipe"],
@@ -282,12 +285,25 @@ function waitForAnyLocalPortOk(ports, timeoutMs) {
         }
 
         const port = ports[idx++];
-        const req = http.get(`http://127.0.0.1:${port}`, (res) => {
-          res.resume();
-          resolve(port);
-        });
-        req.on("error", () => tryNext());
-        req.setTimeout(400, () => req.destroy());
+        const urls = [`http://127.0.0.1:${port}`, `http://localhost:${port}`];
+        let urlIndex = 0;
+
+        const tryUrl = () => {
+          if (urlIndex >= urls.length) {
+            tryNext();
+            return;
+          }
+
+          const url = urls[urlIndex++];
+          const req = http.get(url, (res) => {
+            res.resume();
+            resolve(url);
+          });
+          req.on("error", () => tryUrl());
+          req.setTimeout(400, () => req.destroy());
+        };
+
+        tryUrl();
       };
 
       tryNext();
@@ -302,7 +318,7 @@ function getFrontendUrl() {
   if (explicit) return explicit;
 
   const builtIndex = path.join(PROJECT_ROOT, "frontendwebapp", "dist", "index.html");
-  if (fs.existsSync(builtIndex)) return `file://${builtIndex}`;
+  if (fs.existsSync(builtIndex)) return pathToFileURL(builtIndex).toString();
 
   return devFrontendUrl || "http://localhost:5173";
 }
@@ -414,7 +430,7 @@ app.whenReady().then(async () => {
     const hasBuiltFrontend = fs.existsSync(path.join(PROJECT_ROOT, "frontendwebapp", "dist", "index.html"));
     logLine("[main] frontend built?", hasBuiltFrontend);
 
-    if (!hasBuiltFrontend && String(process.env.ELECTRON_DEV || "") === "1") {
+    if (IS_ELECTRON_DEV) {
       logLine("[main] starting Vite dev server...");
       // If a dev server is already running, use it quickly; otherwise start one and wait in the background.
       waitForHttpOk("http://localhost:5173", 1200)
@@ -426,13 +442,17 @@ app.whenReady().then(async () => {
         .catch(() => {
           startFrontendDevServer();
           waitForAnyLocalPortOk([5173, 5174, 5175, 5176, 5177, 5178, 5179, 5180, 5181, 5182, 5183], 30_000)
-            .then((port) => {
-              devFrontendUrl = `http://localhost:${port}`;
+            .then((url) => {
+              devFrontendUrl = url;
               logLine("[main] Vite ready", devFrontendUrl);
               navigateToFrontend(devFrontendUrl);
             })
             .catch((err2) => {
               logLine("[main] Vite not ready", String(err2 && err2.message ? err2.message : err2));
+              if (hasBuiltFrontend) {
+                logLine("[main] Falling back to built frontend");
+                navigateToFrontend(getFrontendUrl());
+              }
             });
         });
     } else {

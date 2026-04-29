@@ -16,6 +16,7 @@ function ShareDashboard() {
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
+  const [tableSearch, setTableSearch] = useState("");
   const [searchName, setSearchName] = useState("");
   const [newAllotted, setNewAllotted] = useState("");
   const [updating, setUpdating] = useState(false);
@@ -43,17 +44,18 @@ function ShareDashboard() {
   }, []);
 
   useEffect(() => {
-    if (!updateMessage && !updateError) {
+    if (!updateMessage && !updateError && !error) {
       return undefined;
     }
 
     const timer = window.setTimeout(() => {
       setUpdateMessage("");
       setUpdateError("");
+      setError("");
     }, 5000);
 
     return () => window.clearTimeout(timer);
-  }, [updateMessage, updateError]);
+  }, [updateMessage, updateError, error]);
 
   const records = data?.records || [];
   const summary = data?.summary || {
@@ -61,6 +63,7 @@ function ShareDashboard() {
     total_buy_amount: 0,
     overall_investment: 0,
     total_sell_amount: 0,
+    total_dividend: 0,
     total_profit: 0,
     overall_profit_loss: 0,
   };
@@ -70,6 +73,7 @@ function ShareDashboard() {
     { label: "Total buy amount", value: formatter.format(summary.total_buy_amount) },
     { label: "Overall investment", value: formatter.format(summary.overall_investment) },
     { label: "Total sell amount", value: formatter.format(summary.total_sell_amount) },
+    { label: "Total dividend", value: formatter.format(summary.total_dividend) },
     { label: "Total profit", value: formatter.format(summary.total_profit) },
     { label: "Overall profit/loss", value: formatter.format(summary.overall_profit_loss) },
   ];
@@ -91,24 +95,47 @@ function ShareDashboard() {
     { key: "profit_loss", label: "Profit/Loss" },
   ];
 
-  const tableRows = [...records].reverse().map((record) => ({
-    id: record.id,
-    date: record.date,
-    share_name: record.share_name,
-    category: record.category,
-    per_unit_price: formatter.format(record.per_unit_price),
-    asba_charge: formatter.format(record.asba_charge),
-    allotted: record.allotted,
-    total_amount: formatter.format(record.total_amount),
-    profit_loss: formatter.format(record.profit_loss),
-  }));
+  const tableRows = [...records].reverse().map((record) => {
+    let catDisplay = record.category;
+    if (record.category === "dividend") {
+      catDisplay = `Dividend (${record.buy_sell === "bonus" ? "Bonus" : "Cash"})`;
+    }
+    
+    return {
+      id: record.id,
+      date: record.date,
+      share_name: record.share_name,
+      category: catDisplay,
+      per_unit_price: record.category === "dividend" && record.buy_sell === "bonus" ? "-" : formatter.format(record.per_unit_price),
+      asba_charge: record.category === "dividend" ? "-" : formatter.format(record.asba_charge),
+      allotted: record.category === "dividend" && record.buy_sell === "cash" ? "-" : record.allotted,
+      total_amount: record.category === "dividend" && record.buy_sell === "bonus" ? "-" : formatter.format(record.total_amount),
+      profit_loss: record.category === "ipo" || record.category === "buy" ? "-" : formatter.format(record.profit_loss),
+    };
+  });
 
-  const ipoNames = useMemo(() => {
+  const filteredTableRows = useMemo(() => {
+    const term = tableSearch.trim().toLowerCase();
+    if (!term) {
+      return tableRows;
+    }
+
+    return tableRows.filter((row) => String(row.share_name || "").toLowerCase().includes(term));
+  }, [tableRows, tableSearch]);
+
+  const ipoRecords = useMemo(() => {
     return records
       .filter((record) => String(record.category || "").trim().toLowerCase() === "ipo")
-      .map((record) => record.share_name)
-      .filter(Boolean);
+      .filter((record) => String(record.share_name || "").trim())
+      .map((record) => ({
+        id: record.id,
+        share_name: String(record.share_name || "").trim(),
+        date: String(record.date || "").trim(),
+        allotted: Number(record.allotted || 0),
+      }));
   }, [records]);
+
+  const ipoNames = useMemo(() => Array.from(new Set(ipoRecords.map((record) => record.share_name))), [ipoRecords]);
 
   const matches = useMemo(() => {
     const term = searchName.trim().toLowerCase();
@@ -126,17 +153,31 @@ function ShareDashboard() {
     setUpdateError("");
     setUpdating(true);
     try {
-      await updateShareAllotment({
-        share_name: searchName,
+      const selectedName = searchName.trim();
+      const matchedIpo = ipoRecords.find((record) => record.share_name.toLowerCase() === selectedName.toLowerCase());
+
+      if (!matchedIpo) {
+        throw new Error("Select a share name that exists as an IPO entry.");
+      }
+
+      const response = await updateShareAllotment({
+        share_name: matchedIpo.share_name,
         allotted: Number(newAllotted),
       });
-      setUpdateMessage("IPO allotment updated successfully.");
+
+      const updated = response?.data || {};
+      const previousAllotted = Number(updated.previous_allotted ?? matchedIpo.allotted ?? 0);
+      const currentAllotted = Number(updated.allotted ?? Number(newAllotted));
+      const updatedLabel = updated.date ? `${updated.share_name} (${updated.date})` : updated.share_name || matchedIpo.share_name;
+
+      setUpdateMessage(`Updated IPO entry for ${updatedLabel}: ${previousAllotted} -> ${currentAllotted}.`);
+      setSearchName("");
       setNewAllotted("");
       loadData();
     } catch (err) {
       const rawMessage = err.message || "Unable to update IPO allotment.";
       const normalized = String(rawMessage).toLowerCase();
-      if (normalized.includes("no ipo entry found")) {
+      if (normalized.includes("no ipo entry found") || normalized.includes("only ipo entries")) {
         setUpdateError("Only IPO entries can be updated from this form.");
       } else {
         setUpdateError(rawMessage);
@@ -191,9 +232,19 @@ function ShareDashboard() {
           <StatGrid items={stats} />
           <section className="card">
             <h3>All share transactions</h3>
+            <label className="field" style={{ maxWidth: 360, marginBottom: 12 }}>
+              <span>Search by share name</span>
+              <input
+                type="text"
+                value={tableSearch}
+                onChange={(e) => setTableSearch(e.target.value)}
+                placeholder="Type share name to filter table"
+                autoComplete="off"
+              />
+            </label>
             <TransactionsTable
               columns={columns}
-              rows={tableRows}
+              rows={filteredTableRows}
               actions={(row) => (
                 <>
                   <button type="button" className="ghost" onClick={() => navigate(`/share?edit=${row.id}`)}>

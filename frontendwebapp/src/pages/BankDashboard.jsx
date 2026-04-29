@@ -37,6 +37,14 @@ function BankDashboard() {
     loadData();
   }, []);
 
+  useEffect(() => {
+    if (!error) return;
+    const timer = window.setTimeout(() => {
+      setError("");
+    }, 5000);
+    return () => window.clearTimeout(timer);
+  }, [error]);
+
   const records = data?.records || [];
   const summary = data?.summary || {
     total_income: 0,

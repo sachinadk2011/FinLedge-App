@@ -72,10 +72,26 @@ function SharePage() {
           category: String(record.category || "ipo").toLowerCase(),
           per_unit_price: String(record.per_unit_price ?? ""),
           allotted: String(record.allotted ?? ""),
+          buy_sell: String(record.buy_sell || record.category || "").toLowerCase(),
+          _dividendType:
+            String(record.category || "").toLowerCase() === "dividend"
+              ? String(record.buy_sell || "cash").toLowerCase()
+              : undefined,
+          _totalAmount:
+            ["buy", "sell"].includes(String(record.category || "").toLowerCase()) ? String(record.total_amount ?? "") : "",
         });
       })
       .catch((err) => setError(err.message || "Unable to load share entry for editing."))
   }, [editId]);
+
+  useEffect(() => {
+    if (!success && !error) return;
+    const timer = window.setTimeout(() => {
+      setSuccess("");
+      setError("");
+    }, 5000);
+    return () => window.clearTimeout(timer);
+  }, [success, error]);
 
   async function handleSubmit(event) {
     event.preventDefault();
@@ -83,7 +99,10 @@ function SharePage() {
     setSuccess("");
     setSubmitting(true);
 
-    const payload = { ...form, buy_sell: form.category };
+    const payload = {
+      ...form,
+      buy_sell: form.category === "dividend" ? String(form._dividendType || "cash").toLowerCase() : form.category,
+    };
     console.log("[SharePage] submit payload", payload);
 
     try {
@@ -98,6 +117,8 @@ function SharePage() {
           category: "ipo",
           per_unit_price: "",
           allotted: "",
+          _dividendType: undefined,
+          _totalAmount: "",
         });
       } else {
         setSuccess("Entry saved successfully.");
@@ -105,7 +126,8 @@ function SharePage() {
           ...prev,
           share_name: "",
           per_unit_price: "",
-          allotted: "",
+          allotted: prev.category === "dividend" && prev._dividendType === "cash" ? "0" : "",
+          _totalAmount: "",
         }));
       }
 

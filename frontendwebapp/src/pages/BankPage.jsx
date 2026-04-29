@@ -40,9 +40,17 @@ function BankPage() {
           description: record.description || "",
         });
       })
-      .catch((err) => setError(err.message || "Unable to load bank entry for editing."))
       .finally(() => setLoading(false));
   }, [editId]);
+
+  useEffect(() => {
+    if (!success && !error) return;
+    const timer = window.setTimeout(() => {
+      setSuccess("");
+      setError("");
+    }, 5000);
+    return () => window.clearTimeout(timer);
+  }, [success, error]);
 
   async function handleSubmit(event) {
     event.preventDefault();

@@ -222,7 +222,7 @@ def build_monthly_share_png(records: Iterable[dict]) -> bytes:
     start, end = _last_n_days_window(dated, 14)
     day_keys = _day_keys(start, end)
 
-    by_day: dict[date, dict[str, float]] = {d: {"investment": 0.0, "profit": 0.0} for d in day_keys}
+    by_day: dict[date, dict[str, float]] = {d: {"investment": 0.0, "profit": 0.0, "loss": 0.0} for d in day_keys}
 
     for d, r in dated:
         if d < start or d > end:
@@ -232,8 +232,11 @@ def build_monthly_share_png(records: Iterable[dict]) -> bytes:
         profit = float(r.get("profit_loss") or 0.0)
         if category in {"ipo", "buy"}:
             by_day[d]["investment"] += total
-        elif category == "sell":
-            by_day[d]["profit"] += profit
+        elif category == "sell" or category == "dividend":
+            if profit >= 0:
+                by_day[d]["profit"] += profit
+            else:
+                by_day[d]["loss"] += abs(profit)
 
     keys = day_keys
 
@@ -242,7 +245,8 @@ def build_monthly_share_png(records: Iterable[dict]) -> bytes:
         x_labels=[_format_day_label(k) for k in keys],
         series=[
             ("Investment", [by_day[k]["investment"] for k in keys], "#2563eb"),
-            ("Profit/Loss", [by_day[k]["profit"] for k in keys], "#a855f7"),
+            ("Profit", [by_day[k]["profit"] for k in keys], "#16a34a"),
+            ("Loss", [by_day[k]["loss"] for k in keys], "#ef4444"),
         ],
         y_label="Amount",
     )
@@ -263,7 +267,7 @@ def build_yearly_share_png(records: Iterable[dict]) -> bytes:
             y -= 1
     keys.reverse()
 
-    by_month: dict[str, dict[str, float]] = {k: {"investment": 0.0, "profit": 0.0} for k in keys}
+    by_month: dict[str, dict[str, float]] = {k: {"investment": 0.0, "profit": 0.0, "loss": 0.0} for k in keys}
 
     for d, r in dated:
         key = f"{d.year:04d}-{d.month:02d}"
@@ -274,15 +278,19 @@ def build_yearly_share_png(records: Iterable[dict]) -> bytes:
         profit = float(r.get("profit_loss") or 0.0)
         if category in {"ipo", "buy"}:
             by_month[key]["investment"] += total
-        elif category == "sell":
-            by_month[key]["profit"] += profit
+        elif category == "sell" or category == "dividend":
+            if profit >= 0:
+                by_month[key]["profit"] += profit
+            else:
+                by_month[key]["loss"] += abs(profit)
 
     return _render_bar_chart(
         title="Yearly share investment and profit (last 12 months)",
         x_labels=[_format_month_label(k) for k in keys],
         series=[
             ("Investment", [by_month[k]["investment"] for k in keys], "#2563eb"),
-            ("Profit/Loss", [by_month[k]["profit"] for k in keys], "#a855f7"),
+            ("Profit", [by_month[k]["profit"] for k in keys], "#16a34a"),
+            ("Loss", [by_month[k]["loss"] for k in keys], "#ef4444"),
         ],
         y_label="Amount",
     )
@@ -316,7 +324,7 @@ def build_monthly_overview_png(*, bank_records: Iterable[dict], share_records: I
     day_keys = _day_keys(start, end)
 
     by_day: dict[date, dict[str, float]] = {
-        d: {"bank_income": 0.0, "bank_expense": 0.0, "share_investment": 0.0, "share_profit": 0.0}
+        d: {"bank_income": 0.0, "bank_expense": 0.0, "share_investment": 0.0, "share_profit": 0.0, "share_loss": 0.0}
         for d in day_keys
     }
 
@@ -338,8 +346,11 @@ def build_monthly_overview_png(*, bank_records: Iterable[dict], share_records: I
         profit = float(r.get("profit_loss") or 0.0)
         if category in {"ipo", "buy"}:
             by_day[d]["share_investment"] += total
-        elif category == "sell":
-            by_day[d]["share_profit"] += profit
+        elif category == "sell" or category == "dividend":
+            if profit >= 0:
+                by_day[d]["share_profit"] += profit
+            else:
+                by_day[d]["share_loss"] += abs(profit)
 
     keys = day_keys
 
@@ -350,7 +361,8 @@ def build_monthly_overview_png(*, bank_records: Iterable[dict], share_records: I
             ("Bank income", [by_day[k]["bank_income"] for k in keys], "#16a34a"),
             ("Bank expenses", [by_day[k]["bank_expense"] for k in keys], "#ef4444"),
             ("Share investment", [by_day[k]["share_investment"] for k in keys], "#2563eb"),
-            ("Share profit/loss", [by_day[k]["share_profit"] for k in keys], "#a855f7"),
+            ("Share profit", [by_day[k]["share_profit"] for k in keys], "#22c55e"),
+            ("Share loss", [by_day[k]["share_loss"] for k in keys], "#f43f5e"),
         ],
         y_label="Amount",
     )
@@ -374,7 +386,7 @@ def build_yearly_overview_png(*, bank_records: Iterable[dict], share_records: It
     keys.reverse()
 
     by_month: dict[str, dict[str, float]] = {
-        k: {"bank_income": 0.0, "bank_expense": 0.0, "share_investment": 0.0, "share_profit": 0.0} for k in keys
+        k: {"bank_income": 0.0, "bank_expense": 0.0, "share_investment": 0.0, "share_profit": 0.0, "share_loss": 0.0} for k in keys
     }
 
     for d, r in bank_dated:
@@ -397,8 +409,11 @@ def build_yearly_overview_png(*, bank_records: Iterable[dict], share_records: It
         profit = float(r.get("profit_loss") or 0.0)
         if category in {"ipo", "buy"}:
             by_month[key]["share_investment"] += total
-        elif category == "sell":
-            by_month[key]["share_profit"] += profit
+        elif category == "sell" or category == "dividend":
+            if profit >= 0:
+                by_month[key]["share_profit"] += profit
+            else:
+                by_month[key]["share_loss"] += abs(profit)
 
     return _render_bar_chart(
         title="Yearly financial overview (last 12 months)",
@@ -407,7 +422,8 @@ def build_yearly_overview_png(*, bank_records: Iterable[dict], share_records: It
             ("Bank income", [by_month[k]["bank_income"] for k in keys], "#16a34a"),
             ("Bank expenses", [by_month[k]["bank_expense"] for k in keys], "#ef4444"),
             ("Share investment", [by_month[k]["share_investment"] for k in keys], "#2563eb"),
-            ("Share profit/loss", [by_month[k]["share_profit"] for k in keys], "#a855f7"),
+            ("Share profit", [by_month[k]["share_profit"] for k in keys], "#22c55e"),
+            ("Share loss", [by_month[k]["share_loss"] for k in keys], "#f43f5e"),
         ],
         y_label="Amount",
     )

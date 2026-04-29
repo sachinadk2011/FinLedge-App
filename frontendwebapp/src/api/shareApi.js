@@ -5,6 +5,7 @@ export function addShareEntry(form) {
   const perUnitPrice = Number.parseFloat(perUnitPriceRaw);
   const allotted = Number.parseInt(form.allotted, 10);
   const category = String(form.category || "").trim().toLowerCase();
+  const dividendType = String(form.buy_sell || form._dividendType || "").trim().toLowerCase();
 
   if (!Number.isFinite(perUnitPrice)) {
     throw new Error("Per unit price must be a valid number.");
@@ -14,8 +15,18 @@ export function addShareEntry(form) {
     throw new Error("Allotted must be 0 or greater.");
   }
 
-  // IPO stage-1 can have allotted = 0 (ASBA only). Buy/sell must have allotted > 0.
-  if (category !== "ipo" && allotted <= 0) {
+  if (category === "dividend") {
+    if (!["cash", "bonus"].includes(dividendType)) {
+      throw new Error("Dividend type must be cash or bonus.");
+    }
+    if (dividendType === "cash" && allotted !== 0) {
+      throw new Error("Cash dividend must have 0 allotted shares.");
+    }
+    if (dividendType === "bonus" && allotted <= 0) {
+      throw new Error("Bonus dividend must have a positive share quantity.");
+    }
+  } else if (category !== "ipo" && allotted <= 0) {
+    // IPO stage-1 can have allotted = 0 (ASBA only). Buy/sell must have allotted > 0.
     throw new Error("Allotted must be a positive integer for buy/sell entries.");
   }
 
@@ -25,7 +36,7 @@ export function addShareEntry(form) {
     // Send as string so the backend can parse with Decimal and preserve exact input.
     per_unit_price: perUnitPriceRaw,
     allotted,
-    buy_sell: String(form.buy_sell || form.category || "").trim().toLowerCase(),
+    buy_sell: category === "dividend" ? dividendType : String(form.buy_sell || form.category || "").trim().toLowerCase(),
   };
 
   if (form.dates) {
@@ -50,6 +61,7 @@ export function updateShareEntry(recordId, form) {
   const perUnitPrice = Number.parseFloat(perUnitPriceRaw);
   const allotted = Number.parseInt(form.allotted, 10);
   const category = String(form.category || "").trim().toLowerCase();
+  const dividendType = String(form.buy_sell || form._dividendType || "").trim().toLowerCase();
 
   if (!Number.isFinite(perUnitPrice)) {
     throw new Error("Per unit price must be a valid number.");
@@ -59,7 +71,17 @@ export function updateShareEntry(recordId, form) {
     throw new Error("Allotted must be 0 or greater.");
   }
 
-  if (category !== "ipo" && allotted <= 0) {
+  if (category === "dividend") {
+    if (!["cash", "bonus"].includes(dividendType)) {
+      throw new Error("Dividend type must be cash or bonus.");
+    }
+    if (dividendType === "cash" && allotted !== 0) {
+      throw new Error("Cash dividend must have 0 allotted shares.");
+    }
+    if (dividendType === "bonus" && allotted <= 0) {
+      throw new Error("Bonus dividend must have a positive share quantity.");
+    }
+  } else if (category !== "ipo" && allotted <= 0) {
     throw new Error("Allotted must be a positive integer for buy/sell entries.");
   }
 
@@ -68,7 +90,7 @@ export function updateShareEntry(recordId, form) {
     category,
     per_unit_price: perUnitPriceRaw,
     allotted,
-    buy_sell: String(form.buy_sell || form.category || "").trim().toLowerCase(),
+    buy_sell: category === "dividend" ? dividendType : String(form.buy_sell || form.category || "").trim().toLowerCase(),
   };
 
   if (form.dates) {

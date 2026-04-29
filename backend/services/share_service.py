@@ -96,11 +96,12 @@ def _build_open_lots(sheet, share_name: str) -> list[dict]:
         qty = _to_int(row[5])
         price = _to_float(row[3])
         asba_charge = _to_float(row[4])
+        buy_sell = str(row[6] or "").strip().lower()
 
         if qty <= 0:
             continue
 
-        if category in {"ipo", "buy"}:
+        if category in {"ipo", "buy"} or (category == "dividend" and buy_sell == "bonus"):
             lots.append(
                 {
                     "qty": qty,
@@ -190,17 +191,22 @@ def append_share_record(
     entry_date = entry_date or date.today()
     share_name = share_name.strip().upper()
     category = category.strip().lower()
-    if category not in {"ipo", "buy", "sell"}:
-        raise ValueError("Category must be one of: ipo, buy, sell.")
+    if category not in {"ipo", "buy", "sell", "dividend"}:
+        raise ValueError("Category must be one of: ipo, buy, sell, dividend.")
 
-    # IPO has two stages:
-    # - applied: allotted can be 0 (total investment is only ASBA)
-    # - allotted later: allotted > 0
-    # Secondary trades (buy/sell) must have allotted > 0.
-    if allotted < 0:
-        raise ValueError("Allotted cannot be negative.")
-    if category != "ipo" and allotted <= 0:
-        raise ValueError("Allotted must be greater than 0 for buy/sell entries.")
+    if category == "dividend":
+        buy_sell = buy_sell.strip().lower()
+        if buy_sell not in {"cash", "bonus"}:
+            raise ValueError("Dividend type must be 'cash' or 'bonus'.")
+        if buy_sell == "cash" and allotted != 0:
+            raise ValueError("Cash dividend must have 0 allotted shares.")
+        if buy_sell == "bonus" and allotted <= 0:
+            raise ValueError("Bonus dividend must have greater than 0 allotted shares.")
+    else:
+        if allotted < 0:
+            raise ValueError("Allotted cannot be negative.")
+        if category != "ipo" and allotted <= 0:
+            raise ValueError("Allotted must be greater than 0 for buy/sell entries.")
 
     if per_unit_price < 0:
         raise ValueError("Per unit price cannot be negative.")
@@ -219,14 +225,21 @@ def append_share_record(
     except (InvalidOperation, TypeError, ValueError) as exc:
         raise ValueError("Per unit price must be a valid number.") from exc
 
-    share_value_dec = unit_price * Decimal(int(allotted))
-    total_amount_dec = share_value_dec + asba_charge_dec
-
-    profit_loss_dec = Decimal("0")
-    if category == "sell":
-        open_lots = _build_open_lots(sheet, share_name)
-        buy_cost = _cost_basis_for_sell(open_lots, int(allotted))
-        profit_loss_dec = total_amount_dec - Decimal(str(buy_cost))
+    if category == "dividend":
+        if buy_sell == "cash":
+            total_amount_dec = unit_price
+            profit_loss_dec = total_amount_dec
+        else:
+            total_amount_dec = Decimal("0")
+            profit_loss_dec = Decimal("0")
+    else:
+        share_value_dec = unit_price * Decimal(int(allotted))
+        total_amount_dec = share_value_dec + asba_charge_dec
+        profit_loss_dec = Decimal("0")
+        if category == "sell":
+            open_lots = _build_open_lots(sheet, share_name)
+            buy_cost = _cost_basis_for_sell(open_lots, int(allotted))
+            profit_loss_dec = total_amount_dec - Decimal(str(buy_cost))
 
     previous_cumulative = _to_float(sheet.cell(row=sheet.max_row, column=10).value) if sheet.max_row > 1 else 0.0
     cumulative_profit = previous_cumulative + float(profit_loss_dec)
@@ -303,9 +316,11 @@ def summarize_share_records(records: list[dict]) -> dict:
     total_buy_amount = 0.0
     total_sell_amount = 0.0
     total_profit = 0.0
+    total_dividend = 0.0
 
     for record in records:
         category = str(record.get("category") or "").strip().lower()
+        buy_sell = str(record.get("buy_sell") or "").strip().lower()
         total_amount = _to_float(record.get("total_amount"))
         profit_loss = _to_float(record.get("profit_loss"))
 
@@ -316,15 +331,18 @@ def summarize_share_records(records: list[dict]) -> dict:
         elif category == "sell":
             total_sell_amount += total_amount
             total_profit += profit_loss
+        elif category == "dividend" and buy_sell == "cash":
+            total_dividend += total_amount
 
     overall_investment = total_ipo_investment + total_buy_amount
-    overall_profit_loss = total_profit
+    overall_profit_loss = total_profit + total_dividend - overall_investment
 
     return {
         "total_ipo_investment": total_ipo_investment,
         "total_buy_amount": total_buy_amount,
         "overall_investment": overall_investment,
         "total_sell_amount": total_sell_amount,
+        "total_dividend": total_dividend,
         "total_profit": total_profit,
         "overall_profit_loss": overall_profit_loss,
     }
@@ -342,15 +360,22 @@ def _recompute_sheet(sheet) -> None:
         buy_sell = str(sheet.cell(row=row_idx, column=7).value or "")
 
         asba_charge = 5.0 if category == "ipo" else 0.0
-        # If IPO is applied but not allotted yet, allotted may be 0 and total is only ASBA.
-        total_amount = (float(per_unit_price) * int(allotted)) + float(asba_charge)
-
         profit_loss = 0.0
         share_key = share_name.lower()
-        if category in {"ipo", "buy"}:
+        
+        if category == "dividend":
+            if buy_sell == "cash":
+                total_amount = float(per_unit_price)
+                profit_loss = total_amount
+            else:
+                total_amount = 0.0
+        else:
+            total_amount = (float(per_unit_price) * int(allotted)) + float(asba_charge)
+
+        if category in {"ipo", "buy"} or (category == "dividend" and buy_sell == "bonus"):
             if share_key:
                 lots_by_share.setdefault(share_key, []).append(
-                    {"qty": allotted, "price": per_unit_price, "asba": asba_charge if category == "ipo" else 0.0}
+                    {"qty": allotted, "price": per_unit_price if category != "dividend" else 0.0, "asba": asba_charge if category == "ipo" else 0.0}
                 )
         elif category == "sell":
             lots = lots_by_share.get(share_key, [])
@@ -391,11 +416,21 @@ def update_share_allotment(share_name: str, allotted: int) -> dict:
             raise ValueError("Only IPO entries can be updated from this form.")
         raise ValueError("No IPO entry found for the provided share name.")
 
+    previous_allotted = _to_int(sheet.cell(row=target_row, column=6).value)
+    updated_date = str(sheet.cell(row=target_row, column=1).value or "")
+    normalized_share_name = str(sheet.cell(row=target_row, column=2).value or share_name).strip().upper()
+
     sheet.cell(row=target_row, column=6).value = int(allotted)
     _recompute_sheet(sheet)
     workbook.save(FILE_PATH)
 
-    return {"share_name": share_name, "allotted": int(allotted)}
+    return {
+        "record_id": int(target_row - 1),
+        "date": updated_date,
+        "share_name": normalized_share_name,
+        "previous_allotted": previous_allotted,
+        "allotted": int(allotted),
+    }
 
 
 def delete_share_record(record_id: int) -> dict:
@@ -444,13 +479,22 @@ def update_share_record(
     entry_date = entry_date or date.today()
     share_name = share_name.strip().upper()
     category = category.strip().lower()
-    if category not in {"ipo", "buy", "sell"}:
-        raise ValueError("Category must be one of: ipo, buy, sell.")
+    if category not in {"ipo", "buy", "sell", "dividend"}:
+        raise ValueError("Category must be one of: ipo, buy, sell, dividend.")
 
-    if allotted < 0:
-        raise ValueError("Allotted cannot be negative.")
-    if category != "ipo" and allotted <= 0:
-        raise ValueError("Allotted must be greater than 0 for buy/sell entries.")
+    if category == "dividend":
+        buy_sell = (buy_sell or "").strip().lower()
+        if buy_sell not in {"cash", "bonus"}:
+            raise ValueError("Dividend type must be 'cash' or 'bonus'.")
+        if buy_sell == "cash" and allotted != 0:
+            raise ValueError("Cash dividend must have 0 allotted shares.")
+        if buy_sell == "bonus" and allotted <= 0:
+            raise ValueError("Bonus dividend must have greater than 0 allotted shares.")
+    else:
+        if allotted < 0:
+            raise ValueError("Allotted cannot be negative.")
+        if category != "ipo" and allotted <= 0:
+            raise ValueError("Allotted must be greater than 0 for buy/sell entries.")
 
     if per_unit_price < 0:
         raise ValueError("Per unit price cannot be negative.")

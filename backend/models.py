@@ -16,6 +16,7 @@ class ShareCategory(str, Enum):
     ipo = "ipo"
     buy = "buy"
     sell = "sell"
+    dividend = "dividend"
 
 
 class BankAddRequest(BaseModel):
