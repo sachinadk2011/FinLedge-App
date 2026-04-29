@@ -36,8 +36,26 @@ process.on("unhandledRejection", (reason) => {
 
 logLine("[main] Finledge Electron starting...", { logFile: LOG_FILE });
 
-const BACKEND_PORT = Number(process.env.FINLEDGE_BACKEND_PORT || 8000);
-const FRONTEND_PORT = Number(process.env.FINLEDGE_FRONTEND_PORT || 5173);
+function getPortFromEnv(envVarName, defaultPort) {
+  const rawValue = process.env[envVarName];
+  if (rawValue == null || rawValue.trim() === "") {
+    return defaultPort;
+  }
+
+  const parsedPort = Number(rawValue);
+  if (Number.isFinite(parsedPort)) {
+    return parsedPort;
+  }
+
+  logLine(`[main] Invalid ${envVarName} value, falling back to default port`, {
+    rawValue,
+    defaultPort,
+  });
+  return defaultPort;
+}
+
+const BACKEND_PORT = getPortFromEnv("FINLEDGE_BACKEND_PORT", 8000);
+const FRONTEND_PORT = getPortFromEnv("FINLEDGE_FRONTEND_PORT", 5173);
 const BACKEND_READY_TIMEOUT_MS = 30_000;
 const POLL_INTERVAL_MS = 500;
 
