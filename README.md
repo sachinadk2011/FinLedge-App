@@ -178,7 +178,7 @@ Example files:
 
 To change the packaged desktop app version, update:
 
-- [desktop/package.json](C:\Users\HP\Desktop\tracker financial\desktop\package.json)
+- [desktop/package.json](desktop/package.json)
 
 Example:
 
