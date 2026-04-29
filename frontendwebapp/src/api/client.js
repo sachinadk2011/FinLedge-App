@@ -1,4 +1,9 @@
-const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000";
+const DESKTOP_API_BASE =
+  typeof window !== "undefined" && typeof window.financialTracker?.getBackendBaseUrl === "function"
+    ? window.financialTracker.getBackendBaseUrl()
+    : "";
+
+const API_BASE = DESKTOP_API_BASE || import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000";
 
 async function readJsonSafe(response) {
   const contentType = response.headers.get("content-type") || "";

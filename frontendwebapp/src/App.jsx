@@ -19,7 +19,6 @@ function getRouteLabel(pathname) {
 function Layout() {
   const location = useLocation();
   const label = getRouteLabel(location.pathname);
-  const isDesktopShell = typeof window !== "undefined" && window.location.protocol === "file:";
 
   return (
     <div className="app-shell">
@@ -35,21 +34,6 @@ function Layout() {
                 <span className="text-sm font-semibold text-slate-500">{label}</span>
               </span>
             </Link>
-
-            {isDesktopShell ? (
-              <button
-                className="refresh-icon-btn"
-                type="button"
-                title="Refresh app"
-                aria-label="Refresh app"
-                onClick={() => window.location.reload()}
-              >
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <path d="M21 12a9 9 0 1 1-2.64-6.36" />
-                  <path d="M21 3v6h-6" />
-                </svg>
-              </button>
-            ) : null}
           </div>
 
           <nav className="flex flex-wrap items-center justify-center gap-2 sm:justify-end sm:gap-3">

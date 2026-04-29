@@ -5,6 +5,8 @@ import { addBankEntry, getBankData, updateBankEntry } from "../api/bankApi";
 import BankForm from "../components/BankForm";
 import { getTodayInputValue } from "../utils/date";
 
+const VALID_BANK_CATEGORIES = new Set(["income", "service cost", "investment cost", "operation cost"]);
+
 function BankPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -32,9 +34,12 @@ function BankPage() {
         if (!record) {
           throw new Error("Bank record not found for editing.");
         }
+        const normalizedCategory = VALID_BANK_CATEGORIES.has(String(record.category || "").trim().toLowerCase())
+          ? String(record.category || "").trim().toLowerCase()
+          : "income";
         setForm({
           dates: record.date || getTodayInputValue(),
-          category: record.category || "income",
+          category: normalizedCategory,
           // Keep the UI as positive entry; API normalizes sign based on category.
           amount: String(Math.abs(Number(record.amount || 0))),
           description: record.description || "",

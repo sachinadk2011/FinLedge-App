@@ -5,11 +5,11 @@
   "type": "module",
   "scripts": {
     "dev": "concurrently -k -n backend,frontend -c green,cyan \"npm run dev:backend\" \"npm run dev:frontend\"",
-    "dev:backend": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"& { . .\\\\venv\\\\Scripts\\\\Activate.ps1; uvicorn backend.main:app --host 127.0.0.1 --port 8000 }\"",
-    "dev:backend:reload": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"& { . .\\\\venv\\\\Scripts\\\\Activate.ps1; uvicorn backend.main:app --reload --host 127.0.0.1 --port 8000 }\"",
+    "dev:backend": "cross-env FINLEDGE_MODE=development powershell -NoProfile -ExecutionPolicy Bypass -Command \"& { . .\\\\venv\\\\Scripts\\\\Activate.ps1; uvicorn backend.main:app --host 127.0.0.1 --port 8000 }\"",
+    "dev:backend:reload": "cross-env FINLEDGE_MODE=development powershell -NoProfile -ExecutionPolicy Bypass -Command \"& { . .\\\\venv\\\\Scripts\\\\Activate.ps1; uvicorn backend.main:app --reload --host 127.0.0.1 --port 8000 }\"",
     "dev:frontend": "npm run dev --prefix frontendwebapp",
-    "desktop-dev": "cross-env ELECTRON_DEV=1 npm start --prefix desktop",
-    "desktop-build": "npm run build --prefix frontendwebapp && npm run build --prefix desktop"
+    "desktop-dev": "cross-env ELECTRON_DEV=1 FINLEDGE_MODE=development FINLEDGE_BACKEND_PORT=8001 FINLEDGE_FRONTEND_PORT=5174 VITE_API_BASE_URL=http://127.0.0.1:8001 npm start --prefix desktop",
+    "desktop-build": "cross-env FINLEDGE_MODE=production FINLEDGE_BACKEND_PORT=8000 VITE_API_BASE_URL=http://127.0.0.1:8000 npm run build --prefix frontendwebapp && npm run build --prefix desktop"
   },
   "devDependencies": {
     "concurrently": "^9.0.0",

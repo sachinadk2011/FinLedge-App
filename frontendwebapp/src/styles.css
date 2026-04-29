@@ -48,29 +48,6 @@ body {
   min-width: 0;
 }
 
-.refresh-icon-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 40px;
-  height: 40px;
-  padding: 0;
-  border-radius: 999px;
-  border: 1px solid rgba(15, 118, 110, 0.18);
-  background: rgba(255, 255, 255, 0.76);
-  color: var(--accent);
-  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.08);
-}
-
-.refresh-icon-btn svg {
-  width: 18px;
-  height: 18px;
-}
-
-.refresh-icon-btn:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.95);
-}
-
 .page {
   max-width: 1280px;
   margin: 0 auto;
@@ -436,3 +413,34 @@ pre {
 
 .header-actions { display: flex; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
 .error-pre { color: #b91c1c; background: rgba(185, 28, 28, 0.08); border: 1px solid rgba(185, 28, 28, 0.2); padding: 10px; border-radius: 12px; white-space: pre-wrap; }
+
+.dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(15, 23, 42, 0.24);
+  backdrop-filter: blur(3px);
+}
+
+.dialog-card {
+  width: min(420px, 100%);
+  background: rgba(255, 255, 255, 0.98);
+  border: 1px solid rgba(226, 232, 240, 0.92);
+  border-radius: 18px;
+  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.18);
+  padding: 20px;
+}
+
+.dialog-card h3 {
+  margin: 0 0 6px;
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 18px;
+}

@@ -1,43 +1,62 @@
 import os
 import shutil
 import sys
+from functools import lru_cache
 from pathlib import Path
+
+
+def _read_env_file(project_root: Path) -> None:
+    env_file = project_root / ".env"
+    if not env_file.exists():
+        return
+
+    for raw_line in env_file.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+
+        key, value = line.split("=", 1)
+        key = key.strip()
+        value = value.strip().strip('"').strip("'")
+        if key:
+            os.environ.setdefault(key, value)
+
+
+@lru_cache(maxsize=1)
+def _resolve_mode() -> str:
+    project_root = Path(__file__).resolve().parents[2]
+    _read_env_file(project_root)
+    return str(os.environ.get("FINLEDGE_MODE") or "development").strip().lower() or "development"
 
 
 def get_data_dir() -> Path:
     project_root = Path(__file__).resolve().parents[2]
+    mode = _resolve_mode()
 
-    # User data storage outside the project folder (and safe for packaged .exe builds).
-    # By default: ~/FinancialTrackerData
-    env_override = (os.environ.get("FINLEDGE_DATA_DIR") or os.environ.get("FINANCIAL_TRACKER_DATA_DIR") or "").strip()
-    is_frozen = bool(getattr(sys, "frozen", False))
-    if env_override:
-        data_dir = Path(env_override).expanduser()
+    if mode == "production":
+        if os.name == "nt":
+            roaming = Path(os.environ.get("APPDATA") or (Path.home() / "AppData" / "Roaming"))
+            data_dir = roaming / "Finledge"
+        else:
+            data_dir = Path.home() / ".finledge"
     else:
-        # Dev runs: keep it near the repo but outside it (e.g., Desktop/FinancialTrackerData).
-        # Packaged exe: always use a user-writable folder.
-        data_dir = (Path.home() / "FinancialTrackerData") if is_frozen else (project_root.parent / "FinancialTrackerData")
+        data_dir = project_root / ".finledge-dev-data"
 
     data_dir.mkdir(parents=True, exist_ok=True)
 
-    # Backward compatibility: migrate legacy Excel files into the new location once.
-    legacy_dirs: list[Path] = [
-        project_root / "backend" / "data",
-        project_root / "data",
-    ]
-
-    # Old defaults used by previous versions.
-    if os.name == "nt":
-        roaming = Path(os.environ.get("APPDATA") or (Path.home() / "AppData" / "Roaming"))
-        legacy_dirs.insert(0, roaming / "FinancialTracker")
+    legacy_dirs: list[Path] = []
+    if mode == "production":
+        # Only one production home going forward. If it's empty, restore once from the
+        # user's older desktop data folder, not from backend/data test files.
+        legacy_dirs.append(project_root.parent / "FinancialTrackerData")
+        if os.name == "nt":
+            legacy_dirs.append(Path(os.environ.get("APPDATA") or (Path.home() / "AppData" / "Roaming")) / "FinancialTracker")
+        else:
+            legacy_dirs.append(Path.home() / ".financial_tracker")
     else:
-        legacy_dirs.insert(0, Path.home() / ".financial_tracker")
+        # Development stays isolated inside the project.
+        legacy_dirs.append(project_root / "backend" / "data")
 
-    # If this is a packaged build, some older versions stored next to the executable.
-    if is_frozen:
-        legacy_dirs.append(Path(sys.executable).resolve().parent / "data")
-
-    # Map legacy filenames to new stable names.
     targets = {
         "bank_transactions.xlsx": ["bank_transactions.xlsx", "bank.xlsx"],
         "share_transactions.xlsx": ["share_transactions.xlsx", "share.xlsx"],
