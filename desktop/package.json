@@ -39,7 +39,6 @@
     "files": [
       "main.js",
       "preload.js",
-      "finledge_icon.ico",
       "finledge_icon.png",
       "package.json"
     ],
@@ -62,18 +61,15 @@
           ]
         }
       ],
-      "icon": "finledge_icon.ico",
+      "icon": "finledge_icon.png",
       "publisherName": "Sachin Adhikari",
-      "requestedExecutionLevel": "asInvoker",
-      "legalTrademarks": "Sachin Adhikari",
       "artifactName": "Finledge-Setup-${version}.${ext}"
     },
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
-      "createStartMenuShortcut": true,
-      "installerHeaderIcon": "finledge_icon.ico"
+      "createStartMenuShortcut": true
     }
   }
 }
