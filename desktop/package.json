@@ -2,11 +2,19 @@
   "name": "finledge-desktop",
   "private": true,
   "version": "1.0.0",
+  "author": "Sachin Adhikari",
   "description": "Finledge - Financial Tracker desktop application",
   "main": "main.js",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sachinadk2011/FinLedge-App.git"
+  },
   "scripts": {
     "start": "electron .",
     "build": "electron-builder"
+  },
+  "dependencies": {
+    "electron-updater": "^6.3.9"
   },
   "devDependencies": {
     "electron": "^30.0.0",
@@ -15,9 +23,19 @@
   "build": {
     "appId": "com.finledge.tracker",
     "productName": "Finledge",
+    "compression": "maximum",
+    "copyright": "Copyright © 2026 Sachin Adhikari",
     "directories": {
       "output": "dist"
     },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "sachinadk2011",
+        "repo": "FinLedge-App",
+        "releaseType": "release"
+      }
+    ],
     "files": [
       "main.js",
       "preload.js",
@@ -26,13 +44,8 @@
     ],
     "extraResources": [
       {
-        "from": "../backend",
-        "to": "backend",
-        "filter": ["**/*", "!__pycache__/**", "!**/*.pyc"]
-      },
-      {
-        "from": "../venv",
-        "to": "venv"
+        "from": "build/sidecar/finledge-engine.exe",
+        "to": "engine/finledge-engine.exe"
       },
       {
         "from": "../frontendwebapp/dist",
@@ -40,8 +53,17 @@
       }
     ],
     "win": {
-      "target": ["nsis"],
-      "icon": "finledge_icon.png"
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "finledge_icon.png",
+      "publisherName": "Sachin Adhikari",
+      "artifactName": "Finledge-Setup-${version}.${ext}"
     },
     "nsis": {
       "oneClick": false,
@@ -51,4 +73,3 @@
     }
   }
 }
-

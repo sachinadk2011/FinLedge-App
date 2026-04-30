@@ -1,7 +1,8 @@
 {
   "name": "frontendwebapp",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
+  "author": "Sachin Adhikari",
   "type": "module",
   "scripts": {
     "dev": "vite",

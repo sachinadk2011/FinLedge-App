@@ -25,6 +25,11 @@ app.include_router(share_router)
 app.include_router(summary_router)
 
 
+@app.get("/health", include_in_schema=False)
+def health_check():
+    return {"status": "ok"}
+
+
 def _get_frontend_dist() -> Path:
     if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
         return Path(getattr(sys, "_MEIPASS")) / "frontend_dist"
