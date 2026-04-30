@@ -1,216 +1,269 @@
-# Finledge - Financial Tracker
+# FinLedge
 
-Finledge is a personal financial tracker built with:
+> Personal finance clarity in a desktop app you can actually own.
 
-- `React + Vite` for the frontend
-- `FastAPI` for the backend
-- `Excel files` for storage
-- `Electron` for the desktop app
+FinLedge is a polished desktop financial tracker that combines a React-based UI, an Electron shell, and a Python FastAPI engine to help you manage bank activity, share transactions, and overall financial position from one place.
 
-It helps track:
+FinLedge began as an original personal product idea focused on solving a real day-to-day problem: keeping banking activity, income, expenses, market investments, and financial summaries together in one practical desktop workflow. It has since been expanded into a more general-purpose desktop finance platform for broader public use.
 
-- Bank income and expenses
-- Share transactions such as IPO, buy, sell, and dividend
-- Combined financial summary with charts
+---
 
-## Features
+## Why FinLedge?
 
-- Bank module with add, edit, delete, and dashboard view
-- Optional bank transaction description
-- Share module with add, edit, delete, and dashboard view
-- IPO allotment update flow
-- Overall summary with charts
-- Excel-based local storage
-- Desktop app support with Electron
-- Separate development and production data handling
+FinLedge is built for people who want:
 
-## Project Structure
+- a lightweight desktop app instead of a browser-only finance tool
+- clear bank and share tracking in one workflow
+- local-first Excel storage under the user profile
+- a release-ready desktop app with updater support
 
-```text
-tracker financial/
-├─ backend/             FastAPI backend
-├─ desktop/             Electron desktop app
-├─ frontendwebapp/      React + Vite frontend
-├─ .env                 Local environment mode
-├─ package.json         Root scripts
-├─ requirements.txt     Python dependencies
-└─ README.md
-```
+---
 
-## Requirements
+## Highlights
 
-- Python 3.13+ recommended
-- Node.js 20+ recommended
-- npm
-- Windows PowerShell for the current scripts
+| Area | What it does |
+| --- | --- |
+| Bank Module | Track income, service cost, investment cost, operation cost, and optional descriptions |
+| Share Module | Track IPO, buy, sell, dividend, edit entries, and update IPO allotments |
+| Summary Dashboard | View combined financial position with charts and comparative insights |
+| Desktop Experience | Electron-powered Windows app with sidecar Python backend |
+| Local Data Ownership | Stores user files in the OS user-data area instead of hardcoded machine paths |
+| Release Workflow | Ready for installer builds, GitHub releases, and desktop auto-updates |
 
-## Installation
+---
 
-### 1. Clone the project
+## Screenshots
+
+Add release screenshots here before publishing:
+
+| Home | Bank Dashboard | Share Dashboard | Summary |
+| --- | --- | --- | --- |
+| `![Home Screenshot](docs/screenshots/home.png)` | `![Bank Screenshot](docs/screenshots/bank.png)` | `![Share Screenshot](docs/screenshots/share.png)` | `![Summary Screenshot](docs/screenshots/summary.png)` |
+
+---
+
+## Tech Stack
+
+FinLedge uses a modern multi-runtime stack:
+
+| Layer | Technology |
+| --- | --- |
+| Frontend UI | React + Vite |
+| Desktop Shell | Electron |
+| Backend Engine | Python + FastAPI + Uvicorn |
+| Storage | Excel (`.xlsx`) via OpenPyXL |
+| Charts | Recharts (frontend) and Matplotlib (backend) |
+| Packaging | Electron Builder + PyInstaller |
+
+Note:
+This project is not a classic MongoDB/Express MERN backend. It uses the React ecosystem on the frontend and a Python engine on the backend for a desktop-first architecture.
+
+---
+
+## Key Features
+
+- Interactive home page with module navigation
+- Bank entry form with optional description support
+- Share tracking for IPO, buy, sell, and dividend flows
+- IPO allotment update workflow with validation
+- Edit and delete support across modules
+- Scrollable tables for historical data
+- Interactive summary charts
+- Production desktop packaging with a frozen Python sidecar
+- GitHub-based auto-update support
+
+---
+
+## Product Ownership
+
+FinLedge is an original self-directed product created and shaped by Sachin Adhikari. The concept, feature direction, user flow, product structure, and iterative roadmap were defined as part of a real product-building process rather than copied from a tutorial or classroom assignment.
+
+## Development Note
+
+This project was developed through a modern AI-assisted workflow. Product thinking, architecture decisions, feature design, and iteration direction were driven by the project owner, while portions of implementation were accelerated through AI-supported development and refinement. That assistance is part of the development process and is presented transparently.
+
+---
+
+## Security & Integrity
+
+FinLedge is prepared for a safer public release:
+
+- Configuration is centralized through a root `.env` file
+- `.env` is ignored from Git so personal values are not committed
+- User files are stored in system-managed dynamic paths
+- No fixed laptop-specific storage paths are required
+
+### SHA-256 Checksum Verification
+
+For public releases, publish a SHA-256 checksum alongside the installer so users can verify download integrity.
+
+Example PowerShell command:
 
 ```powershell
-git clone <your-repo-url>
+Get-FileHash .\Finledge-Setup-1.0.0.exe -Algorithm SHA256
+```
+
+Include that checksum in your GitHub Release notes.
+
+---
+
+## End-User Installation Guide
+
+### Windows Setup
+
+1. Download the latest `Finledge-Setup-<version>.exe` from the GitHub Releases page.
+2. Optionally verify the SHA-256 checksum.
+3. Run the installer.
+4. Launch **FinLedge** from the Start Menu or Desktop shortcut.
+5. Your data will be stored automatically in your user data folder.
+
+### User Data Location
+
+On Windows, FinLedge stores user-specific files in:
+
+```text
+%APPDATA%\Finledge\
+```
+
+Typical files:
+
+- `bank_transactions.xlsx`
+- `share_transactions.xlsx`
+
+---
+
+## Developer Setup
+
+### 1. Clone the repository
+
+```powershell
+git clone https://github.com/sachinadk2011/FinLedge-App.git
 cd "tracker financial"
 ```
 
-### 2. Create and activate the virtual environment
+### 2. Create your environment file
+
+Copy the example:
+
+```powershell
+Copy-Item .env.example .env
+```
+
+Then adjust the values you need in `.env`.
+
+### 3. Create and activate Python virtual environment
 
 ```powershell
 python -m venv venv
 .\venv\Scripts\Activate.ps1
 ```
 
-### 3. Install Python dependencies
+### 4. Install backend dependencies
 
 ```powershell
 pip install -r requirements.txt
 ```
 
-### 4. Install Node dependencies
-
-At the project root:
+### 5. Install frontend and desktop dependencies
 
 ```powershell
 npm install
+npm install --prefix frontendwebapp
+npm install --prefix desktop
 ```
 
-Inside the Electron folder:
-
-```powershell
-cd desktop
-npm install
-cd ..
-```
-
-## Environment
-
-This project uses a single local `.env` file.
-
-Current supported value:
-
-```env
-FINLEDGE_MODE=development
-```
-
-Modes:
-
-- `development`
-- `production`
-
-For normal local work, keep:
-
-```env
-FINLEDGE_MODE=development
-```
-
-Desktop scripts already force the correct mode automatically:
-
-- `npm run desktop-dev` -> development
-- `npm run desktop-build` -> production
-
-## Running the Project
-
-### Web development mode
-
-Runs backend and frontend together:
+### 6. Run local web development
 
 ```powershell
 npm run dev
 ```
 
-Default URLs:
-
-- Frontend: [http://localhost:5173](http://localhost:5173)
-- Backend: [http://127.0.0.1:8000](http://127.0.0.1:8000)
-
-### Desktop development mode
-
-Runs Electron with development data:
+### 7. Run desktop development
 
 ```powershell
 npm run desktop-dev
 ```
 
-Desktop dev uses:
+---
 
-- frontend port `5174`
-- backend port `8001`
+## Environment Variables
 
-### Desktop production build
+| Variable | Purpose |
+| --- | --- |
+| `FINLEDGE_MODE` | Sets runtime mode such as `development` or `production` |
+| `FINLEDGE_BACKEND_HOST` | Backend host for local development and desktop shell wiring |
+| `FINLEDGE_BACKEND_PORT` | Default backend port for standard local development |
+| `FINLEDGE_BACKEND_LOG_LEVEL` | Uvicorn/FastAPI backend logging level |
+| `FINLEDGE_FRONTEND_HOST` | Vite frontend host |
+| `FINLEDGE_FRONTEND_PORT` | Vite frontend port |
+| `FINLEDGE_DESKTOP_DEV_BACKEND_PORT` | Desktop development backend port |
+| `FINLEDGE_DESKTOP_DEV_FRONTEND_PORT` | Desktop development frontend port |
+| `FINLEDGE_DESKTOP_PROD_BACKEND_PORT` | Backend port used during production packaging flow |
+| `VITE_API_BASE_URL` | Frontend API base URL for browser/Vite usage |
+| `FINLEDGE_GITHUB_OWNER` | GitHub owner used for release documentation/reference |
+| `FINLEDGE_GITHUB_REPO` | GitHub repository used for releases |
+| `GH_TOKEN` | GitHub token used when publishing builds from CI or local shell |
+| `FINLEDGE_PYTHON_PATH` | Optional override if the Python executable is not inside the default project `venv` |
 
-Builds the frontend and packages the Electron app:
+---
 
-```powershell
-npm run desktop-build
-```
+## Release Commands
 
-## Data Storage
+| Task | Command |
+| --- | --- |
+| Web dev | `npm run dev` |
+| Backend only | `npm run dev:backend` |
+| Backend with reload | `npm run dev:backend:reload` |
+| Frontend only | `npm run dev:frontend` |
+| Desktop dev | `npm run desktop-dev` |
+| Desktop production build | `npm run desktop-build` |
+| Desktop build + publish | `npm run desktop-build:publish` |
 
-### Development
+---
 
-Development data is stored inside the project:
+## Versioning
+
+Update these files when releasing a new version:
+
+| File | Field |
+| --- | --- |
+| `package.json` | `"version"` |
+| `desktop/package.json` | `"version"` |
+| `frontendwebapp/package.json` | `"version"` |
+
+Recommended GitHub release tag:
 
 ```text
-.finledge-dev-data/
+v1.0.0
 ```
 
-### Production
+---
 
-Production desktop data is stored in the user roaming folder:
+## Project Structure
 
 ```text
-C:\Users\<username>\AppData\Roaming\Finledge\
+tracker financial/
+├─ backend/
+├─ desktop/
+├─ frontendwebapp/
+├─ scripts/
+├─ .env.example
+├─ package.json
+├─ requirements.txt
+└─ README.md
 ```
 
-Example files:
+---
 
-- `bank_transactions.xlsx`
-- `share_transactions.xlsx`
-
-## Important Notes
-
-- Do not commit personal Excel data files to GitHub.
-- The `.env` file is local and is ignored by git.
-- Development and production data are intentionally separate.
-- If you are testing desktop dev, close any already-open installed production app first.
-
-## Versioning the Desktop App
-
-To change the packaged desktop app version, update:
-
-- [desktop/package.json](desktop/package.json)
-
-Example:
-
-```json
-"version": "1.0.1"
-```
-
-Then rebuild:
-
-```powershell
-npm run desktop-build
-```
-
-## Main Scripts
-
-From the root `package.json`:
-
-- `npm run dev` -> run backend + frontend
-- `npm run dev:backend` -> run FastAPI backend
-- `npm run dev:backend:reload` -> run backend with reload
-- `npm run dev:frontend` -> run Vite frontend
-- `npm run desktop-dev` -> run Electron in development mode
-- `npm run desktop-build` -> package Electron app for production
-
-## Tech Stack
-
-- React
-- Vite
-- FastAPI
-- OpenPyXL
-- Pandas
-- Matplotlib / Seaborn
-- Electron
 
 ![GitHub All Releases](https://img.shields.io/github/downloads/sachinadk2011/FinLedge-App/total)
+
+## Author
+
+**Sachin Adhikari**
+
+## License
+
+This project is released under the MIT License.
+
+See [LICENSE](LICENSE) for the full text.

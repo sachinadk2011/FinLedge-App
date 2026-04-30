@@ -3,7 +3,15 @@ const DESKTOP_API_BASE =
     ? window.financialTracker.getBackendBaseUrl()
     : "";
 
-const API_BASE = DESKTOP_API_BASE || import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000";
+const API_BASE = DESKTOP_API_BASE || import.meta.env.VITE_API_BASE_URL || "";
+
+function getApiBase() {
+  if (API_BASE) {
+    return API_BASE;
+  }
+
+  throw new Error("API base URL is not configured. Copy .env.example to .env and set VITE_API_BASE_URL.");
+}
 
 async function readJsonSafe(response) {
   const contentType = response.headers.get("content-type") || "";
@@ -49,7 +57,7 @@ async function handleResponse(response, meta) {
 }
 
 export async function postJson(path, payload) {
-  const url = `${API_BASE}${path}`;
+  const url = `${getApiBase()}${path}`;
   console.log("[api] POST", url, payload);
 
   const response = await fetch(url, {
@@ -62,7 +70,7 @@ export async function postJson(path, payload) {
 }
 
 export async function putJson(path, payload) {
-  const url = `${API_BASE}${path}`;
+  const url = `${getApiBase()}${path}`;
   console.log("[api] PUT", url, payload);
 
   const response = await fetch(url, {
@@ -75,7 +83,7 @@ export async function putJson(path, payload) {
 }
 
 export async function getJson(path) {
-  const url = `${API_BASE}${path}`;
+  const url = `${getApiBase()}${path}`;
   console.log("[api] GET", url);
 
   const response = await fetch(url);
@@ -83,7 +91,7 @@ export async function getJson(path) {
 }
 
 export async function deleteJson(path) {
-  const url = `${API_BASE}${path}`;
+  const url = `${getApiBase()}${path}`;
   console.log("[api] DELETE", url);
 
   const response = await fetch(url, { method: "DELETE" });

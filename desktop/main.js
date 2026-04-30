@@ -1,6 +1,7 @@
 "use strict";
 
-const { app, BrowserWindow, Menu, ipcMain } = require("electron");
+const { app, BrowserWindow, Menu, dialog, ipcMain } = require("electron");
+const { autoUpdater } = require("electron-updater");
 const path = require("path");
 const fs = require("fs");
 const os = require("os");
@@ -10,31 +11,30 @@ const { pathToFileURL } = require("url");
 const { spawn } = require("child_process");
 
 const LOG_FILE = path.join(os.tmpdir(), "finledge-electron.log");
+const WINDOW_TITLE = "Finledge – Financial Tracker";
+const IS_ELECTRON_DEV = String(process.env.ELECTRON_DEV || "") === "1";
+const PROJECT_ROOT = path.resolve(__dirname, "..");
+const ICON_PATH = path.join(__dirname, "finledge_icon.png");
+const BACKEND_READY_TIMEOUT_MS = 30_000;
+const POLL_INTERVAL_MS = 500;
 
 function logLine(...parts) {
-  const line = `[${new Date().toISOString()}] ${parts.map((p) => (typeof p === "string" ? p : JSON.stringify(p))).join(" ")}\n`;
+  const line = `[${new Date().toISOString()}] ${parts
+    .map((part) => (typeof part === "string" ? part : JSON.stringify(part)))
+    .join(" ")}\n`;
+
   try {
     fs.appendFileSync(LOG_FILE, line);
   } catch {
     // ignore
   }
-  // Also log to console if available.
+
   try {
     console.log(...parts);
   } catch {
     // ignore
   }
 }
-
-process.on("uncaughtException", (err) => {
-  logLine("[main] uncaughtException:", String(err && err.stack ? err.stack : err));
-});
-
-process.on("unhandledRejection", (reason) => {
-  logLine("[main] unhandledRejection:", String(reason && reason.stack ? reason.stack : reason));
-});
-
-logLine("[main] Finledge Electron starting...", { logFile: LOG_FILE });
 
 function getPortFromEnv(envVarName, defaultPort) {
   const rawValue = process.env[envVarName];
@@ -56,29 +56,25 @@ function getPortFromEnv(envVarName, defaultPort) {
 
 const BACKEND_PORT = getPortFromEnv("FINLEDGE_BACKEND_PORT", 8000);
 const FRONTEND_PORT = getPortFromEnv("FINLEDGE_FRONTEND_PORT", 5173);
-const BACKEND_READY_TIMEOUT_MS = 30_000;
-const POLL_INTERVAL_MS = 500;
-
-const PROJECT_ROOT = path.resolve(__dirname, "..");
-const PYTHON = path.join(PROJECT_ROOT, "venv", "Scripts", "python.exe");
-const ICON_PATH = path.join(__dirname, "finledge_icon.png");
-
-let backendProcess = null;
-let frontendProcess = null;
-let mainWindow = null;
-let devFrontendUrl = null;
-const IS_ELECTRON_DEV = String(process.env.ELECTRON_DEV || "") === "1";
+const BACKEND_HOST = String(process.env.FINLEDGE_BACKEND_HOST || "127.0.0.1").trim() || "127.0.0.1";
+const FRONTEND_HOST = String(process.env.FINLEDGE_FRONTEND_HOST || "127.0.0.1").trim() || "127.0.0.1";
 
 function loadDotEnv() {
   const envPath = path.join(PROJECT_ROOT, ".env");
-  if (!fs.existsSync(envPath)) return;
+  if (!fs.existsSync(envPath)) {
+    return;
+  }
 
   for (const rawLine of fs.readFileSync(envPath, "utf8").split(/\r?\n/)) {
     const line = rawLine.trim();
-    if (!line || line.startsWith("#")) continue;
+    if (!line || line.startsWith("#")) {
+      continue;
+    }
 
     const separator = line.indexOf("=");
-    if (separator <= 0) continue;
+    if (separator <= 0) {
+      continue;
+    }
 
     const key = line.slice(0, separator).trim();
     let value = line.slice(separator + 1).trim();
@@ -95,18 +91,78 @@ function loadDotEnv() {
   }
 }
 
+function getAppMode() {
+  return String(process.env.FINLEDGE_MODE || (IS_ELECTRON_DEV ? "development" : "production"))
+    .trim()
+    .toLowerCase();
+}
+
+function getRuntimeDataDir() {
+  return IS_ELECTRON_DEV
+    ? path.join(PROJECT_ROOT, ".finledge-dev-data")
+    : app.getPath("userData");
+}
+
+function getFrontendIndexPath() {
+  if (app.isPackaged) {
+    return path.join(process.resourcesPath, "frontendwebapp", "dist", "index.html");
+  }
+
+  return path.join(PROJECT_ROOT, "frontendwebapp", "dist", "index.html");
+}
+
+function getPackagedEnginePath() {
+  return path.join(process.resourcesPath, "engine", "finledge-engine.exe");
+}
+
+function getDevPythonPath() {
+  const explicit = String(process.env.FINLEDGE_PYTHON_PATH || "").trim();
+  if (explicit && fs.existsSync(explicit)) {
+    return explicit;
+  }
+
+  const candidates = [
+    path.join(PROJECT_ROOT, "venv", "Scripts", "python.exe"),
+    path.join(PROJECT_ROOT, "venv", "bin", "python"),
+  ];
+
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) {
+      return candidate;
+    }
+  }
+
+  return process.platform === "win32" ? "python" : "python3";
+}
+
+function getBackendEnv() {
+  return {
+    ...process.env,
+    FINLEDGE_MODE: getAppMode(),
+    FINLEDGE_PROJECT_ROOT: PROJECT_ROOT,
+    FINLEDGE_BACKEND_HOST: BACKEND_HOST,
+    FINLEDGE_BACKEND_PORT: String(BACKEND_PORT),
+    FINLEDGE_DATA_DIR: getRuntimeDataDir(),
+  };
+}
+
+let backendProcess = null;
+let frontendProcess = null;
+let mainWindow = null;
+let devFrontendUrl = null;
+
+process.on("uncaughtException", (err) => {
+  logLine("[main] uncaughtException:", String(err && err.stack ? err.stack : err));
+});
+
+process.on("unhandledRejection", (reason) => {
+  logLine("[main] unhandledRejection:", String(reason && reason.stack ? reason.stack : reason));
+});
+
+logLine("[main] Finledge Electron starting...", { logFile: LOG_FILE });
 loadDotEnv();
-process.env.FINLEDGE_MODE = String(process.env.FINLEDGE_MODE || (IS_ELECTRON_DEV ? "development" : "production"))
-  .trim()
-  .toLowerCase();
-logLine("[main] mode", process.env.FINLEDGE_MODE);
-logLine("[main] backendPort", BACKEND_PORT);
-logLine("[main] frontendPort", FRONTEND_PORT);
-
-// Ensure the userData folder is named "Finledge" even in dev.
+process.env.FINLEDGE_MODE = getAppMode();
 app.setName("Finledge");
-
-// Hide the default Electron menu (File/Edit/View/Help).
 Menu.setApplicationMenu(null);
 
 function crc32(buffer) {
@@ -131,20 +187,19 @@ function pngChunk(type, data) {
 }
 
 function createPlaceholderIconPng(filePath) {
-  // Copyright-safe placeholder icon generated locally: gradient + block "F".
   const width = 256;
   const height = 256;
   const rowSize = 1 + width * 4;
   const raw = Buffer.alloc(rowSize * height);
 
   for (let y = 0; y < height; y++) {
-    raw[y * rowSize] = 0; // filter byte
+    raw[y * rowSize] = 0;
     for (let x = 0; x < width; x++) {
       const i = y * rowSize + 1 + x * 4;
       const t = (x + y) / (width + height);
-      raw[i] = Math.round(10 + 20 * t); // R
-      raw[i + 1] = Math.round(90 + 90 * t); // G
-      raw[i + 2] = Math.round(95 + 70 * t); // B
+      raw[i] = Math.round(10 + 20 * t);
+      raw[i + 1] = Math.round(90 + 90 * t);
+      raw[i + 2] = Math.round(95 + 70 * t);
       raw[i + 3] = 255;
     }
   }
@@ -163,7 +218,6 @@ function createPlaceholderIconPng(filePath) {
     }
   }
 
-  // Blocky "F" center-left
   const fx = 76;
   const fy = 62;
   fillRect(fx, fy, 26, 130);
@@ -174,8 +228,8 @@ function createPlaceholderIconPng(filePath) {
   const ihdr = Buffer.alloc(13);
   ihdr.writeUInt32BE(width, 0);
   ihdr.writeUInt32BE(height, 4);
-  ihdr[8] = 8; // bit depth
-  ihdr[9] = 6; // RGBA
+  ihdr[8] = 8;
+  ihdr[9] = 6;
   ihdr[10] = 0;
   ihdr[11] = 0;
   ihdr[12] = 0;
@@ -192,85 +246,108 @@ function createPlaceholderIconPng(filePath) {
 }
 
 function ensureIconExists() {
-  if (fs.existsSync(ICON_PATH)) return;
+  if (fs.existsSync(ICON_PATH)) {
+    return;
+  }
+
   try {
     createPlaceholderIconPng(ICON_PATH);
   } catch (err) {
-    console.warn("[main] Could not create placeholder icon:", err);
+    logLine("[main] Could not create placeholder icon", String(err));
   }
 }
 
 function startBackend() {
-  const env = {
-    ...process.env,
-    FINLEDGE_MODE: String(process.env.FINLEDGE_MODE || "production").trim().toLowerCase(),
-  };
+  const env = getBackendEnv();
+  let command;
+  let args;
+  let cwd;
 
-  backendProcess = spawn(
-    PYTHON,
-    ["-m", "uvicorn", "backend.main:app", "--host", "127.0.0.1", "--port", String(BACKEND_PORT)],
-    { cwd: PROJECT_ROOT, env, stdio: ["ignore", "pipe", "pipe"] }
-  );
+  if (app.isPackaged && !IS_ELECTRON_DEV) {
+    command = getPackagedEnginePath();
+    args = [];
+    cwd = path.dirname(command);
 
-  backendProcess.stdout.on("data", (d) => process.stdout.write(`[backend] ${d}`));
-  backendProcess.stderr.on("data", (d) => process.stderr.write(`[backend] ${d}`));
+    if (!fs.existsSync(command)) {
+      throw new Error(`Packaged backend sidecar not found at ${command}`);
+    }
+  } else {
+    command = getDevPythonPath();
+    args = ["-m", "backend.engine_main"];
+    cwd = PROJECT_ROOT;
+  }
+
+  backendProcess = spawn(command, args, {
+    cwd,
+    env,
+    windowsHide: true,
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+
+  backendProcess.stdout.on("data", (data) => process.stdout.write(`[backend] ${data}`));
+  backendProcess.stderr.on("data", (data) => process.stderr.write(`[backend] ${data}`));
   backendProcess.on("exit", (code, signal) => {
-    console.log(`[main] Backend exited - code=${code} signal=${signal}`);
+    logLine("[main] Backend exited", { code, signal });
     backendProcess = null;
   });
 }
 
 function stopBackend() {
-  if (!backendProcess) return;
+  if (!backendProcess) {
+    return;
+  }
+
   backendProcess.kill();
   backendProcess = null;
 }
 
 function startFrontendDevServer() {
-  if (frontendProcess) return;
+  if (frontendProcess) {
+    return;
+  }
 
   const frontendDir = path.join(PROJECT_ROOT, "frontendwebapp");
-  const viteDevArgs = ["run", "dev", "--", "--host", "127.0.0.1", "--port", String(FRONTEND_PORT)];
+  const viteDevArgs = ["run", "dev", "--", "--host", FRONTEND_HOST, "--port", String(FRONTEND_PORT)];
+  const env = {
+    ...process.env,
+    VITE_API_BASE_URL: `http://${BACKEND_HOST}:${BACKEND_PORT}`,
+  };
 
   try {
     if (process.platform === "win32") {
-      // Run npm from the frontend directory. This avoids --prefix quoting issues on Windows paths with spaces.
       const comspec = process.env.ComSpec || "cmd.exe";
       frontendProcess = spawn(comspec, ["/d", "/c", "npm.cmd", ...viteDevArgs], {
         cwd: frontendDir,
-        env: process.env,
+        env,
         windowsHide: true,
         stdio: ["ignore", "pipe", "pipe"],
       });
     } else {
       frontendProcess = spawn("npm", viteDevArgs, {
         cwd: frontendDir,
-        env: process.env,
+        env,
         stdio: ["ignore", "pipe", "pipe"],
       });
     }
   } catch (err) {
-    logLine("[main] Failed to spawn frontend dev server:", String(err && err.stack ? err.stack : err));
+    logLine("[main] Failed to spawn frontend dev server", String(err && err.stack ? err.stack : err));
     frontendProcess = null;
     return;
   }
 
-  frontendProcess.on("error", (err) => {
-    logLine("[main] Frontend dev server process error:", String(err && err.stack ? err.stack : err));
-  });
-
-  logLine("[main] Frontend dev server spawned", { pid: frontendProcess.pid, dir: frontendDir });
-
-  frontendProcess.stdout.on("data", (d) => process.stdout.write(`[vite] ${d}`));
-  frontendProcess.stderr.on("data", (d) => process.stderr.write(`[vite] ${d}`));
+  frontendProcess.stdout.on("data", (data) => process.stdout.write(`[vite] ${data}`));
+  frontendProcess.stderr.on("data", (data) => process.stderr.write(`[vite] ${data}`));
   frontendProcess.on("exit", (code, signal) => {
-    logLine(`[main] Frontend dev server exited - code=${code} signal=${signal}`);
+    logLine("[main] Frontend dev server exited", { code, signal });
     frontendProcess = null;
   });
 }
 
 function stopFrontendDevServer() {
-  if (!frontendProcess) return;
+  if (!frontendProcess) {
+    return;
+  }
+
   frontendProcess.kill();
   frontendProcess = null;
 }
@@ -278,17 +355,33 @@ function stopFrontendDevServer() {
 function waitForHttpOk(url, timeoutMs) {
   return new Promise((resolve, reject) => {
     const deadline = Date.now() + timeoutMs;
+
     const tick = () => {
       const req = http.get(url, (res) => {
         res.resume();
-        resolve();
+        if (res.statusCode && res.statusCode >= 200 && res.statusCode < 500) {
+          resolve();
+          return;
+        }
+
+        if (Date.now() >= deadline) {
+          reject(new Error(`Timeout waiting for ${url}`));
+        } else {
+          setTimeout(tick, POLL_INTERVAL_MS);
+        }
       });
+
       req.on("error", () => {
-        if (Date.now() >= deadline) reject(new Error(`Timeout waiting for ${url}`));
-        else setTimeout(tick, POLL_INTERVAL_MS);
+        if (Date.now() >= deadline) {
+          reject(new Error(`Timeout waiting for ${url}`));
+        } else {
+          setTimeout(tick, POLL_INTERVAL_MS);
+        }
       });
+
       req.setTimeout(400, () => req.destroy());
     };
+
     tick();
   });
 }
@@ -298,10 +391,10 @@ function waitForAnyLocalPortOk(ports, timeoutMs) {
 
   return new Promise((resolve, reject) => {
     const tick = () => {
-      let idx = 0;
+      let portIndex = 0;
 
-      const tryNext = () => {
-        if (idx >= ports.length) {
+      const tryNextPort = () => {
+        if (portIndex >= ports.length) {
           if (Date.now() >= deadline) {
             reject(new Error("Timeout waiting for frontend dev server"));
           } else {
@@ -310,13 +403,13 @@ function waitForAnyLocalPortOk(ports, timeoutMs) {
           return;
         }
 
-        const port = ports[idx++];
-        const urls = [`http://127.0.0.1:${port}`, `http://localhost:${port}`];
+        const port = ports[portIndex++];
+        const urls = [`http://${FRONTEND_HOST}:${port}`, `http://localhost:${port}`];
         let urlIndex = 0;
 
-        const tryUrl = () => {
+        const tryNextUrl = () => {
           if (urlIndex >= urls.length) {
-            tryNext();
+            tryNextPort();
             return;
           }
 
@@ -325,14 +418,15 @@ function waitForAnyLocalPortOk(ports, timeoutMs) {
             res.resume();
             resolve(url);
           });
-          req.on("error", () => tryUrl());
+
+          req.on("error", () => tryNextUrl());
           req.setTimeout(400, () => req.destroy());
         };
 
-        tryUrl();
+        tryNextUrl();
       };
 
-      tryNext();
+      tryNextPort();
     };
 
     tick();
@@ -341,12 +435,16 @@ function waitForAnyLocalPortOk(ports, timeoutMs) {
 
 function getFrontendUrl() {
   const explicit = String(process.env.ELECTRON_START_URL || "").trim();
-  if (explicit) return explicit;
+  if (explicit) {
+    return explicit;
+  }
 
-  const builtIndex = path.join(PROJECT_ROOT, "frontendwebapp", "dist", "index.html");
-  if (fs.existsSync(builtIndex)) return pathToFileURL(builtIndex).toString();
+  const builtIndex = getFrontendIndexPath();
+  if (fs.existsSync(builtIndex)) {
+    return pathToFileURL(builtIndex).toString();
+  }
 
-  return devFrontendUrl || `http://127.0.0.1:${FRONTEND_PORT}`;
+  return devFrontendUrl || `http://${FRONTEND_HOST}:${FRONTEND_PORT}`;
 }
 
 function getLoadingUrl() {
@@ -378,7 +476,7 @@ function getLoadingUrl() {
         <div class="sub">Starting Financial Tracker...</div>
       </div>
     </div>
-    <div class="sub">Launching backend and loading the UI. This can take a few seconds on the first run.</div>
+    <div class="sub">Launching the backend engine and loading the UI. This can take a few seconds on the first run.</div>
     <div class="bar"><div class="fill"></div></div>
   </div>
 </body>
@@ -391,7 +489,7 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 800,
-    title: "Finledge \u2013 Financial Tracker",
+    title: WINDOW_TITLE,
     icon: ICON_PATH,
     show: false,
     backgroundColor: "#f8fafc",
@@ -415,7 +513,6 @@ function createWindow() {
     logLine("[main] did-fail-load", { errorCode, errorDescription, validatedURL });
   });
 
-  // Show an instant loading page, then we'll swap to the real UI URL when ready.
   const url = getLoadingUrl();
   logLine("[main] Loading splash", url.slice(0, 60) + "...");
   mainWindow.loadURL(url);
@@ -426,14 +523,82 @@ function createWindow() {
 }
 
 function navigateToFrontend(url) {
-  if (!mainWindow) return;
-  if (!url) return;
-  logLine("[main] Navigating to frontend:", url);
-  try {
-    mainWindow.loadURL(url);
-  } catch (err) {
-    logLine("[main] navigateToFrontend error", String(err && err.stack ? err.stack : err));
+  if (!mainWindow || !url) {
+    return;
   }
+
+  logLine("[main] Navigating to frontend", url);
+  mainWindow.loadURL(url).catch((err) => {
+    logLine("[main] navigateToFrontend error", String(err && err.stack ? err.stack : err));
+  });
+}
+
+function configureAutoUpdater() {
+  if (IS_ELECTRON_DEV || !app.isPackaged) {
+    logLine("[updater] Skipping auto-updater outside packaged production mode");
+    return;
+  }
+
+  autoUpdater.autoDownload = false;
+  autoUpdater.autoInstallOnAppQuit = true;
+
+  autoUpdater.on("checking-for-update", () => {
+    logLine("[updater] Checking for updates");
+  });
+
+  autoUpdater.on("update-available", async (info) => {
+    logLine("[updater] Update available", info);
+
+    const result = await dialog.showMessageBox(mainWindow ?? undefined, {
+      type: "info",
+      buttons: ["Download update", "Later"],
+      defaultId: 0,
+      cancelId: 1,
+      title: "Update available",
+      message: `Finledge ${info.version} is available.`,
+      detail: "Download the update now and install it after restart.",
+    });
+
+    if (result.response === 0) {
+      autoUpdater.downloadUpdate().catch((err) => {
+        logLine("[updater] downloadUpdate failed", String(err && err.stack ? err.stack : err));
+      });
+    }
+  });
+
+  autoUpdater.on("update-not-available", (info) => {
+    logLine("[updater] No update available", info);
+  });
+
+  autoUpdater.on("download-progress", (progress) => {
+    logLine("[updater] Download progress", {
+      percent: progress.percent,
+      transferred: progress.transferred,
+      total: progress.total,
+    });
+  });
+
+  autoUpdater.on("update-downloaded", async (info) => {
+    logLine("[updater] Update downloaded", info);
+
+    const result = await dialog.showMessageBox(mainWindow ?? undefined, {
+      type: "info",
+      buttons: ["Restart and Update", "Later"],
+      defaultId: 0,
+      cancelId: 1,
+      title: "Update ready",
+      message: `Finledge ${info.version} is ready to install.`,
+      detail: "Restart the app now to finish updating.",
+    });
+
+    if (result.response === 0) {
+      autoUpdater.quitAndInstall(false, true);
+    }
+  });
+
+  autoUpdater.on("error", (err) => {
+    logLine("[updater] Error", String(err && err.stack ? err.stack : err));
+  });
 }
 
 ipcMain.handle("app:refresh", async () => {
@@ -450,32 +615,45 @@ ipcMain.handle("app:refresh", async () => {
   }
 });
 
+ipcMain.handle("app:check-for-updates", async () => {
+  if (IS_ELECTRON_DEV || !app.isPackaged) {
+    return { ok: false, reason: "updates-disabled-in-dev" };
+  }
+
+  try {
+    await autoUpdater.checkForUpdates();
+    return { ok: true };
+  } catch (err) {
+    logLine("[updater] Manual check failed", String(err && err.stack ? err.stack : err));
+    return { ok: false, reason: "update-check-failed" };
+  }
+});
+
 app.whenReady().then(async () => {
   try {
-    logLine("[main] whenReady()");
     ensureIconExists();
+    logLine("[main] whenReady()");
+    logLine("[main] mode", process.env.FINLEDGE_MODE);
+    logLine("[main] backendPort", BACKEND_PORT);
+    logLine("[main] frontendPort", FRONTEND_PORT);
     logLine("[main] icon", { iconPath: ICON_PATH, iconExists: fs.existsSync(ICON_PATH) });
     logLine("[main] userData", app.getPath("userData"));
+    logLine("[main] dataDir", getRuntimeDataDir());
 
-    // Create window immediately so the app feels instant.
-    logLine("[main] creating window...");
     createWindow();
-    logLine("[main] window created");
-
-    // Start backend from Electron main process.
     startBackend();
-    waitForHttpOk(`http://127.0.0.1:${BACKEND_PORT}`, BACKEND_READY_TIMEOUT_MS)
+
+    waitForHttpOk(`http://${BACKEND_HOST}:${BACKEND_PORT}/health`, BACKEND_READY_TIMEOUT_MS)
       .then(() => logLine("[main] backend ready"))
       .catch((err) => logLine("[main] backend not ready", String(err && err.message ? err.message : err)));
 
-    const hasBuiltFrontend = fs.existsSync(path.join(PROJECT_ROOT, "frontendwebapp", "dist", "index.html"));
+    const hasBuiltFrontend = fs.existsSync(getFrontendIndexPath());
     logLine("[main] frontend built?", hasBuiltFrontend);
 
     if (IS_ELECTRON_DEV) {
-      logLine("[main] starting Vite dev server...");
-      const preferredDevUrl = `http://127.0.0.1:${FRONTEND_PORT}`;
+      const preferredDevUrl = `http://${FRONTEND_HOST}:${FRONTEND_PORT}`;
       const preferredLocalhostDevUrl = `http://localhost:${FRONTEND_PORT}`;
-      // If the exact dev server port is already running, use it quickly; otherwise start one and wait in the background.
+
       waitForHttpOk(preferredLocalhostDevUrl, 1200)
         .then(() => {
           devFrontendUrl = preferredLocalhostDevUrl;
@@ -484,7 +662,9 @@ app.whenReady().then(async () => {
         })
         .catch(() => waitForHttpOk(preferredDevUrl, 1200))
         .then(() => {
-          if (devFrontendUrl) return;
+          if (devFrontendUrl) {
+            return;
+          }
           devFrontendUrl = preferredDevUrl;
           logLine("[main] Vite already running", devFrontendUrl);
           navigateToFrontend(devFrontendUrl);
@@ -497,8 +677,8 @@ app.whenReady().then(async () => {
               logLine("[main] Vite ready", devFrontendUrl);
               navigateToFrontend(devFrontendUrl);
             })
-            .catch((err2) => {
-              logLine("[main] Vite not ready", String(err2 && err2.message ? err2.message : err2));
+            .catch((err) => {
+              logLine("[main] Vite not ready", String(err && err.message ? err.message : err));
               if (hasBuiltFrontend) {
                 logLine("[main] Falling back to built frontend");
                 navigateToFrontend(getFrontendUrl());
@@ -506,12 +686,19 @@ app.whenReady().then(async () => {
             });
         });
     } else {
-      // Built frontend: load it immediately (no need to wait on Vite).
       navigateToFrontend(getFrontendUrl());
+      configureAutoUpdater();
+      setTimeout(() => {
+        autoUpdater.checkForUpdates().catch((err) => {
+          logLine("[updater] Initial update check failed", String(err && err.stack ? err.stack : err));
+        });
+      }, 5000);
     }
 
     app.on("activate", () => {
-      if (BrowserWindow.getAllWindows().length === 0) createWindow();
+      if (BrowserWindow.getAllWindows().length === 0) {
+        createWindow();
+      }
     });
   } catch (err) {
     logLine("[main] fatal during startup", String(err && err.stack ? err.stack : err));
@@ -520,7 +707,9 @@ app.whenReady().then(async () => {
 });
 
 app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") app.quit();
+  if (process.platform !== "darwin") {
+    app.quit();
+  }
 });
 
 app.on("will-quit", () => {

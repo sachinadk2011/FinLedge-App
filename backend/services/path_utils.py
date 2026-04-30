@@ -1,7 +1,19 @@
 import os
 import shutil
+import sys
 from functools import lru_cache
 from pathlib import Path
+
+
+def _get_project_root() -> Path:
+    explicit_root = os.getenv("FINLEDGE_PROJECT_ROOT")
+    if explicit_root:
+        return Path(explicit_root).expanduser().resolve()
+
+    if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+        return Path.cwd()
+
+    return Path(__file__).resolve().parents[2]
 
 
 def _read_env_file(project_root: Path) -> None:
@@ -23,18 +35,21 @@ def _read_env_file(project_root: Path) -> None:
 
 @lru_cache(maxsize=1)
 def _resolve_mode() -> str:
-    project_root = Path(__file__).resolve().parents[2]
+    project_root = _get_project_root()
     _read_env_file(project_root)
-    return str(os.environ.get("FINLEDGE_MODE") or "development").strip().lower() or "development"
+    return str(os.getenv("FINLEDGE_MODE") or "development").strip().lower() or "development"
 
 
 def get_data_dir() -> Path:
-    project_root = Path(__file__).resolve().parents[2]
+    project_root = _get_project_root()
     mode = _resolve_mode()
+    explicit_data_dir = os.getenv("FINLEDGE_DATA_DIR")
 
-    if mode == "production":
+    if explicit_data_dir:
+        data_dir = Path(explicit_data_dir).expanduser().resolve()
+    elif mode == "production":
         if os.name == "nt":
-            roaming = Path(os.environ.get("APPDATA") or (Path.home() / "AppData" / "Roaming"))
+            roaming = Path(os.getenv("APPDATA") or (Path.home() / "AppData" / "Roaming"))
             data_dir = roaming / "Finledge"
         else:
             data_dir = Path.home() / ".finledge"
@@ -49,7 +64,7 @@ def get_data_dir() -> Path:
         # user's older desktop data folder, not from backend/data test files.
         legacy_dirs.append(project_root.parent / "FinancialTrackerData")
         if os.name == "nt":
-            legacy_dirs.append(Path(os.environ.get("APPDATA") or (Path.home() / "AppData" / "Roaming")) / "FinancialTracker")
+            legacy_dirs.append(Path(os.getenv("APPDATA") or (Path.home() / "AppData" / "Roaming")) / "FinancialTracker")
         else:
             legacy_dirs.append(Path.home() / ".financial_tracker")
     else:

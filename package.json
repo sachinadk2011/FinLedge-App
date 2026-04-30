@@ -2,17 +2,21 @@
   "name": "financial-tracker-root",
   "private": true,
   "version": "1.0.0",
+  "author": "Sachin Adhikari",
   "type": "module",
   "scripts": {
     "dev": "concurrently -k -n backend,frontend -c green,cyan \"npm run dev:backend\" \"npm run dev:frontend\"",
-    "dev:backend": "cross-env FINLEDGE_MODE=development powershell -NoProfile -ExecutionPolicy Bypass -Command \"& { . .\\\\venv\\\\Scripts\\\\Activate.ps1; uvicorn backend.main:app --host 127.0.0.1 --port 8000 }\"",
-    "dev:backend:reload": "cross-env FINLEDGE_MODE=development powershell -NoProfile -ExecutionPolicy Bypass -Command \"& { . .\\\\venv\\\\Scripts\\\\Activate.ps1; uvicorn backend.main:app --reload --host 127.0.0.1 --port 8000 }\"",
+    "dev:backend": "node ./scripts/finledge.mjs backend-dev",
+    "dev:backend:reload": "node ./scripts/finledge.mjs backend-reload",
     "dev:frontend": "npm run dev --prefix frontendwebapp",
-    "desktop-dev": "cross-env ELECTRON_DEV=1 FINLEDGE_MODE=development FINLEDGE_BACKEND_PORT=8001 FINLEDGE_FRONTEND_PORT=5174 VITE_API_BASE_URL=http://127.0.0.1:8001 npm start --prefix desktop",
-    "desktop-build": "cross-env FINLEDGE_MODE=production FINLEDGE_BACKEND_PORT=8000 VITE_API_BASE_URL=http://127.0.0.1:8000 npm run build --prefix frontendwebapp && npm run build --prefix desktop"
+    "build:frontend": "npm run build --prefix frontendwebapp",
+    "build:sidecar": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\desktop\\scripts\\build-sidecar.ps1",
+    "build:desktop": "npm run build --prefix desktop",
+    "desktop-dev": "node ./scripts/finledge.mjs desktop-dev",
+    "desktop-build": "node ./scripts/finledge.mjs desktop-build",
+    "desktop-build:publish": "node ./scripts/finledge.mjs desktop-build-publish"
   },
   "devDependencies": {
-    "concurrently": "^9.0.0",
-    "cross-env": "^7.0.3"
+    "concurrently": "^9.0.0"
   }
 }
