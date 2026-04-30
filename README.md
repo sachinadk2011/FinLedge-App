@@ -213,6 +213,4 @@ From the root `package.json`:
 - Matplotlib / Seaborn
 - Electron
 
-## License
-
-Add your preferred license here before making the repository public.
+![GitHub All Releases](https://img.shields.io/github/downloads/sachinadk2011/FinLedge-App/total)
