@@ -266,4 +266,4 @@ tracker financial/
 
 This project is released under the MIT License.
 
-See [LICENSE](C:\Users\HP\Desktop\tracker financial\LICENSE) for the full text.
+See [LICENSE](LICENSE) for the full text.
