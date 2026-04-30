@@ -5,7 +5,7 @@ The React + Vite frontend reads its API configuration from the root `.env` file.
 ## Local run
 
 ```powershell
-npm install
+npm install --prefix frontendwebapp
 npm run dev --prefix frontendwebapp
 ```
 
