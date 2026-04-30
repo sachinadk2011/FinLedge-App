@@ -14,9 +14,7 @@ const LOG_FILE = path.join(os.tmpdir(), "finledge-electron.log");
 const WINDOW_TITLE = "Finledge – Financial Tracker";
 const IS_ELECTRON_DEV = String(process.env.ELECTRON_DEV || "") === "1";
 const PROJECT_ROOT = path.resolve(__dirname, "..");
-const ICON_PATH = process.platform === "win32"
-  ? path.join(__dirname, "finledge_icon.ico")
-  : path.join(__dirname, "finledge_icon.png");
+const ICON_PATH = path.join(__dirname, "finledge_icon.png");
 const BACKEND_READY_TIMEOUT_MS = 30_000;
 const POLL_INTERVAL_MS = 500;
 
