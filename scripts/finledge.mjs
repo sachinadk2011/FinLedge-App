@@ -49,8 +49,8 @@ function runProcess(commandName, args, extraEnv = {}, cwd = projectRoot) {
       stdio: "inherit",
       shell: false,
       env: {
-        ...process.env,
         ...loadEnvFile(),
+        ...process.env,
         ...extraEnv,
       },
     });
