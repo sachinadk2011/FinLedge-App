@@ -61,7 +61,7 @@
           ]
         }
       ],
-      "icon": "finledge_icon.png",
+      "icon": "finledge_icon.ico",
       "publisherName": "Sachin Adhikari",
       "artifactName": "Finledge-Setup-${version}.${ext}"
     },
