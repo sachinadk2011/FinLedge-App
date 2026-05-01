@@ -104,6 +104,19 @@ FinLedge is prepared for a safer public release:
 3. Launch **FinLedge** from the Start Menu or Desktop shortcut.
 4. Your data will be stored automatically in your user data folder.
 
+
+### If Windows shows a blue warning screen
+
+Because FinLedge is distributed without commercial code signing during releases, Windows SmartScreen can sometimes show a blue protection screen such as **"Windows protected your PC"**.
+
+If that happens:
+
+1. Confirm the installer came from the official GitHub Releases page.
+2. Click **More info**.
+3. Click **Run anyway** only if the release source and checksum match.
+
+This warning is related to Windows reputation/signing, not necessarily a problem with the installer itself.
+
 ### User Data Location
 
 On Windows, FinLedge stores user-specific files in:
