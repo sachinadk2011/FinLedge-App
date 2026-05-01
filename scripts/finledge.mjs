@@ -211,7 +211,7 @@ async function main() {
   }
 }
 
-main().catch((error) => {
-  console.error(error instanceof Error ? error.message : error);
+main().catch(() => {
+  console.error("FinLedge command failed.");
   process.exit(1);
 });
