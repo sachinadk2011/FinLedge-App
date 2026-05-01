@@ -540,7 +540,7 @@ function configureAutoUpdater() {
   }
 
   autoUpdater.autoDownload = false;
-  autoUpdater.autoInstallOnAppQuit = true;
+  autoUpdater.autoInstallOnAppQuit = false;
 
   autoUpdater.on("checking-for-update", () => {
     logLine("[updater] Checking for updates");
@@ -583,16 +583,16 @@ function configureAutoUpdater() {
 
     const result = await dialog.showMessageBox(mainWindow ?? undefined, {
       type: "info",
-      buttons: ["Restart and Update", "Later"],
+      buttons: ["Update Now", "Later"],
       defaultId: 0,
       cancelId: 1,
       title: "Update ready",
       message: `Finledge ${info.version} is ready to install.`,
-      detail: "Restart the app now to finish updating.",
+      detail: "The app will restart to apply the update.",
     });
 
     if (result.response === 0) {
-      autoUpdater.quitAndInstall(false, true);
+      setImmediate(() => autoUpdater.quitAndInstall());
     }
   });
 
