@@ -2,6 +2,10 @@
 
 > Personal finance clarity in a desktop app you can actually own.
 
+![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
+![GitHub All Releases](https://img.shields.io/github/downloads/sachinadk2011/FinLedge-App/total)
+![GitHub release (latest by date)](https://img.shields.io/github/v/release/sachinadk2011/FinLedge-App)
+
 FinLedge is a polished desktop financial tracker that combines a React-based UI, an Electron shell, and a Python FastAPI engine to help you manage bank activity, share transactions, and overall financial position from one place.
 
 FinLedge began as an original personal product idea focused on solving a real day-to-day problem: keeping banking activity, income, expenses, market investments, and financial summaries together in one practical desktop workflow. It has since been expanded into a more general-purpose desktop finance platform for broader public use.
@@ -32,14 +36,11 @@ FinLedge is built for people who want:
 
 ---
 
-## Screenshots
+### 📸 App Screenshots
 
-Add release screenshots here before publishing:
-
-| Home | Bank Dashboard | Share Dashboard | Summary |
-| --- | --- | --- | --- |
-| `![Home Screenshot](docs/screenshots/home.png)` | `![Bank Screenshot](docs/screenshots/bank.png)` | `![Share Screenshot](docs/screenshots/share.png)` | `![Summary Screenshot](docs/screenshots/summary.png)` |
-
+| Home Page | Bank Dashboard | Share Dashboard | Summary |
+| :---: | :---: | :---: | :---: |
+| <img src="https://github.com/user-attachments/assets/47863854-9e77-4381-a112-b50dc6471800" width="250" /> | <img src="https://github.com/user-attachments/assets/b8e8895d-7831-4d08-bdef-ac95e10a39d5" width="250" /><br><br><img src="https://github.com/user-attachments/assets/f1c6b807-a6d5-427b-9372-cdec9d8ebbc9" width="250" /> | <img src="https://github.com/user-attachments/assets/f8b9822e-25c4-48cf-bdf1-876401d85d32" width="250" /><br><br><img src="https://github.com/user-attachments/assets/7fc4a4f3-f3b2-4b00-ac25-f0f5974bd9c5" width="250" /> | <img src="https://github.com/user-attachments/assets/ab81eff6-424a-4f34-aec1-ccef3e18d5ba" width="250" /> |
 ---
 
 ## Tech Stack
@@ -56,7 +57,7 @@ FinLedge uses a modern multi-runtime stack:
 | Packaging | Electron Builder + PyInstaller |
 
 Note:
-This project is not a classic MongoDB/Express MERN backend. It uses the React ecosystem on the frontend and a Python engine on the backend for a desktop-first architecture.
+FinLedge follows a desktop-first architecture using React for UI and Python FastAPI for backend services, optimized for local desktop workflows rather than a traditional browser-first MERN stack.
 
 ---
 
@@ -93,29 +94,15 @@ FinLedge is prepared for a safer public release:
 - User files are stored in system-managed dynamic paths
 - No fixed laptop-specific storage paths are required
 
-### SHA-256 Checksum Verification
-
-For public releases, publish a SHA-256 checksum alongside the installer so users can verify download integrity.
-
-Example PowerShell command:
-
-```powershell
-Get-FileHash .\Finledge-Setup-1.0.0.exe -Algorithm SHA256
-```
-
-Include that checksum in your GitHub Release notes.
-
----
 
 ## End-User Installation Guide
 
 ### Windows Setup
 
 1. Download the latest `Finledge-Setup-<version>.exe` from the GitHub Releases page.
-2. Optionally verify the SHA-256 checksum.
-3. Run the installer.
-4. Launch **FinLedge** from the Start Menu or Desktop shortcut.
-5. Your data will be stored automatically in your user data folder.
+2. Run the installer.
+3. Launch **FinLedge** from the Start Menu or Desktop shortcut.
+4. Your data will be stored automatically in your user data folder.
 
 ### User Data Location
 
@@ -234,7 +221,7 @@ Update these files when releasing a new version:
 Recommended GitHub release tag:
 
 ```text
-v1.0.0
+vx.y.z
 ```
 
 ---
@@ -256,7 +243,7 @@ tracker financial/
 ---
 
 
-![GitHub All Releases](https://img.shields.io/github/downloads/sachinadk2011/FinLedge-App/total)
+
 
 ## Author
 
