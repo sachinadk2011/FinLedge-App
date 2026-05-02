@@ -97,13 +97,37 @@ export default function UpdateNotice() {
   }
 
   const download = async () => {
+    if (!updater?.downloadUpdate) {
+      return;
+    }
+
     setIsBusy(true);
-    await updater.downloadUpdate?.();
+
+    try {
+      const result = await updater.downloadUpdate();
+      if (result?.ok === false) {
+        setIsBusy(false);
+      }
+    } catch {
+      setIsBusy(false);
+    }
   };
 
   const install = async () => {
+    if (!updater?.installUpdate) {
+      return;
+    }
+
     setIsBusy(true);
-    await updater.installUpdate?.();
+
+    try {
+      const result = await updater.installUpdate();
+      if (result?.ok === false) {
+        setIsBusy(false);
+      }
+    } catch {
+      setIsBusy(false);
+    }
   };
 
   return (
