@@ -184,6 +184,8 @@ npm run dev
 npm run desktop-dev
 ```
 
+To preview the in-app update notification during desktop development, set `FINLEDGE_SIMULATE_UPDATE=1` in `.env` and run `npm run desktop-dev`. This simulated updater is dev-only; production builds only show update notifications when a real GitHub release update is available.
+
 ---
 
 ## Environment Variables
@@ -199,6 +201,7 @@ npm run desktop-dev
 | `FINLEDGE_DESKTOP_DEV_BACKEND_PORT` | Desktop development backend port |
 | `FINLEDGE_DESKTOP_DEV_FRONTEND_PORT` | Desktop development frontend port |
 | `FINLEDGE_DESKTOP_PROD_BACKEND_PORT` | Backend port used during production packaging flow |
+| `FINLEDGE_SIMULATE_UPDATE` | Set to `1` only in Electron dev mode to preview the update notification UI |
 | `VITE_API_BASE_URL` | Frontend API base URL for browser/Vite usage |
 | `FINLEDGE_GITHUB_OWNER` | GitHub owner used for release documentation/reference |
 | `FINLEDGE_GITHUB_REPO` | GitHub repository used for releases |

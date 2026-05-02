@@ -1,7 +1,7 @@
 {
   "name": "finledge-desktop",
   "private": true,
-  "version": "1.0.2",
+  "version": "1.0.3",
   "author": "Sachin Adhikari",
   "description": "Finledge - Financial Tracker desktop application",
   "main": "main.js",
@@ -39,7 +39,7 @@
     "files": [
       "main.js",
       "preload.js",
-      "finledge_icon.png",
+      "assets/**",
       "package.json"
     ],
     "extraResources": [
@@ -61,7 +61,7 @@
           ]
         }
       ],
-      "icon": "finledge_icon.ico",
+      "icon": "assets/finledge_icon.ico",
       "publisherName": "Sachin Adhikari",
       "artifactName": "Finledge-Setup-${version}.${ext}"
     },

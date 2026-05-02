@@ -2,6 +2,7 @@ import { Link, Navigate, Outlet, Route, Routes, useLocation } from "react-router
 
 import BankDashboard from "./pages/BankDashboard";
 import BankPage from "./pages/BankPage";
+import UpdateNotice from "./components/UpdateNotice";
 import Home from "./pages/Home";
 import ShareDashboard from "./pages/ShareDashboard";
 import SharePage from "./pages/SharePage";
@@ -22,6 +23,7 @@ function Layout() {
 
   return (
     <div className="app-shell">
+      <UpdateNotice />
       <header className="sticky top-0 z-20 bg-white/70 supports-[backdrop-filter]:bg-white/40 supports-[backdrop-filter]:backdrop-blur-xl">
         <div className="mx-auto flex max-w-6xl flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:gap-6 sm:px-6">
           <div className="brand-cluster">
