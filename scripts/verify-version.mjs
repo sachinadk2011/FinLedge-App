@@ -8,8 +8,11 @@ const projectRoot = path.resolve(__dirname, "..");
 const expectedVersion = process.argv[2];
 const files = [
   "package.json",
+  "package-lock.json",
   "frontendwebapp/package.json",
+  "frontendwebapp/package-lock.json",
   "desktop/package.json",
+  "desktop/package-lock.json",
 ];
 
 if (!expectedVersion) {
