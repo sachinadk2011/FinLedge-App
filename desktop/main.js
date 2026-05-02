@@ -1,6 +1,6 @@
 "use strict";
 
-const { app, BrowserWindow, Menu, dialog, ipcMain } = require("electron");
+const { app, BrowserWindow, Menu, ipcMain, screen } = require("electron");
 const { autoUpdater } = require("electron-updater");
 const path = require("path");
 const fs = require("fs");
@@ -14,7 +14,7 @@ const LOG_FILE = path.join(os.tmpdir(), "finledge-electron.log");
 const WINDOW_TITLE = "Finledge – Financial Tracker";
 const IS_ELECTRON_DEV = String(process.env.ELECTRON_DEV || "") === "1";
 const PROJECT_ROOT = path.resolve(__dirname, "..");
-const ICON_PATH = path.join(__dirname, "finledge_icon.png");
+const ICON_PATH = path.join(__dirname, "assets", "finledge_icon.png");
 const BACKEND_READY_TIMEOUT_MS = 30_000;
 const POLL_INTERVAL_MS = 500;
 
@@ -150,6 +150,13 @@ let backendProcess = null;
 let frontendProcess = null;
 let mainWindow = null;
 let devFrontendUrl = null;
+let latestUpdateStatus = {
+  state: "idle",
+  title: "Updates",
+  detail: "",
+};
+let mockUpdateTimer = null;
+let showUpdateCheckStatus = false;
 
 process.on("uncaughtException", (err) => {
   logLine("[main] uncaughtException:", String(err && err.stack ? err.stack : err));
@@ -162,6 +169,7 @@ process.on("unhandledRejection", (reason) => {
 logLine("[main] Finledge Electron starting...", { logFile: LOG_FILE });
 loadDotEnv();
 process.env.FINLEDGE_MODE = getAppMode();
+const SHOULD_SIMULATE_UPDATES = IS_ELECTRON_DEV && String(process.env.FINLEDGE_SIMULATE_UPDATE || "") === "1";
 app.setName("Finledge");
 Menu.setApplicationMenu(null);
 
@@ -251,6 +259,7 @@ function ensureIconExists() {
   }
 
   try {
+    fs.mkdirSync(path.dirname(ICON_PATH), { recursive: true });
     createPlaceholderIconPng(ICON_PATH);
   } catch (err) {
     logLine("[main] Could not create placeholder icon", String(err));
@@ -447,6 +456,33 @@ function getFrontendUrl() {
   return devFrontendUrl || `http://${FRONTEND_HOST}:${FRONTEND_PORT}`;
 }
 
+function clampNumber(value, min, max) {
+  if (max < min) {
+    return Math.max(1, max);
+  }
+
+  return Math.min(Math.max(value, min), max);
+}
+
+function getInitialWindowBounds() {
+  const display = screen.getPrimaryDisplay();
+  const workArea = display?.workAreaSize || { width: 1280, height: 800 };
+  const usableWidth = Math.max(640, Number(workArea.width) || 1280);
+  const usableHeight = Math.max(480, Number(workArea.height) || 800);
+  const width = clampNumber(
+    Math.round(usableWidth * 0.8),
+    Math.min(960, usableWidth - 32),
+    Math.min(1600, usableWidth - 32)
+  );
+  const height = clampNumber(
+    Math.round(usableHeight * 0.8),
+    Math.min(600, usableHeight - 32),
+    Math.min(900, usableHeight - 32)
+  );
+
+  return { width, height };
+}
+
 function getLoadingUrl() {
   const html = `<!doctype html>
 <html>
@@ -486,9 +522,15 @@ function getLoadingUrl() {
 }
 
 function createWindow() {
+  const initialBounds = getInitialWindowBounds();
+  logLine("[main] Initial window bounds", initialBounds);
+
   mainWindow = new BrowserWindow({
-    width: 1280,
-    height: 800,
+    width: initialBounds.width,
+    height: initialBounds.height,
+    minWidth: Math.min(900, initialBounds.width),
+    minHeight: Math.min(560, initialBounds.height),
+    center: true,
     title: WINDOW_TITLE,
     icon: ICON_PATH,
     show: false,
@@ -533,7 +575,83 @@ function navigateToFrontend(url) {
   });
 }
 
+function getUpdateVersion(info) {
+  return String(info?.version || info?.releaseName || "").trim();
+}
+
+function sendUpdateStatus(status) {
+  latestUpdateStatus = {
+    ...latestUpdateStatus,
+    ...status,
+    updatedAt: new Date().toISOString(),
+  };
+
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    return;
+  }
+
+  mainWindow.webContents.send("app:update-status", latestUpdateStatus);
+}
+
+function clearMockUpdateTimer() {
+  if (mockUpdateTimer) {
+    clearInterval(mockUpdateTimer);
+    mockUpdateTimer = null;
+  }
+}
+
+function simulateUpdateAvailable() {
+  sendUpdateStatus({
+    state: "available",
+    title: "Update available",
+    detail: "Finledge test update is ready to download.",
+    version: `${app.getVersion()}-test`,
+    isSimulation: true,
+  });
+}
+
+function simulateUpdateDownload() {
+  clearMockUpdateTimer();
+
+  let percent = 0;
+  sendUpdateStatus({
+    state: "downloading",
+    title: "Downloading update",
+    detail: "Starting the test update download...",
+    percent,
+    transferred: 0,
+    total: 100,
+    isSimulation: true,
+  });
+
+  mockUpdateTimer = setInterval(() => {
+    percent = Math.min(100, percent + 8 + Math.round(Math.random() * 10));
+
+    sendUpdateStatus({
+      state: percent >= 100 ? "downloaded" : "downloading",
+      title: percent >= 100 ? "Update ready" : "Downloading update",
+      detail:
+        percent >= 100
+          ? "Test update downloaded. Restart would install it in a real release."
+          : `Downloaded ${percent}% of the test update.`,
+      percent,
+      transferred: percent,
+      total: 100,
+      isSimulation: true,
+    });
+
+    if (percent >= 100) {
+      clearMockUpdateTimer();
+    }
+  }, 450);
+}
+
 function configureAutoUpdater() {
+  if (SHOULD_SIMULATE_UPDATES) {
+    logLine("[updater] Running with simulated update flow");
+    return;
+  }
+
   if (IS_ELECTRON_DEV || !app.isPackaged) {
     logLine("[updater] Skipping auto-updater outside packaged production mode");
     return;
@@ -544,30 +662,46 @@ function configureAutoUpdater() {
 
   autoUpdater.on("checking-for-update", () => {
     logLine("[updater] Checking for updates");
+    if (!showUpdateCheckStatus) {
+      return;
+    }
+
+    sendUpdateStatus({
+      state: "checking",
+      title: "Checking for updates",
+      detail: "Looking for the latest Finledge release...",
+      percent: null,
+    });
   });
 
-  autoUpdater.on("update-available", async (info) => {
+  autoUpdater.on("update-available", (info) => {
     logLine("[updater] Update available", info);
-
-    const result = await dialog.showMessageBox(mainWindow ?? undefined, {
-      type: "info",
-      buttons: ["Download update", "Later"],
-      defaultId: 0,
-      cancelId: 1,
+    showUpdateCheckStatus = false;
+    const version = getUpdateVersion(info);
+    sendUpdateStatus({
+      state: "available",
       title: "Update available",
-      message: `Finledge ${info.version} is available.`,
-      detail: "Download the update now and install it after restart.",
+      detail: version
+        ? `Finledge ${version} is available. Download it in the background and keep working.`
+        : "A new Finledge update is available. Download it in the background and keep working.",
+      version,
+      percent: null,
     });
-
-    if (result.response === 0) {
-      autoUpdater.downloadUpdate().catch((err) => {
-        logLine("[updater] downloadUpdate failed", String(err && err.stack ? err.stack : err));
-      });
-    }
   });
 
   autoUpdater.on("update-not-available", (info) => {
     logLine("[updater] No update available", info);
+    if (!showUpdateCheckStatus) {
+      return;
+    }
+
+    showUpdateCheckStatus = false;
+    sendUpdateStatus({
+      state: "not-available",
+      title: "Finledge is up to date",
+      detail: "You already have the latest available version.",
+      percent: null,
+    });
   });
 
   autoUpdater.on("download-progress", (progress) => {
@@ -576,28 +710,47 @@ function configureAutoUpdater() {
       transferred: progress.transferred,
       total: progress.total,
     });
+    sendUpdateStatus({
+      state: "downloading",
+      title: "Downloading update",
+      detail: "Finledge is downloading the update in the background.",
+      percent: Number(progress.percent) || 0,
+      transferred: progress.transferred,
+      total: progress.total,
+      bytesPerSecond: progress.bytesPerSecond,
+    });
   });
 
-  autoUpdater.on("update-downloaded", async (info) => {
+  autoUpdater.on("update-downloaded", (info) => {
     logLine("[updater] Update downloaded", info);
-
-    const result = await dialog.showMessageBox(mainWindow ?? undefined, {
-      type: "info",
-      buttons: ["Update Now", "Later"],
-      defaultId: 0,
-      cancelId: 1,
+    const version = getUpdateVersion(info);
+    sendUpdateStatus({
+      state: "downloaded",
       title: "Update ready",
-      message: `Finledge ${info.version} is ready to install.`,
-      detail: "The app will restart to apply the update.",
+      detail: version
+        ? `Finledge ${version} is ready. Restart the app to finish updating.`
+        : "The update is ready. Restart the app to finish updating.",
+      version,
+      percent: 100,
     });
-
-    if (result.response === 0) {
-      setImmediate(() => autoUpdater.quitAndInstall());
-    }
   });
 
   autoUpdater.on("error", (err) => {
     logLine("[updater] Error", String(err && err.stack ? err.stack : err));
+    const wasVisibleUpdateFlow = ["available", "checking", "downloading", "downloaded"].includes(
+      latestUpdateStatus.state
+    );
+    if (!showUpdateCheckStatus && !wasVisibleUpdateFlow) {
+      return;
+    }
+
+    showUpdateCheckStatus = false;
+    sendUpdateStatus({
+      state: "error",
+      title: "Update failed",
+      detail: "Finledge could not complete the update check or download. Please try again later.",
+      error: String(err && err.message ? err.message : err),
+    });
   });
 }
 
@@ -616,17 +769,84 @@ ipcMain.handle("app:refresh", async () => {
 });
 
 ipcMain.handle("app:check-for-updates", async () => {
+  if (SHOULD_SIMULATE_UPDATES) {
+    sendUpdateStatus({
+      state: "checking",
+      title: "Checking for updates",
+      detail: "Running the test update check...",
+      percent: null,
+      isSimulation: true,
+    });
+    setTimeout(simulateUpdateAvailable, 900);
+    return { ok: true, simulated: true };
+  }
+
+  if (IS_ELECTRON_DEV || !app.isPackaged) {
+    sendUpdateStatus({
+      state: "not-available",
+      title: "Updates disabled in development",
+      detail: "Auto-updates run only from the installed production app.",
+      percent: null,
+    });
+    return { ok: false, reason: "updates-disabled-in-dev" };
+  }
+
+  try {
+    showUpdateCheckStatus = true;
+    await autoUpdater.checkForUpdates();
+    return { ok: true };
+  } catch (err) {
+    showUpdateCheckStatus = false;
+    logLine("[updater] Manual check failed", String(err && err.stack ? err.stack : err));
+    return { ok: false, reason: "update-check-failed" };
+  }
+});
+
+ipcMain.handle("app:get-update-status", async () => latestUpdateStatus);
+
+ipcMain.handle("app:download-update", async () => {
+  if (SHOULD_SIMULATE_UPDATES) {
+    simulateUpdateDownload();
+    return { ok: true, simulated: true };
+  }
+
   if (IS_ELECTRON_DEV || !app.isPackaged) {
     return { ok: false, reason: "updates-disabled-in-dev" };
   }
 
   try {
-    await autoUpdater.checkForUpdates();
+    await autoUpdater.downloadUpdate();
     return { ok: true };
   } catch (err) {
-    logLine("[updater] Manual check failed", String(err && err.stack ? err.stack : err));
-    return { ok: false, reason: "update-check-failed" };
+    logLine("[updater] downloadUpdate failed", String(err && err.stack ? err.stack : err));
+    sendUpdateStatus({
+      state: "error",
+      title: "Update download failed",
+      detail: "Finledge could not download the update. Please try again later.",
+      error: String(err && err.message ? err.message : err),
+    });
+    return { ok: false, reason: "update-download-failed" };
   }
+});
+
+ipcMain.handle("app:install-update", async () => {
+  if (SHOULD_SIMULATE_UPDATES) {
+    sendUpdateStatus({
+      state: "installing",
+      title: "Restart simulated",
+      detail: "The test update flow is complete. A real release would restart now.",
+      percent: 100,
+      isSimulation: true,
+    });
+    return { ok: true, simulated: true };
+  }
+
+  if (IS_ELECTRON_DEV || !app.isPackaged) {
+    return { ok: false, reason: "updates-disabled-in-dev" };
+  }
+
+  setImmediate(() => autoUpdater.quitAndInstall());
+  return { ok: true };
 });
 
 app.whenReady().then(async () => {
@@ -651,6 +871,7 @@ app.whenReady().then(async () => {
     logLine("[main] frontend built?", hasBuiltFrontend);
 
     if (IS_ELECTRON_DEV) {
+      configureAutoUpdater();
       const preferredDevUrl = `http://${FRONTEND_HOST}:${FRONTEND_PORT}`;
       const preferredLocalhostDevUrl = `http://localhost:${FRONTEND_PORT}`;
 
@@ -685,10 +906,19 @@ app.whenReady().then(async () => {
               }
             });
         });
+
+      if (SHOULD_SIMULATE_UPDATES) {
+        setTimeout(simulateUpdateAvailable, 2500);
+      }
     } else {
       navigateToFrontend(getFrontendUrl());
       configureAutoUpdater();
       setTimeout(() => {
+        if (SHOULD_SIMULATE_UPDATES) {
+          simulateUpdateAvailable();
+          return;
+        }
+
         autoUpdater.checkForUpdates().catch((err) => {
           logLine("[updater] Initial update check failed", String(err && err.stack ? err.stack : err));
         });
