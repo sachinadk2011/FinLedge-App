@@ -14,7 +14,8 @@
     "build:desktop": "npm run build --prefix desktop",
     "desktop-dev": "node ./scripts/finledge.mjs desktop-dev",
     "desktop-build": "node ./scripts/finledge.mjs desktop-build",
-    "desktop-build:publish": "node ./scripts/finledge.mjs desktop-build-publish"
+    "desktop-build:publish": "node ./scripts/finledge.mjs desktop-build-publish",
+    "version:sync": "node ./scripts/sync-version.mjs"
   },
   "devDependencies": {
     "concurrently": "^9.0.0"
