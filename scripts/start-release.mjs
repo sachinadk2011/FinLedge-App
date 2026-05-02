@@ -84,7 +84,6 @@ if (staged) {
 }
 
 run("git", ["tag", "-a", tag, "-m", `FinLedge ${tag}`]);
-run("git", ["push", "origin", "main"]);
-run("git", ["push", "origin", tag]);
+run("git", ["push", "--atomic", "origin", "main", tag]);
 
 console.log(`Release ${tag} pushed. GitHub Actions will build, sign, and publish the release.`);
