@@ -612,6 +612,7 @@ function simulateUpdateAvailable() {
 function simulateUpdateDownload() {
   clearMockUpdateTimer();
 
+  const SIMULATED_TOTAL_BYTES = 52 * 1024 * 1024; // 52 MB – realistic Electron app update size
   let percent = 0;
   sendUpdateStatus({
     state: "downloading",
@@ -619,7 +620,7 @@ function simulateUpdateDownload() {
     detail: "Starting the test update download...",
     percent,
     transferred: 0,
-    total: 100,
+    total: SIMULATED_TOTAL_BYTES,
     isSimulation: true,
   });
 
@@ -634,8 +635,8 @@ function simulateUpdateDownload() {
           ? "Test update downloaded. Restart would install it in a real release."
           : `Downloaded ${percent}% of the test update.`,
       percent,
-      transferred: percent,
-      total: 100,
+      transferred: Math.round((percent / 100) * SIMULATED_TOTAL_BYTES),
+      total: SIMULATED_TOTAL_BYTES,
       isSimulation: true,
     });
 
