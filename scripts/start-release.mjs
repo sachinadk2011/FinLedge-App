@@ -40,7 +40,7 @@ if (statusBefore) {
   throw new Error("Working tree must be clean before starting a release.");
 }
 
-run("node", ["./scripts/sync-version.mjs", version]);
+run(process.execPath, ["./scripts/sync-version.mjs", version]);
 
 const packageJson = JSON.parse(readFileSync(path.join(projectRoot, "package.json"), "utf8"));
 if (packageJson.version !== version) {
