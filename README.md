@@ -251,7 +251,8 @@ Recommended GitHub release tag:
 vx.y.z
 ```
 
-For signed Windows releases through SignPath Foundation, see [CODE_SIGNING.md](CODE_SIGNING.md).
+Current official Windows releases are code signed through SignPath Foundation; see [CODE_SIGNING.md](CODE_SIGNING.md).
+Any unsigned-install or SmartScreen warning guidance applies only to older releases or non-release/local builds where signing is not present.
 
 ---
 
