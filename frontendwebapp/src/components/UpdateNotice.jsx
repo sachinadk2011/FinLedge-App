@@ -65,11 +65,16 @@ export default function UpdateNotice() {
 
     let isMounted = true;
 
-    updater.getUpdateStatus?.().then((currentStatus) => {
-      if (isMounted && currentStatus?.state && currentStatus.state !== "idle") {
-        setStatus(currentStatus);
-      }
-    });
+    updater
+      .getUpdateStatus?.()
+      .then((currentStatus) => {
+        if (isMounted && currentStatus?.state && currentStatus.state !== "idle") {
+          setStatus(currentStatus);
+        }
+      })
+      .catch(() => {
+        // Ignore initial status lookup failures; live update events can still populate status.
+      });
 
     const unsubscribe = updater.onUpdateStatus((nextStatus) => {
       setStatus(nextStatus);
