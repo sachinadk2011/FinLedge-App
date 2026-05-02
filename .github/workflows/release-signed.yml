@@ -92,18 +92,34 @@ jobs:
           parameters: |
             version: ${{ toJSON(steps.version.outputs.version) }}
 
-      - name: Refresh update metadata for signed installer
+      - name: Prepare signed release files
         shell: pwsh
-        run: node .\scripts\refresh-latest-yml.mjs "signed\Finledge-Setup-${{ steps.version.outputs.version }}.exe" "${{ steps.version.outputs.version }}"
+        run: |
+          $installerName = "Finledge-Setup-${{ steps.version.outputs.version }}.exe"
+          $installer = Get-ChildItem -Path signed -Recurse -Filter $installerName | Select-Object -First 1
+          if (-not $installer) {
+            throw "Signed installer not found: $installerName"
+          }
+
+          New-Item -ItemType Directory -Force -Path release | Out-Null
+          Copy-Item -Path $installer.FullName -Destination "release\$installerName" -Force
+          node .\scripts\refresh-latest-yml.mjs "release\$installerName" "${{ steps.version.outputs.version }}"
 
       - name: Publish GitHub release
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release create "${{ steps.version.outputs.tag }}" `
-            "signed\Finledge-Setup-${{ steps.version.outputs.version }}.exe" `
-            "signed\latest.yml" `
-            --title "FinLedge ${{ steps.version.outputs.tag }}" `
-            --notes "Signed FinLedge Windows release ${{ steps.version.outputs.tag }}." `
-            $(if ('${{ steps.version.outputs.is_prerelease }}' -eq 'true') { '--prerelease' })
+          $args = @(
+            "release", "create", "${{ steps.version.outputs.tag }}",
+            "release\Finledge-Setup-${{ steps.version.outputs.version }}.exe",
+            "release\latest.yml",
+            "--title", "FinLedge ${{ steps.version.outputs.tag }}",
+            "--notes", "Signed FinLedge Windows release ${{ steps.version.outputs.tag }}."
+          )
+
+          if ("${{ steps.version.outputs.is_prerelease }}" -eq "true") {
+            $args += "--prerelease"
+          }
+
+          gh @args
