@@ -101,10 +101,9 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          $prerelease = if ("${{ steps.version.outputs.is_prerelease }}" -eq "true") { "--prerelease" } else { "" }
           gh release create "${{ steps.version.outputs.tag }}" `
             "signed\Finledge-Setup-${{ steps.version.outputs.version }}.exe" `
             "signed\latest.yml" `
             --title "FinLedge ${{ steps.version.outputs.tag }}" `
             --notes "Signed FinLedge Windows release ${{ steps.version.outputs.tag }}." `
-            $(if ($prerelease) { $prerelease })
+            $(if ('${{ steps.version.outputs.is_prerelease }}' -eq 'true') { '--prerelease' })
