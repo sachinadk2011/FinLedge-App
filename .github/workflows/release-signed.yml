@@ -24,6 +24,11 @@ jobs:
           $version = "${env:GITHUB_REF_NAME}".TrimStart("v")
           echo "version=$version" >> $env:GITHUB_OUTPUT
           echo "tag=${env:GITHUB_REF_NAME}" >> $env:GITHUB_OUTPUT
+          if ($version -match '-') {
+            echo "is_prerelease=true" >> $env:GITHUB_OUTPUT
+          } else {
+            echo "is_prerelease=false" >> $env:GITHUB_OUTPUT
+          }
 
       - name: Set up Node
         uses: actions/setup-node@v4
@@ -96,8 +101,10 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          $prerelease = if ("${{ steps.version.outputs.is_prerelease }}" -eq "true") { "--prerelease" } else { "" }
           gh release create "${{ steps.version.outputs.tag }}" `
             "signed\Finledge-Setup-${{ steps.version.outputs.version }}.exe" `
             "signed\latest.yml" `
             --title "FinLedge ${{ steps.version.outputs.tag }}" `
-            --notes "Signed FinLedge Windows release ${{ steps.version.outputs.tag }}."
+            --notes "Signed FinLedge Windows release ${{ steps.version.outputs.tag }}." `
+            $(if ($prerelease) { $prerelease })
