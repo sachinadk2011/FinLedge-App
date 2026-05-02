@@ -38,6 +38,12 @@ if (branch !== "main") {
 }
 
 run("git", ["fetch", "origin", "main", "--tags"]);
+const localMain = run("git", ["rev-parse", "main"]);
+const remoteMain = run("git", ["rev-parse", "origin/main"]);
+if (localMain !== remoteMain) {
+  throw new Error("Local main must match origin/main before starting a release. Please fast-forward local main and retry.");
+}
+
 const statusBefore = run("git", ["status", "--porcelain"]);
 if (statusBefore) {
   throw new Error("Working tree must be clean before starting a release.");
