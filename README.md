@@ -241,7 +241,7 @@ npm run version:sync -- x.y.z
 It updates the root, desktop, and frontend package versions, plus their lockfile metadata. If you already changed the root `package.json` version manually, run this without an argument:
 
 ```powershell
-node .\scripts\sync-version.mjs
+node ./scripts/sync-version.mjs
 ```
 
 Recommended GitHub release tag:
