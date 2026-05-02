@@ -56,7 +56,7 @@ const existingTag = spawnSync("git", ["rev-parse", "-q", "--verify", `refs/tags/
   shell: false,
 });
 if (existingTag.status === 0) {
-  throw new Error(`Tag ${tag} already exists. No local changes were made.`);
+  throw new Error(`Cannot create release: tag ${tag} already exists.`);
 }
 
 run(process.execPath, ["./scripts/sync-version.mjs", version]);
