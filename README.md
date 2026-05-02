@@ -226,13 +226,23 @@ To preview the in-app update notification during desktop development, set `FINLE
 
 ## Versioning
 
-Update these files when releasing a new version:
+Use the version sync helper when releasing a new version:
 
-| File | Field |
-| --- | --- |
-| `package.json` | `"version"` |
-| `desktop/package.json` | `"version"` |
-| `frontendwebapp/package.json` | `"version"` |
+```powershell
+node .\scripts\sync-version.mjs x.y.z
+```
+
+Or run the same helper through npm:
+
+```powershell
+npm run version:sync -- x.y.z
+```
+
+It updates the root, desktop, and frontend package versions, plus their lockfile metadata. If you already changed the root `package.json` version manually, run this without an argument:
+
+```powershell
+node .\scripts\sync-version.mjs
+```
 
 Recommended GitHub release tag:
 
