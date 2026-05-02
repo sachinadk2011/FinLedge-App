@@ -457,11 +457,10 @@ function getFrontendUrl() {
 }
 
 function clampNumber(value, min, max) {
-  if (max < min) {
-    return Math.max(1, max);
-  }
+  const lowerBound = Math.min(min, max);
+  const upperBound = Math.max(min, max);
 
-  return Math.min(Math.max(value, min), max);
+  return Math.min(Math.max(value, lowerBound), upperBound);
 }
 
 function getInitialWindowBounds() {
