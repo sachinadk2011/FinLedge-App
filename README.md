@@ -228,19 +228,19 @@ To preview the in-app update notification during desktop development, set `FINLE
 
 Use the version sync helper when releasing a new version:
 
-```powershell
-node .\scripts\sync-version.mjs x.y.z
+```sh
+node ./scripts/sync-version.mjs x.y.z
 ```
 
 Or run the same helper through npm:
 
-```powershell
+```sh
 npm run version:sync -- x.y.z
 ```
 
 It updates the root, desktop, and frontend package versions, plus their lockfile metadata. If you already changed the root `package.json` version manually, run this without an argument:
 
-```powershell
+```sh
 node ./scripts/sync-version.mjs
 ```
 
