@@ -1,0 +1,103 @@
+name: Signed Windows Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  build-sign-release:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Read release version
+        id: version
+        shell: pwsh
+        run: |
+          $version = "${env:GITHUB_REF_NAME}".TrimStart("v")
+          echo "version=$version" >> $env:GITHUB_OUTPUT
+          echo "tag=${env:GITHUB_REF_NAME}" >> $env:GITHUB_OUTPUT
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            frontendwebapp/package-lock.json
+            desktop/package-lock.json
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install JavaScript dependencies
+        shell: pwsh
+        run: |
+          npm ci
+          npm ci --prefix frontendwebapp
+          npm ci --prefix desktop
+
+      - name: Install Python dependencies
+        shell: pwsh
+        run: |
+          python -m venv venv
+          .\venv\Scripts\python.exe -m pip install --upgrade pip
+          .\venv\Scripts\python.exe -m pip install -r requirements.txt
+
+      - name: Verify version files
+        shell: pwsh
+        run: node .\scripts\verify-version.mjs "${{ steps.version.outputs.version }}"
+
+      - name: Build unsigned Windows installer
+        shell: pwsh
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        run: npm run desktop-build
+
+      - name: Upload unsigned installer for SignPath
+        id: upload-unsigned-installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: unsigned-finledge-installer
+          path: desktop/dist/Finledge-Setup-${{ steps.version.outputs.version }}.exe
+          if-no-files-found: error
+
+      - name: Submit installer to SignPath
+        uses: signpath/github-action-submit-signing-request@v2
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG }}
+          artifact-configuration-slug: ${{ vars.SIGNPATH_ARTIFACT_CONFIGURATION_SLUG }}
+          github-artifact-id: ${{ steps.upload-unsigned-installer.outputs.artifact-id }}
+          wait-for-completion: true
+          output-artifact-directory: signed
+          parameters: |
+            version: ${{ toJSON(steps.version.outputs.version) }}
+
+      - name: Refresh update metadata for signed installer
+        shell: pwsh
+        run: node .\scripts\refresh-latest-yml.mjs "signed\Finledge-Setup-${{ steps.version.outputs.version }}.exe" "${{ steps.version.outputs.version }}"
+
+      - name: Publish GitHub release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${{ steps.version.outputs.tag }}" `
+            "signed\Finledge-Setup-${{ steps.version.outputs.version }}.exe" `
+            "signed\latest.yml" `
+            --title "FinLedge ${{ steps.version.outputs.tag }}" `
+            --notes "Signed FinLedge Windows release ${{ steps.version.outputs.tag }}."

@@ -15,6 +15,7 @@
     "desktop-dev": "node ./scripts/finledge.mjs desktop-dev",
     "desktop-build": "node ./scripts/finledge.mjs desktop-build",
     "desktop-build:publish": "node ./scripts/finledge.mjs desktop-build-publish",
+    "release:start": "node ./scripts/start-release.mjs",
     "version:sync": "node ./scripts/sync-version.mjs"
   },
   "devDependencies": {

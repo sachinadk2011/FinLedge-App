@@ -1,0 +1,13 @@
+# GitHub Actions release workflow
+.github/workflows/release-signed.yml @sachinadk2011
+
+# SignPath policies
+.signpath/policies/** @sachinadk2011
+
+# Desktop app config
+desktop/package.json @sachinadk2011
+
+# Release helpers
+scripts/start-release.mjs @sachinadk2011
+scripts/refresh-latest-yml.mjs @sachinadk2011
+scripts/verify-version.mjs @sachinadk2011

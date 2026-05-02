@@ -221,6 +221,7 @@ To preview the in-app update notification during desktop development, set `FINLE
 | Desktop dev | `npm run desktop-dev` |
 | Desktop production build | `npm run desktop-build` |
 | Desktop build + publish | `npm run desktop-build:publish` |
+| Signed release tag | `node .\scripts\start-release.mjs x.y.z` |
 
 ---
 
@@ -249,6 +250,8 @@ Recommended GitHub release tag:
 ```text
 vx.y.z
 ```
+
+For signed Windows releases through SignPath Foundation, see [CODE_SIGNING.md](CODE_SIGNING.md).
 
 ---
 
