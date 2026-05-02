@@ -9,5 +9,6 @@ desktop/package.json @sachinadk2011
 
 # Release helpers
 scripts/start-release.mjs @sachinadk2011
+scripts/sync-version.mjs @sachinadk2011
 scripts/refresh-latest-yml.mjs @sachinadk2011
 scripts/verify-version.mjs @sachinadk2011
