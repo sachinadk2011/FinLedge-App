@@ -49,6 +49,16 @@ if (statusBefore) {
   throw new Error("Working tree must be clean before starting a release.");
 }
 
+const tag = `v${version}`;
+const existingTag = spawnSync("git", ["rev-parse", "-q", "--verify", `refs/tags/${tag}`], {
+  cwd: projectRoot,
+  encoding: "utf8",
+  shell: false,
+});
+if (existingTag.status === 0) {
+  throw new Error(`Tag ${tag} already exists. No local changes were made.`);
+}
+
 run(process.execPath, ["./scripts/sync-version.mjs", version]);
 
 const packageJson = JSON.parse(readFileSync(path.join(projectRoot, "package.json"), "utf8"));
@@ -71,17 +81,6 @@ if (staged) {
   run("git", ["commit", "-m", `Release v${version}`]);
 } else {
   console.log("Version files already match; no release version commit needed.");
-}
-
-const tag = `v${version}`;
-const existingTag = spawnSync("git", ["rev-parse", "-q", "--verify", `refs/tags/${tag}`], {
-  cwd: projectRoot,
-  encoding: "utf8",
-  shell: false,
-});
-
-if (existingTag.status === 0) {
-  throw new Error(`Tag ${tag} already exists.`);
 }
 
 run("git", ["tag", "-a", tag, "-m", `FinLedge ${tag}`]);
