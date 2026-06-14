@@ -115,7 +115,7 @@ jobs:
             "release\Finledge-Setup-${{ steps.version.outputs.version }}.exe",
             "release\latest.yml",
             "--title", "FinLedge ${{ steps.version.outputs.tag }}",
-            "--notes", "Signed FinLedge Windows release ${{ steps.version.outputs.tag }}."
+            "--generate-notes"
           )
 
           if ("${{ steps.version.outputs.is_prerelease }}" -eq "true") {

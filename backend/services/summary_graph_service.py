@@ -228,10 +228,16 @@ def build_monthly_share_png(records: Iterable[dict]) -> bytes:
         if d < start or d > end:
             continue
         category = str(r.get("category") or "").strip().lower()
+        buy_sell = str(r.get("buy_sell") or "").strip().lower()
         total = float(r.get("total_amount") or 0.0)
         profit = float(r.get("profit_loss") or 0.0)
-        if category in {"ipo", "buy"}:
+        if category in {"ipo", "buy"} or (category == "sip" and buy_sell != "redeem"):
             by_day[d]["investment"] += total
+        elif category == "sip" and buy_sell == "redeem":
+            if profit >= 0:
+                by_day[d]["profit"] += profit
+            else:
+                by_day[d]["loss"] += abs(profit)
         elif category == "sell" or category == "dividend":
             if profit >= 0:
                 by_day[d]["profit"] += profit
@@ -274,10 +280,16 @@ def build_yearly_share_png(records: Iterable[dict]) -> bytes:
         if key not in by_month:
             continue
         category = str(r.get("category") or "").strip().lower()
+        buy_sell = str(r.get("buy_sell") or "").strip().lower()
         total = float(r.get("total_amount") or 0.0)
         profit = float(r.get("profit_loss") or 0.0)
-        if category in {"ipo", "buy"}:
+        if category in {"ipo", "buy"} or (category == "sip" and buy_sell != "redeem"):
             by_month[key]["investment"] += total
+        elif category == "sip" and buy_sell == "redeem":
+            if profit >= 0:
+                by_month[key]["profit"] += profit
+            else:
+                by_month[key]["loss"] += abs(profit)
         elif category == "sell" or category == "dividend":
             if profit >= 0:
                 by_month[key]["profit"] += profit
@@ -299,8 +311,8 @@ def build_yearly_share_png(records: Iterable[dict]) -> bytes:
 def build_combined_position_png(*, bank_summary: dict, share_summary: dict) -> bytes:
     bank_income = float(bank_summary.get("total_income") or 0.0)
     bank_expenses = float(bank_summary.get("total_expenses") or 0.0)
-    share_investment = float(share_summary.get("overall_investment") or 0.0)
-    share_profit = float(share_summary.get("overall_profit_loss") or 0.0)
+    share_investment = float(share_summary.get("grand_total_investment", share_summary.get("overall_investment") or 0.0) or 0.0)
+    share_profit = float(share_summary.get("grand_profit_loss", share_summary.get("overall_profit_loss") or 0.0) or 0.0)
 
     bank_net = bank_income - bank_expenses
     overall_net = bank_net - share_investment + share_profit
@@ -342,10 +354,16 @@ def build_monthly_overview_png(*, bank_records: Iterable[dict], share_records: I
         if d < start or d > end:
             continue
         category = str(r.get("category") or "").strip().lower()
+        buy_sell = str(r.get("buy_sell") or "").strip().lower()
         total = float(r.get("total_amount") or 0.0)
         profit = float(r.get("profit_loss") or 0.0)
-        if category in {"ipo", "buy"}:
+        if category in {"ipo", "buy"} or (category == "sip" and buy_sell != "redeem"):
             by_day[d]["share_investment"] += total
+        elif category == "sip" and buy_sell == "redeem":
+            if profit >= 0:
+                by_day[d]["share_profit"] += profit
+            else:
+                by_day[d]["share_loss"] += abs(profit)
         elif category == "sell" or category == "dividend":
             if profit >= 0:
                 by_day[d]["share_profit"] += profit
@@ -405,10 +423,16 @@ def build_yearly_overview_png(*, bank_records: Iterable[dict], share_records: It
         if key not in by_month:
             continue
         category = str(r.get("category") or "").strip().lower()
+        buy_sell = str(r.get("buy_sell") or "").strip().lower()
         total = float(r.get("total_amount") or 0.0)
         profit = float(r.get("profit_loss") or 0.0)
-        if category in {"ipo", "buy"}:
+        if category in {"ipo", "buy"} or (category == "sip" and buy_sell != "redeem"):
             by_month[key]["share_investment"] += total
+        elif category == "sip" and buy_sell == "redeem":
+            if profit >= 0:
+                by_month[key]["share_profit"] += profit
+            else:
+                by_month[key]["share_loss"] += abs(profit)
         elif category == "sell" or category == "dividend":
             if profit >= 0:
                 by_month[key]["share_profit"] += profit

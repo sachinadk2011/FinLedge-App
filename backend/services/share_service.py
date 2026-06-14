@@ -178,6 +178,33 @@ def _consume_lots(lots: list[dict], sell_qty: int) -> float:
     return cost_basis
 
 
+def _sip_outstanding_investment(sheet, share_name: str, before_row: int | None = None) -> float:
+    target = share_name.strip().lower()
+    outstanding = 0.0
+    max_row = before_row - 1 if before_row else sheet.max_row
+
+    for row_idx in range(2, max_row + 1):
+        row_share_name = str(sheet.cell(row=row_idx, column=2).value or "").strip().lower()
+        if row_share_name != target:
+            continue
+
+        category = str(sheet.cell(row=row_idx, column=3).value or "").strip().lower()
+        if category != "sip":
+            continue
+
+        buy_sell = str(sheet.cell(row=row_idx, column=7).value or "").strip().lower()
+        total_amount = _to_float(sheet.cell(row=row_idx, column=8).value)
+        profit_loss = _to_float(sheet.cell(row=row_idx, column=9).value)
+
+        if buy_sell in {"redeem", "redeemed"}:
+            cost_basis = max(0.0, total_amount - profit_loss)
+            outstanding = max(0.0, outstanding - cost_basis)
+        else:
+            outstanding += total_amount
+
+    return outstanding
+
+
 def append_share_record(
     entry_date: Optional[date],
     share_name: str,
@@ -191,8 +218,8 @@ def append_share_record(
     entry_date = entry_date or date.today()
     share_name = share_name.strip().upper()
     category = category.strip().lower()
-    if category not in {"ipo", "buy", "sell", "dividend"}:
-        raise ValueError("Category must be one of: ipo, buy, sell, dividend.")
+    if category not in {"ipo", "sip", "buy", "sell", "dividend"}:
+        raise ValueError("Category must be one of: ipo, sip, buy, sell, dividend.")
 
     if category == "dividend":
         buy_sell = buy_sell.strip().lower()
@@ -205,8 +232,14 @@ def append_share_record(
     else:
         if allotted < 0:
             raise ValueError("Allotted cannot be negative.")
-        if category != "ipo" and allotted <= 0:
+        if category not in {"ipo", "sip"} and allotted <= 0:
             raise ValueError("Allotted must be greater than 0 for buy/sell entries.")
+        if category == "sip":
+            buy_sell = (buy_sell or "installment").strip().lower()
+            if buy_sell == "sip":
+                buy_sell = "installment"
+            if buy_sell not in {"installment", "redeem"}:
+                raise ValueError("SIP type must be 'installment' or 'redeem'.")
 
     if per_unit_price < 0:
         raise ValueError("Per unit price cannot be negative.")
@@ -232,6 +265,18 @@ def append_share_record(
         else:
             total_amount_dec = Decimal("0")
             profit_loss_dec = Decimal("0")
+    elif category == "sip":
+        if unit_price <= 0:
+            raise ValueError("SIP investment amount must be greater than 0.")
+        total_amount_dec = unit_price
+        if buy_sell == "redeem":
+            outstanding = _sip_outstanding_investment(sheet, share_name)
+            cost_basis = min(outstanding, float(total_amount_dec))
+            profit_loss_dec = total_amount_dec - Decimal(str(cost_basis))
+        else:
+            profit_loss_dec = Decimal("0")
+        if buy_sell == "installment" and int(allotted) > 0:
+            unit_price = total_amount_dec / Decimal(int(allotted))
     else:
         share_value_dec = unit_price * Decimal(int(allotted))
         total_amount_dec = share_value_dec + asba_charge_dec
@@ -313,6 +358,9 @@ def read_share_records() -> list[dict]:
 
 def summarize_share_records(records: list[dict]) -> dict:
     total_ipo_investment = 0.0
+    total_sip_investment = 0.0
+    total_sip_redeemed = 0.0
+    sip_profit_loss = 0.0
     total_buy_amount = 0.0
     total_sell_amount = 0.0
     total_profit = 0.0
@@ -326,6 +374,11 @@ def summarize_share_records(records: list[dict]) -> dict:
 
         if category == "ipo":
             total_ipo_investment += total_amount
+        elif category == "sip" and buy_sell in {"redeem", "redeemed"}:
+            total_sip_redeemed += total_amount
+            sip_profit_loss += profit_loss
+        elif category == "sip":
+            total_sip_investment += total_amount
         elif category == "buy":
             total_buy_amount += total_amount
         elif category == "sell":
@@ -336,21 +389,29 @@ def summarize_share_records(records: list[dict]) -> dict:
 
     overall_investment = total_ipo_investment + total_buy_amount
     overall_profit_loss = total_profit + total_dividend - overall_investment
+    grand_total_investment = overall_investment + total_sip_investment
+    grand_profit_loss = overall_profit_loss + sip_profit_loss
 
     return {
         "total_ipo_investment": total_ipo_investment,
+        "total_sip_investment": total_sip_investment,
+        "total_sip_redeemed": total_sip_redeemed,
+        "sip_profit_loss": sip_profit_loss,
         "total_buy_amount": total_buy_amount,
         "overall_investment": overall_investment,
         "total_sell_amount": total_sell_amount,
         "total_dividend": total_dividend,
         "total_profit": total_profit,
         "overall_profit_loss": overall_profit_loss,
+        "grand_total_investment": grand_total_investment,
+        "grand_profit_loss": grand_profit_loss,
     }
 
 
 def _recompute_sheet(sheet) -> None:
     cumulative_profit = 0.0
     lots_by_share: dict[str, list[dict]] = {}
+    sip_investment_by_share: dict[str, float] = {}
 
     for row_idx in range(2, sheet.max_row + 1):
         share_name = str(sheet.cell(row=row_idx, column=2).value or "").strip()
@@ -362,13 +423,35 @@ def _recompute_sheet(sheet) -> None:
         asba_charge = 5.0 if category == "ipo" else 0.0
         profit_loss = 0.0
         share_key = share_name.lower()
-        
+
         if category == "dividend":
             if buy_sell == "cash":
                 total_amount = float(per_unit_price)
                 profit_loss = total_amount
             else:
                 total_amount = 0.0
+        elif category == "sip":
+            normalized_buy_sell = buy_sell.strip().lower()
+            if normalized_buy_sell == "sip":
+                normalized_buy_sell = "installment"
+            stored_total = _to_float(sheet.cell(row=row_idx, column=8).value)
+            if stored_total <= 0:
+                stored_total = float(per_unit_price) * int(allotted) if allotted > 0 else float(per_unit_price)
+            total_amount = stored_total
+            if normalized_buy_sell == "redeem":
+                outstanding = sip_investment_by_share.get(share_key, 0.0)
+                cost_basis = min(outstanding, total_amount)
+                profit_loss = total_amount - cost_basis
+                sip_investment_by_share[share_key] = max(0.0, outstanding - cost_basis)
+                per_unit_price = total_amount
+                buy_sell = "redeem"
+            else:
+                sip_investment_by_share[share_key] = sip_investment_by_share.get(share_key, 0.0) + total_amount
+                buy_sell = "installment"
+            if normalized_buy_sell != "redeem" and allotted > 0:
+                per_unit_price = total_amount / int(allotted)
+            else:
+                per_unit_price = total_amount
         else:
             total_amount = (float(per_unit_price) * int(allotted)) + float(asba_charge)
 
@@ -385,6 +468,8 @@ def _recompute_sheet(sheet) -> None:
 
         cumulative_profit += profit_loss
 
+        if category == "sip":
+            sheet.cell(row=row_idx, column=4).value = per_unit_price
         sheet.cell(row=row_idx, column=5).value = asba_charge
         sheet.cell(row=row_idx, column=7).value = buy_sell
         sheet.cell(row=row_idx, column=8).value = total_amount
@@ -430,6 +515,52 @@ def update_share_allotment(share_name: str, allotted: int) -> dict:
         "share_name": normalized_share_name,
         "previous_allotted": previous_allotted,
         "allotted": int(allotted),
+    }
+
+
+def update_sip_allotment(share_name: str, allotted: int) -> dict:
+    _ensure_workbook_exists()
+
+    workbook = load_workbook(FILE_PATH)
+    sheet = workbook[SHEET_NAME]
+
+    target = share_name.strip().lower()
+    target_row = None
+    found_any = False
+
+    for row_idx in range(sheet.max_row, 1, -1):
+        row_share_name = str(sheet.cell(row=row_idx, column=2).value or "").strip().lower()
+        category = str(sheet.cell(row=row_idx, column=3).value or "").strip().lower()
+        buy_sell = str(sheet.cell(row=row_idx, column=7).value or "").strip().lower()
+        if row_share_name == target:
+            found_any = True
+        if row_share_name == target and category == "sip" and buy_sell not in {"redeem", "redeemed"}:
+            target_row = row_idx
+            break
+
+    if not target_row:
+        if found_any:
+            raise ValueError("Only SIP entries can be updated from this form.")
+        raise ValueError("No SIP entry found for the provided share name.")
+
+    previous_allotted = _to_int(sheet.cell(row=target_row, column=6).value)
+    updated_date = str(sheet.cell(row=target_row, column=1).value or "")
+    normalized_share_name = str(sheet.cell(row=target_row, column=2).value or share_name).strip().upper()
+    total_investment = _to_float(sheet.cell(row=target_row, column=8).value)
+
+    sheet.cell(row=target_row, column=6).value = int(allotted)
+    _recompute_sheet(sheet)
+    average_price = _to_float(sheet.cell(row=target_row, column=4).value)
+    workbook.save(FILE_PATH)
+
+    return {
+        "record_id": int(target_row - 1),
+        "date": updated_date,
+        "share_name": normalized_share_name,
+        "previous_allotted": previous_allotted,
+        "allotted": int(allotted),
+        "total_investment": total_investment,
+        "average_price": average_price,
     }
 
 
@@ -479,8 +610,8 @@ def update_share_record(
     entry_date = entry_date or date.today()
     share_name = share_name.strip().upper()
     category = category.strip().lower()
-    if category not in {"ipo", "buy", "sell", "dividend"}:
-        raise ValueError("Category must be one of: ipo, buy, sell, dividend.")
+    if category not in {"ipo", "sip", "buy", "sell", "dividend"}:
+        raise ValueError("Category must be one of: ipo, sip, buy, sell, dividend.")
 
     if category == "dividend":
         buy_sell = (buy_sell or "").strip().lower()
@@ -493,8 +624,16 @@ def update_share_record(
     else:
         if allotted < 0:
             raise ValueError("Allotted cannot be negative.")
-        if category != "ipo" and allotted <= 0:
+        if category not in {"ipo", "sip"} and allotted <= 0:
             raise ValueError("Allotted must be greater than 0 for buy/sell entries.")
+        if category == "sip":
+            buy_sell = (buy_sell or "installment").strip().lower()
+            if buy_sell == "sip":
+                buy_sell = "installment"
+            if buy_sell not in {"installment", "redeem"}:
+                raise ValueError("SIP type must be 'installment' or 'redeem'.")
+            if per_unit_price <= 0:
+                raise ValueError("SIP investment amount must be greater than 0.")
 
     if per_unit_price < 0:
         raise ValueError("Per unit price cannot be negative.")
@@ -518,6 +657,8 @@ def update_share_record(
     sheet.cell(row=excel_row, column=4).value = str(unit_price)
     sheet.cell(row=excel_row, column=6).value = int(allotted)
     sheet.cell(row=excel_row, column=7).value = str(buy_sell or category).strip().lower()
+    if category == "sip":
+        sheet.cell(row=excel_row, column=8).value = str(unit_price)
 
     _recompute_sheet(sheet)
     workbook.save(FILE_PATH)

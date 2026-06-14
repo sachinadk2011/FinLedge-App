@@ -36,6 +36,7 @@ function BankForm({ value, onChange, onSubmit, submitting, submitLabel = "Add Ba
             placeholder="Amount"
             value={value.amount}
             onChange={(e) => onChange({ ...value, amount: e.target.value })}
+            data-tour="bank-amount"
             required
           />
         </label>

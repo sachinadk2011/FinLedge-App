@@ -1,0 +1,12 @@
+{
+  "latestVersion": "1.0.3",
+  "minimumSupportedVersion": "1.0.3",
+  "releaseUrl": "https://github.com/sachinadk2011/FinLedge-App/releases/latest",
+  "availableMessage": "A newer Finledge release is available on GitHub. Review what changed and install it from the official release page.",
+  "requiredMessage": "This Finledge version is no longer supported. Please install the latest release from GitHub to continue receiving important fixes.",
+  "releaseNotes": [
+    "SIP investment and redemption tracking.",
+    "Interactive onboarding tour.",
+    "Future minimum-version update policy support."
+  ]
+}

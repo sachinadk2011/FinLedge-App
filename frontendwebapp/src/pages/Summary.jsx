@@ -109,8 +109,10 @@ function buildDailyOverview(bankRecords, shareRecords) {
     const totalAmount = Number(record.total_amount || 0);
     const profitLoss = Number(record.profit_loss || 0);
 
-    if (category === "ipo" || category === "buy") {
+    if (category === "ipo" || category === "buy" || (category === "sip" && buySell !== "redeem")) {
       entry.shareInvestment += totalAmount;
+    } else if (category === "sip" && buySell === "redeem") {
+      entry.shareProfitLoss += profitLoss;
     } else if (category === "sell") {
       entry.shareProfitLoss += profitLoss;
     } else if (category === "dividend" && buySell === "cash") {
@@ -160,8 +162,10 @@ function buildMonthlyOverview(bankRecords, shareRecords) {
     const totalAmount = Number(record.total_amount || 0);
     const profitLoss = Number(record.profit_loss || 0);
 
-    if (category === "ipo" || category === "buy") {
+    if (category === "ipo" || category === "buy" || (category === "sip" && buySell !== "redeem")) {
       entry.shareInvestment += totalAmount;
+    } else if (category === "sip" && buySell === "redeem") {
+      entry.shareProfitLoss += profitLoss;
     } else if (category === "sell") {
       entry.shareProfitLoss += profitLoss;
     } else if (category === "dividend" && buySell === "cash") {
@@ -245,20 +249,22 @@ function Summary() {
   const totalRecords = bankRecords.length + shareRecords.length;
   const hasAnyData = totalRecords > 0;
 
-  const overallNet = Number(bankSummary.net_balance || 0) + Number(shareSummary.overall_profit_loss || 0);
+  const totalShareInvestment = Number(shareSummary.grand_total_investment ?? shareSummary.overall_investment ?? 0);
+  const totalShareProfitLoss = Number(shareSummary.grand_profit_loss ?? shareSummary.overall_profit_loss ?? 0);
+  const overallNet = Number(bankSummary.net_balance || 0) + totalShareProfitLoss;
 
   const stats = [
     { label: "Total bank income", value: formatter.format(bankSummary.total_income || 0) },
     { label: "Total bank expenses", value: formatter.format(bankSummary.total_expenses || 0) },
     { label: "Bank net balance", value: formatter.format(bankSummary.net_balance || 0) },
-    { label: "Total share investment", value: formatter.format(shareSummary.overall_investment || 0) },
-    { label: "Total share profit/loss", value: formatter.format(shareSummary.overall_profit_loss || 0) },
+    { label: "Total share investment", value: formatter.format(totalShareInvestment) },
+    { label: "Total share profit/loss", value: formatter.format(totalShareProfitLoss) },
     { label: "Overall net position", value: formatter.format(overallNet) },
   ];
 
   const overviewData = [
     { label: "Bank net", value: Number(bankSummary.net_balance || 0) },
-    { label: "Share profit/loss", value: Number(shareSummary.overall_profit_loss || 0) },
+    { label: "Share profit/loss", value: totalShareProfitLoss },
     { label: "Overall net", value: overallNet },
   ];
 
