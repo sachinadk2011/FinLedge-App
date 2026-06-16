@@ -197,8 +197,8 @@ def _sip_outstanding_investment(sheet, share_name: str, before_row: int | None =
         profit_loss = _to_float(sheet.cell(row=row_idx, column=9).value)
 
         if buy_sell in {"redeem", "redeemed"}:
-            cost_basis = max(0.0, total_amount - profit_loss)
-            outstanding = max(0.0, outstanding - cost_basis)
+            # SIP redemption is a full redemption: outstanding investment drops to 0
+            outstanding = 0.0
         else:
             outstanding += total_amount
 
@@ -271,8 +271,10 @@ def append_share_record(
         total_amount_dec = unit_price
         if buy_sell == "redeem":
             outstanding = _sip_outstanding_investment(sheet, share_name)
-            cost_basis = min(outstanding, float(total_amount_dec))
-            profit_loss_dec = total_amount_dec - Decimal(str(cost_basis))
+            if outstanding <= 0:
+                raise ValueError(f"Cannot redeem '{share_name}': no outstanding SIP investment found.")
+            # Profit = Redeemed Amount (total_amount_dec) - Total Invested (outstanding)
+            profit_loss_dec = total_amount_dec - Decimal(str(outstanding))
         else:
             profit_loss_dec = Decimal("0")
         if buy_sell == "installment" and int(allotted) > 0:
@@ -440,9 +442,9 @@ def _recompute_sheet(sheet) -> None:
             total_amount = stored_total
             if normalized_buy_sell == "redeem":
                 outstanding = sip_investment_by_share.get(share_key, 0.0)
-                cost_basis = min(outstanding, total_amount)
-                profit_loss = total_amount - cost_basis
-                sip_investment_by_share[share_key] = max(0.0, outstanding - cost_basis)
+                # Profit = Redeemed Amount - Total Invested
+                profit_loss = total_amount - outstanding
+                sip_investment_by_share[share_key] = 0.0
                 per_unit_price = total_amount
                 buy_sell = "redeem"
             else:

@@ -173,7 +173,11 @@ process.on("unhandledRejection", (reason) => {
 logLine("[main] Finledge Electron starting...", { logFile: LOG_FILE });
 loadDotEnv();
 process.env.FINLEDGE_MODE = getAppMode();
-const SHOULD_SIMULATE_UPDATES = IS_ELECTRON_DEV && String(process.env.FINLEDGE_SIMULATE_UPDATE || "") === "1";
+const SIMULATE_UPDATE_VALUE = IS_ELECTRON_DEV
+  ? String(process.env.FINLEDGE_SIMULATE_UPDATE || "").trim().toLowerCase()
+  : "";
+const SHOULD_SIMULATE_UPDATES = SIMULATE_UPDATE_VALUE === "1" || SIMULATE_UPDATE_VALUE === "available" || SIMULATE_UPDATE_VALUE === "required";
+const SIMULATE_REQUIRED_UPDATE = SIMULATE_UPDATE_VALUE === "required";
 app.setName("Finledge");
 Menu.setApplicationMenu(null);
 
@@ -755,18 +759,43 @@ function sendUpdateStatus(status) {
   mainWindow.webContents.send("app:update-status", latestUpdateStatus);
 }
 
+// ── Dev-only simulation helpers ──────────────────────────────────────────
+// Set FINLEDGE_SIMULATE_UPDATE=1 (or FINLEDGE_SIMULATE_UPDATE=required) to
+// test how the update notice appears on a real client machine.
 function simulateUpdateAvailable() {
   sendUpdateStatus({
     state: "available",
-    title: "Update available",
-    detail: "Finledge test update is available on GitHub. Review the release notes and download it from the official release page.",
-    version: `${app.getVersion()}-test`,
+    title: "Update available — Finledge 1.2.0",
+    detail: "A new version of Finledge is ready. Download it from GitHub Releases to get the latest features and fixes.",
+    version: "1.2.0",
     releaseUrl: GITHUB_RELEASES_URL,
     releaseNotes: [
-      "SIP investment tracking with separate dashboard totals.",
-      "Bank and share dashboard graphs.",
-      "Update notifications now point to GitHub releases.",
+      "Interactive onboarding tour with spotlight and step animations.",
+      "Dividend entries: cash adds to total dividend; bonus shares add to portfolio quantity.",
+      "Secondary market buy/sell: enter total amount + quantity, app calculates per-unit price.",
+      "Refresh button now appears beside the Finledge logo for quick data reload.",
+      "Update notice shows version number and expandable 'What's new' section.",
+      "Force-update support via update-policy.json — critical versions can block the app.",
+      "Summary overall net corrected: Bank net + Share profit/loss.",
     ],
+    force: false,
+    isSimulation: true,
+  });
+}
+
+function simulateRequiredUpdate() {
+  sendUpdateStatus({
+    state: "required",
+    title: "Critical update required",
+    detail: "This version of Finledge is no longer supported. You must install the latest release to continue.",
+    version: "1.2.0",
+    minimumSupportedVersion: "1.2.0",
+    releaseUrl: GITHUB_RELEASES_URL,
+    releaseNotes: [
+      "Critical data-integrity fix for share transaction calculations.",
+      "Security patch for local file handling.",
+    ],
+    force: true,
     isSimulation: true,
   });
 }
@@ -870,11 +899,16 @@ ipcMain.handle("app:check-for-updates", async () => {
     sendUpdateStatus({
       state: "checking",
       title: "Checking for updates",
-      detail: "Running the test update check...",
+      detail: SIMULATE_REQUIRED_UPDATE
+        ? "Simulating a force-required update check..."
+        : "Running the test update check...",
       percent: null,
       isSimulation: true,
     });
-    setTimeout(simulateUpdateAvailable, 900);
+    setTimeout(
+      SIMULATE_REQUIRED_UPDATE ? simulateRequiredUpdate : simulateUpdateAvailable,
+      900
+    );
     return { ok: true, simulated: true };
   }
 
@@ -1048,7 +1082,10 @@ app.whenReady().then(async () => {
         });
 
       if (SHOULD_SIMULATE_UPDATES) {
-        setTimeout(simulateUpdateAvailable, 2500);
+        setTimeout(
+          SIMULATE_REQUIRED_UPDATE ? simulateRequiredUpdate : simulateUpdateAvailable,
+          2500
+        );
       }
     } else {
       navigateToFrontend(getFrontendUrl());

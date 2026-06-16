@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
-import { OPEN_TOUR_EVENT, TOUR_DISABLED_KEY, TOUR_SEEN_KEY } from "../components/OnboardingTour";
+// import { OPEN_TOUR_EVENT, TOUR_DISABLED_KEY, TOUR_SEEN_KEY } from "../components/OnboardingTour"; // disabled for now
 
 function getDesktopBridge() {
   if (typeof window === "undefined") {
@@ -16,9 +16,9 @@ function Settings() {
   const bridge = getDesktopBridge();
   const [locations, setLocations] = useState(null);
   const [message, setMessage] = useState("");
-  const [showTourOnStartup, setShowTourOnStartup] = useState(
-    () => typeof window === "undefined" || !window.localStorage.getItem(TOUR_DISABLED_KEY)
-  );
+  // const [showTourOnStartup, setShowTourOnStartup] = useState(
+  //   () => typeof window === "undefined" || !window.localStorage.getItem(TOUR_DISABLED_KEY)
+  // ); // disabled for now
 
   useEffect(() => {
     let active = true;
@@ -50,20 +50,18 @@ function Settings() {
     }
   };
 
-  const startTour = () => {
-    window.dispatchEvent(new Event(OPEN_TOUR_EVENT));
-  };
-
-  const toggleStartupTour = (checked) => {
-    setShowTourOnStartup(checked);
-    if (checked) {
-      window.localStorage.removeItem(TOUR_DISABLED_KEY);
-      window.localStorage.removeItem(TOUR_SEEN_KEY);
-    } else {
-      window.localStorage.setItem(TOUR_DISABLED_KEY, "1");
-      window.localStorage.setItem(TOUR_SEEN_KEY, "1");
-    }
-  };
+  // --- Tour helpers disabled for now ---
+  // const startTour = () => window.dispatchEvent(new Event(OPEN_TOUR_EVENT));
+  // const toggleStartupTour = (checked) => {
+  //   setShowTourOnStartup(checked);
+  //   if (checked) {
+  //     window.localStorage.removeItem(TOUR_DISABLED_KEY);
+  //     window.localStorage.removeItem(TOUR_SEEN_KEY);
+  //   } else {
+  //     window.localStorage.setItem(TOUR_DISABLED_KEY, "1");
+  //     window.localStorage.setItem(TOUR_SEEN_KEY, "1");
+  //   }
+  // };
 
   return (
     <main className="page">
@@ -82,6 +80,7 @@ function Settings() {
         </div>
       </header>
 
+      {/* Guide section — disabled for now, will be re-enabled when tour is ready
       <section className="card">
         <h3>Guide</h3>
         <div className="settings-row">
@@ -104,6 +103,7 @@ function Settings() {
           </div>
         </div>
       </section>
+      */}
 
       <section className="card">
         <h3>Excel file location</h3>

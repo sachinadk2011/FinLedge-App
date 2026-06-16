@@ -6,7 +6,8 @@ import { fileURLToPath } from "url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const projectRoot = path.resolve(__dirname, "..");
-const version = process.argv[2];
+const rootPkg = JSON.parse(readFileSync(path.join(projectRoot, "package.json"), "utf8"));
+const version = process.argv[2] || rootPkg.version;
 // SemVer-compliant regex (semver.org): MAJOR.MINOR.PATCH[-pre-release][+build]
 // Rejects leading zeros (e.g. 01.2.3) and accepts build metadata (e.g. 1.2.3+build.4).
 const versionPattern =
@@ -29,7 +30,11 @@ function run(command, args) {
 }
 
 if (!version || !versionPattern.test(version)) {
-  throw new Error("Usage: node ./scripts/start-release.mjs 1.0.4");
+  throw new Error(
+    `Version "${version}" is not valid semver.\n` +
+    `Usage A: npm run version:sync -- 1.0.4   then   npm run release\n` +
+    `Usage B: npm run release -- 1.0.4  (bumps version + releases in one step)`
+  );
 }
 
 const branch = run("git", ["branch", "--show-current"]);
@@ -73,6 +78,7 @@ const releaseFiles = [
   "frontendwebapp/package-lock.json",
   "desktop/package.json",
   "desktop/package-lock.json",
+  "update-policy.json", // latestVersion is kept in sync by version:sync
 ];
 
 run("git", ["add", ...releaseFiles]);

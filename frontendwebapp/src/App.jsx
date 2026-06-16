@@ -2,7 +2,7 @@ import { Link, Navigate, Outlet, Route, Routes, useLocation } from "react-router
 
 import BankDashboard from "./pages/BankDashboard";
 import BankPage from "./pages/BankPage";
-import OnboardingTour from "./components/OnboardingTour";
+// import OnboardingTour from "./components/OnboardingTour"; // disabled for now
 import UpdateNotice from "./components/UpdateNotice";
 import Home from "./pages/Home";
 import Settings from "./pages/Settings";
@@ -27,7 +27,7 @@ function Layout() {
   return (
     <div className="app-shell">
       <UpdateNotice />
-      <OnboardingTour />
+      {/* <OnboardingTour /> */}{/* Tour guide disabled for now — code is ready, will be enabled later */}
       <header className="sticky top-0 z-20 bg-white/70 supports-[backdrop-filter]:bg-white/40 supports-[backdrop-filter]:backdrop-blur-xl">
         <div className="mx-auto flex max-w-6xl flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:gap-6 sm:px-6">
           <div className="brand-cluster">

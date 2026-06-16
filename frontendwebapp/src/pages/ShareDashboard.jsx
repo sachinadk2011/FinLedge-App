@@ -267,13 +267,20 @@ function ShareDashboard() {
       share_name: record.share_name,
       category: catDisplay,
       per_unit_price:
-        (record.category === "dividend" && record.buy_sell === "bonus") || (record.category === "sip" && !record.allotted)
+        // SIP: never show per-unit price — profit is on total invested vs total redeemed
+        record.category === "sip"
           ? "-"
-          : formatter.format(record.per_unit_price),
+          : (record.category === "dividend" && record.buy_sell === "bonus")
+            ? "-"
+            : formatter.format(record.per_unit_price),
       asba_charge: record.category === "dividend" || record.category === "sip" ? "-" : formatter.format(record.asba_charge),
       allotted:
         record.category === "dividend" && record.buy_sell === "cash"
           ? "-"
+          // SIP redeem — no unit count, it's a full redemption by amount
+          : record.category === "sip" && record.buy_sell === "redeem"
+            ? "—"
+          // SIP installment with no units allocated yet
           : record.category === "sip" && !record.allotted
             ? "Pending"
             : record.allotted,
