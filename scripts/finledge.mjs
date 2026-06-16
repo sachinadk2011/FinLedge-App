@@ -47,7 +47,7 @@ function runProcess(commandName, args, extraEnv = {}, cwd = projectRoot) {
     const child = spawn(commandName, args, {
       cwd,
       stdio: "inherit",
-      shell: false,
+      shell: process.platform === "win32" ? true : false,
       env: {
         ...loadEnvFile(),
         ...process.env,
@@ -67,10 +67,8 @@ function runProcess(commandName, args, extraEnv = {}, cwd = projectRoot) {
 }
 
 async function runNpmWithEnv(extraEnv, ...args) {
-  const npmExecPath = process.env.npm_execpath;
-  const commandName = npmExecPath ? process.execPath : process.platform === "win32" ? "npm.cmd" : "npm";
-  const commandArgs = npmExecPath ? [npmExecPath, ...args] : args;
-  await runProcess(commandName, commandArgs, extraEnv);
+  const commandName = process.platform === "win32" ? "npm.cmd" : "npm";
+  await runProcess(commandName, args, extraEnv);
 }
 
 function resolvePythonExecutable(env) {
@@ -211,7 +209,7 @@ async function main() {
   }
 }
 
-main().catch(() => {
-  console.error("FinLedge command failed.");
+main().catch((err) => {
+  console.error("FinLedge command failed:", err);
   process.exit(1);
 });

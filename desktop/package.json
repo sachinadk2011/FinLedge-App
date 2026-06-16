@@ -17,8 +17,8 @@
     "electron-updater": "^6.3.9"
   },
   "devDependencies": {
-    "electron": "^30.0.0",
-    "electron-builder": "^24.13.3"
+    "electron": "^42.4.0",
+    "electron-builder": "^26.15.3"
   },
   "build": {
     "appId": "com.finledge.tracker",
@@ -62,7 +62,6 @@
         }
       ],
       "icon": "assets/finledge_icon.ico",
-      "publisherName": "Sachin Adhikari",
       "artifactName": "Finledge-Setup-${version}.${ext}"
     },
     "nsis": {
