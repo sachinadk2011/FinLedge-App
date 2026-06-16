@@ -60,7 +60,7 @@ const existingTag = spawnSync("git", ["rev-parse", "-q", "--verify", `refs/tags/
   encoding: "utf8",
   shell: false,
 });
-const force = process.argv.includes("--force");
+const force = process.argv.some(arg => arg === "--force" || arg === "force" || arg === "--overwrite");
 if (existingTag.status === 0) {
   if (force) {
     console.log(`Tag ${tag} already exists. --force provided, deleting existing tag...`);
