@@ -22,6 +22,7 @@ function SharePage() {
   const [submitting, setSubmitting] = useState(false);
   const [loading, setLoading] = useState(false);
   const [knownShares, setKnownShares] = useState([]);
+  const [sipShares, setSipShares] = useState([]);
   const [portfolioRows, setPortfolioRows] = useState([]);
 
   const loadShareMeta = () => {
@@ -31,10 +32,18 @@ function SharePage() {
       .then((response) => {
         const records = response?.records || [];
 
-        const names = Array.from(new Set(records.map((r) => String(r.share_name || "").trim()).filter(Boolean))).sort(
-          (a, b) => a.localeCompare(b)
-        );
+        const regularShareNames = records
+          .filter((r) => String(r.category || "").trim().toLowerCase() !== "sip")
+          .map((r) => String(r.share_name || "").trim())
+          .filter(Boolean);
+        const sipShareNames = records
+          .filter((r) => String(r.category || "").trim().toLowerCase() === "sip")
+          .map((r) => String(r.share_name || "").trim())
+          .filter(Boolean);
+        const names = Array.from(new Set(regularShareNames)).sort((a, b) => a.localeCompare(b));
+        const sipNames = Array.from(new Set(sipShareNames)).sort((a, b) => a.localeCompare(b));
         setKnownShares(names);
+        setSipShares(sipNames);
 
         // Remaining shares by share name (tracker-only).
         const remainingByName = new Map();
@@ -70,9 +79,28 @@ function SharePage() {
           dates: record.date || getTodayInputValue(),
           share_name: record.share_name || "",
           category: String(record.category || "ipo").toLowerCase(),
-          per_unit_price: String(record.per_unit_price ?? ""),
+          per_unit_price:
+            String(record.category || "").toLowerCase() === "sip"
+              ? String(record.total_amount ?? record.per_unit_price ?? "")
+              : String(record.per_unit_price ?? ""),
+          total_amount:
+            String(record.category || "").toLowerCase() === "sip" ? String(record.total_amount ?? "") : "",
+          amount:
+            String(record.category || "").toLowerCase() === "dividend" && String(record.buy_sell || "").toLowerCase() === "cash"
+              ? String(record.total_amount ?? record.per_unit_price ?? "")
+              : "",
+          bonus_shares:
+            String(record.category || "").toLowerCase() === "dividend" && String(record.buy_sell || "").toLowerCase() === "bonus"
+              ? String(record.allotted ?? "")
+              : "",
           allotted: String(record.allotted ?? ""),
           buy_sell: String(record.buy_sell || record.category || "").toLowerCase(),
+          _sipType:
+            String(record.category || "").toLowerCase() === "sip"
+              ? String(record.buy_sell || "installment").toLowerCase() === "redeem"
+                ? "redeem"
+                : "installment"
+              : undefined,
           _dividendType:
             String(record.category || "").toLowerCase() === "dividend"
               ? String(record.buy_sell || "cash").toLowerCase()
@@ -101,7 +129,12 @@ function SharePage() {
 
     const payload = {
       ...form,
-      buy_sell: form.category === "dividend" ? String(form._dividendType || "cash").toLowerCase() : form.category,
+      buy_sell:
+        form.category === "dividend"
+          ? String(form._dividendType || "cash").toLowerCase()
+          : form.category === "sip"
+            ? String(form._sipType || form.buy_sell || "installment").toLowerCase()
+            : form.category,
     };
     console.log("[SharePage] submit payload", payload);
 
@@ -116,8 +149,12 @@ function SharePage() {
           share_name: "",
           category: "ipo",
           per_unit_price: "",
+          total_amount: "",
+          amount: "",
+          bonus_shares: "",
           allotted: "",
           _dividendType: undefined,
+          _sipType: undefined,
           _totalAmount: "",
         });
       } else {
@@ -126,7 +163,10 @@ function SharePage() {
           ...prev,
           share_name: "",
           per_unit_price: "",
-          allotted: prev.category === "dividend" && prev._dividendType === "cash" ? "0" : "",
+          total_amount: "",
+          amount: "",
+          bonus_shares: "",
+          allotted: prev.category === "dividend" || prev.category === "sip" ? "0" : "",
           _totalAmount: "",
         }));
       }
@@ -169,7 +209,7 @@ function SharePage() {
             onSubmit={handleSubmit}
             submitting={submitting}
             submitLabel={editId ? "Update Share Entry" : "Add Share Entry"}
-            suggestions={knownShares}
+            suggestions={form.category === "sip" ? sipShares : knownShares}
           />
           {success ? <p className="success">{success}</p> : null}
           {error ? <pre className="error-pre">{error}</pre> : null}

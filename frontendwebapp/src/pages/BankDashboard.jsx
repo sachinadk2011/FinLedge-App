@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
 import { deleteBankRecord, getBankData } from "../api/bankApi";
 import BarChart from "../components/BarChart";
 import ConfirmDialog from "../components/ConfirmDialog";
+import InteractiveTimelineChart from "../components/InteractiveTimelineChart";
 import StatGrid from "../components/StatGrid";
 import TransactionsTable from "../components/TransactionsTable";
 
@@ -11,6 +12,103 @@ const formatter = new Intl.NumberFormat("en-US", {
   minimumFractionDigits: 2,
   maximumFractionDigits: 2,
 });
+
+const dayLabelFormatter = new Intl.DateTimeFormat("en-US", {
+  month: "short",
+  day: "numeric",
+});
+
+const monthLabelFormatter = new Intl.DateTimeFormat("en-US", {
+  month: "short",
+  year: "numeric",
+});
+
+function parseDate(value) {
+  if (!value) return null;
+  const text = String(value).trim();
+  if (!text) return null;
+  const parsed = new Date(text.includes("T") ? text : `${text}T00:00:00`);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function isoDayKey(dateValue) {
+  return [
+    dateValue.getFullYear(),
+    String(dateValue.getMonth() + 1).padStart(2, "0"),
+    String(dateValue.getDate()).padStart(2, "0"),
+  ].join("-");
+}
+
+function isoMonthKey(dateValue) {
+  return [dateValue.getFullYear(), String(dateValue.getMonth() + 1).padStart(2, "0")].join("-");
+}
+
+function createBankTimelineEntry(label) {
+  return {
+    label,
+    income: 0,
+    expenses: 0,
+    netDisplay: 0,
+    netRaw: 0,
+  };
+}
+
+function addBankRecordToEntry(entry, record) {
+  const category = String(record.category || "").trim().toLowerCase();
+  const amount = Number(record.amount || 0);
+
+  if (category === "income") {
+    entry.income += amount;
+  } else {
+    entry.expenses += Math.abs(amount);
+  }
+
+  entry.netRaw += amount;
+  entry.netDisplay = Math.abs(entry.netRaw);
+}
+
+function buildDailyBankOverview(records) {
+  const datedItems = records.map((record) => parseDate(record.date)).filter(Boolean);
+  if (datedItems.length === 0) return [];
+
+  const start = new Date(Math.min(...datedItems.map((item) => item.getTime())));
+  const end = new Date(Math.max(...datedItems.map((item) => item.getTime())));
+  const byDay = new Map();
+
+  const cursor = new Date(start);
+  while (cursor <= end) {
+    const key = isoDayKey(cursor);
+    byDay.set(key, createBankTimelineEntry(dayLabelFormatter.format(cursor)));
+    cursor.setDate(cursor.getDate() + 1);
+  }
+
+  for (const record of records) {
+    const parsed = parseDate(record.date);
+    if (!parsed) continue;
+    const entry = byDay.get(isoDayKey(parsed));
+    if (entry) addBankRecordToEntry(entry, record);
+  }
+
+  return Array.from(byDay.values());
+}
+
+function buildMonthlyBankOverview(records) {
+  const byMonth = new Map();
+
+  for (const record of records) {
+    const parsed = parseDate(record.date);
+    if (!parsed) continue;
+    const key = isoMonthKey(parsed);
+    if (!byMonth.has(key)) {
+      byMonth.set(key, createBankTimelineEntry(monthLabelFormatter.format(new Date(`${key}-01T00:00:00`))));
+    }
+    addBankRecordToEntry(byMonth.get(key), record);
+  }
+
+  return Array.from(byMonth.entries())
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([, entry]) => entry);
+}
 
 function BankDashboard() {
   const navigate = useNavigate();
@@ -73,6 +171,9 @@ function BankDashboard() {
     { label: "Operation cost", value: Number(categoryTotals["operation cost"] || 0) },
   ];
 
+  const dailyOverview = useMemo(() => buildDailyBankOverview(records), [records]);
+  const monthlyOverview = useMemo(() => buildMonthlyBankOverview(records), [records]);
+
   const tableRows = [...records].reverse().map((record) => ({
     id: record.id,
     date: record.date,
@@ -130,6 +231,38 @@ function BankDashboard() {
       {!loading && !error ? (
         <>
           <StatGrid items={stats} />
+          <section className="card">
+            <div className="page-header" style={{ marginBottom: 12 }}>
+              <div>
+                <h3>Bank trends</h3>
+                <p className="subtitle">Hover bars to see exact values. Drag the lower scrubber to move through history.</p>
+              </div>
+            </div>
+            <div className="graph-grid">
+              <InteractiveTimelineChart
+                title="Daily Bank Overview"
+                subtitle="Income, expenses, and net balance by transaction date."
+                data={dailyOverview}
+                windowSize={12}
+                bars={[
+                  { dataKey: "income", name: "Income", color: "#16a34a" },
+                  { dataKey: "expenses", name: "Expenses", color: "#ef4444" },
+                  { dataKey: "netDisplay", rawDataKey: "netRaw", name: "Net balance", color: "#0f766e", negativeColor: "#f59e0b" },
+                ]}
+              />
+              <InteractiveTimelineChart
+                title="Monthly Bank Overview"
+                subtitle="Month-wise income, expenses, and net balance."
+                data={monthlyOverview}
+                windowSize={12}
+                bars={[
+                  { dataKey: "income", name: "Income", color: "#16a34a" },
+                  { dataKey: "expenses", name: "Expenses", color: "#ef4444" },
+                  { dataKey: "netDisplay", rawDataKey: "netRaw", name: "Net balance", color: "#0f766e", negativeColor: "#f59e0b" },
+                ]}
+              />
+            </div>
+          </section>
           <section className="card">
             <h3>All transactions</h3>
             <TransactionsTable

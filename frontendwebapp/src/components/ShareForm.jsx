@@ -9,6 +9,7 @@ function ShareForm({
   suggestions = [],
 }) {
   const isDividend = value.category === "dividend";
+  const isSip = value.category === "sip";
   const isSecondary = value.category === "buy" || value.category === "sell";
 
   const handleTotalQtyChange = (field, updatedText) => {
@@ -60,15 +61,20 @@ function ShareForm({
           <span>Entry type</span>
           <select 
             value={value.category} 
+            data-tour="share-entry-type"
             onChange={(e) => {
               const cat = e.target.value;
               onChange({ 
                 ...value, 
                 category: cat,
                 _dividendType: cat === "dividend" ? "cash" : undefined,
+                _sipType: cat === "sip" ? "installment" : undefined,
                 _totalAmount: "",
                 per_unit_price: "",
-                allotted: cat === "dividend" ? "0" : ""
+                total_amount: "",
+                amount: "",
+                bonus_shares: "",
+                allotted: cat === "dividend" || cat === "sip" ? "0" : ""
               });
             }}
           >
@@ -91,6 +97,8 @@ function ShareForm({
                   onChange({
                     ...value,
                     _dividendType: dt,
+                    amount: "",
+                    bonus_shares: "",
                     per_unit_price: "",
                     allotted: dt === "cash" ? "0" : ""
                   });
@@ -108,8 +116,8 @@ function ShareForm({
                   inputMode="decimal"
                   autoComplete="off"
                   placeholder="Cash Amount"
-                  value={value.per_unit_price}
-                  onChange={(e) => onChange({ ...value, per_unit_price: e.target.value, allotted: "0" })}
+                  value={value.amount ?? value.per_unit_price}
+                  onChange={(e) => onChange({ ...value, amount: e.target.value, per_unit_price: e.target.value, allotted: "0" })}
                   required
                 />
               </label>
@@ -122,12 +130,53 @@ function ShareForm({
                   pattern="[0-9]*"
                   autoComplete="off"
                   placeholder="Bonus Shares"
-                  value={value.allotted}
-                  onChange={(e) => onChange({ ...value, allotted: e.target.value, per_unit_price: "0" })}
+                  value={value.bonus_shares ?? value.allotted}
+                  onChange={(e) => onChange({ ...value, bonus_shares: e.target.value, allotted: e.target.value, per_unit_price: "0" })}
                   required
                 />
               </label>
             )}
+          </>
+        ) : isSip ? (
+          <>
+            <label className="field">
+              <span>SIP type</span>
+              <select
+                value={value._sipType || value.buy_sell || "installment"}
+                onChange={(e) =>
+                  onChange({
+                    ...value,
+                    _sipType: e.target.value,
+                    buy_sell: e.target.value,
+                    total_amount: "",
+                    per_unit_price: "",
+                    allotted: "0",
+                  })
+                }
+              >
+                <option value="installment">Installment / Investment</option>
+                <option value="redeem">Redeem</option>
+              </select>
+            </label>
+            <label className="field">
+              <span>{(value._sipType || value.buy_sell) === "redeem" ? "Redeemed amount received" : "SIP installment amount"}</span>
+              <input
+                type="text"
+                inputMode="decimal"
+                autoComplete="off"
+                placeholder={(value._sipType || value.buy_sell) === "redeem" ? "Amount received" : "Installment or investment amount"}
+                value={value.total_amount ?? value.per_unit_price}
+                onChange={(e) =>
+                  onChange({
+                    ...value,
+                    total_amount: e.target.value,
+                    per_unit_price: e.target.value,
+                    allotted: "0",
+                  })
+                }
+                required
+              />
+            </label>
           </>
         ) : isSecondary ? (
           <>
@@ -201,4 +250,3 @@ function ShareForm({
 }
 
 export default ShareForm;
-

@@ -59,4 +59,14 @@ setLockVersion("package-lock.json", nextVersion);
 setLockVersion("frontendwebapp/package-lock.json", nextVersion, [".."]);
 setLockVersion("desktop/package-lock.json", nextVersion);
 
+// Also keep update-policy.json in sync so existing users get notified
+const policyPath = "update-policy.json";
+const policy = readJson(policyPath);
+policy.latestVersion = nextVersion;
+writeJson(policyPath, policy);
+
 console.log(`Synced FinLedge version to ${nextVersion}.`);
+console.log(`  • package.json`);
+console.log(`  • frontendwebapp/package.json`);
+console.log(`  • desktop/package.json`);
+console.log(`  • update-policy.json (latestVersion)`);

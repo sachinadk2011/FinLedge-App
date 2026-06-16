@@ -5,10 +5,11 @@ export const BANK_CATEGORIES = [
   "operation cost",
 ];
 
-export const SHARE_CATEGORIES = ["ipo", "buy", "sell", "dividend"];
+export const SHARE_CATEGORIES = ["ipo", "sip", "buy", "sell", "dividend"];
 
 export const SHARE_CATEGORY_LABELS = {
   ipo: "IPO entry",
+  sip: "SIP investment",
   buy: "Secondary buy",
   sell: "Sell shares",
   dividend: "Dividend",

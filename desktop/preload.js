@@ -8,8 +8,11 @@ contextBridge.exposeInMainWorld("financialTracker", {
   refreshApp: () => ipcRenderer.invoke("app:refresh"),
   checkForUpdates: () => ipcRenderer.invoke("app:check-for-updates"),
   getUpdateStatus: () => ipcRenderer.invoke("app:get-update-status"),
+  openUpdateRelease: (releaseUrl) => ipcRenderer.invoke("app:open-update-release", releaseUrl),
   downloadUpdate: () => ipcRenderer.invoke("app:download-update"),
   installUpdate: () => ipcRenderer.invoke("app:install-update"),
+  getDataLocations: () => ipcRenderer.invoke("app:get-data-locations"),
+  openDataLocation: (target) => ipcRenderer.invoke("app:open-data-location", target),
   onUpdateStatus: (callback) => {
     if (typeof callback !== "function") {
       return () => {};

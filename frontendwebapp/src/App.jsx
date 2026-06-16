@@ -2,8 +2,10 @@ import { Link, Navigate, Outlet, Route, Routes, useLocation } from "react-router
 
 import BankDashboard from "./pages/BankDashboard";
 import BankPage from "./pages/BankPage";
+// import OnboardingTour from "./components/OnboardingTour"; // disabled for now
 import UpdateNotice from "./components/UpdateNotice";
 import Home from "./pages/Home";
+import Settings from "./pages/Settings";
 import ShareDashboard from "./pages/ShareDashboard";
 import SharePage from "./pages/SharePage";
 import Summary from "./pages/Summary";
@@ -14,6 +16,7 @@ function getRouteLabel(pathname) {
   if (pathname.startsWith("/share-dashboard")) return "Share Dashboard";
   if (pathname.startsWith("/share")) return "Share Module";
   if (pathname.startsWith("/summary")) return "Overall Summary";
+  if (pathname.startsWith("/settings")) return "Settings";
   return "Home";
 }
 
@@ -24,6 +27,7 @@ function Layout() {
   return (
     <div className="app-shell">
       <UpdateNotice />
+      {/* <OnboardingTour /> */}{/* Tour guide disabled for now — code is ready, will be enabled later */}
       <header className="sticky top-0 z-20 bg-white/70 supports-[backdrop-filter]:bg-white/40 supports-[backdrop-filter]:backdrop-blur-xl">
         <div className="mx-auto flex max-w-6xl flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:gap-6 sm:px-6">
           <div className="brand-cluster">
@@ -42,20 +46,30 @@ function Layout() {
             <Link
               className="no-underline rounded-full px-4 py-2 text-sm font-bold text-slate-700 transition hover:-translate-y-0.5 hover:bg-white/70 hover:text-slate-900 hover:shadow-soft"
               to="/bank"
+              data-tour="nav-bank"
             >
               Bank
             </Link>
             <Link
               className="no-underline rounded-full px-4 py-2 text-sm font-bold text-slate-700 transition hover:-translate-y-0.5 hover:bg-white/70 hover:text-slate-900 hover:shadow-soft"
               to="/share"
+              data-tour="nav-share"
             >
               Share
             </Link>
             <Link
               className="no-underline rounded-full px-4 py-2 text-sm font-bold text-slate-700 transition hover:-translate-y-0.5 hover:bg-white/70 hover:text-slate-900 hover:shadow-soft"
               to="/summary"
+              data-tour="nav-summary"
             >
               Summary
+            </Link>
+            <Link
+              className="no-underline rounded-full px-4 py-2 text-sm font-bold text-slate-700 transition hover:-translate-y-0.5 hover:bg-white/70 hover:text-slate-900 hover:shadow-soft"
+              to="/settings"
+              data-tour="nav-settings"
+            >
+              Settings
             </Link>
           </nav>
         </div>
@@ -75,6 +89,7 @@ function App() {
         <Route path="/share" element={<SharePage />} />
         <Route path="/share-dashboard" element={<ShareDashboard />} />
         <Route path="/summary" element={<Summary />} />
+        <Route path="/settings" element={<Settings />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>

@@ -1,17 +1,21 @@
 "use strict";
 
-const { app, BrowserWindow, Menu, ipcMain, screen } = require("electron");
+const { app, BrowserWindow, Menu, ipcMain, screen, shell } = require("electron");
 const { autoUpdater } = require("electron-updater");
 const path = require("path");
 const fs = require("fs");
 const os = require("os");
 const http = require("http");
+const https = require("https");
 const zlib = require("zlib");
 const { pathToFileURL } = require("url");
 const { spawn } = require("child_process");
 
 const LOG_FILE = path.join(os.tmpdir(), "finledge-electron.log");
 const WINDOW_TITLE = "Finledge – Financial Tracker";
+const GITHUB_RELEASES_URL = "https://github.com/sachinadk2011/FinLedge-App/releases";
+const DEFAULT_UPDATE_POLICY_URL =
+  "https://raw.githubusercontent.com/sachinadk2011/FinLedge-App/main/update-policy.json";
 const IS_ELECTRON_DEV = String(process.env.ELECTRON_DEV || "") === "1";
 const PROJECT_ROOT = path.resolve(__dirname, "..");
 const ICON_PATH = path.join(__dirname, "assets", "finledge_icon.png");
@@ -58,6 +62,7 @@ const BACKEND_PORT = getPortFromEnv("FINLEDGE_BACKEND_PORT", 8000);
 const FRONTEND_PORT = getPortFromEnv("FINLEDGE_FRONTEND_PORT", 5173);
 const BACKEND_HOST = String(process.env.FINLEDGE_BACKEND_HOST || "127.0.0.1").trim() || "127.0.0.1";
 const FRONTEND_HOST = String(process.env.FINLEDGE_FRONTEND_HOST || "127.0.0.1").trim() || "127.0.0.1";
+const UPDATE_POLICY_URL = String(process.env.FINLEDGE_UPDATE_POLICY_URL || DEFAULT_UPDATE_POLICY_URL).trim();
 
 function loadDotEnv() {
   const envPath = path.join(PROJECT_ROOT, ".env");
@@ -155,7 +160,6 @@ let latestUpdateStatus = {
   title: "Updates",
   detail: "",
 };
-let mockUpdateTimer = null;
 let showUpdateCheckStatus = false;
 
 process.on("uncaughtException", (err) => {
@@ -169,7 +173,11 @@ process.on("unhandledRejection", (reason) => {
 logLine("[main] Finledge Electron starting...", { logFile: LOG_FILE });
 loadDotEnv();
 process.env.FINLEDGE_MODE = getAppMode();
-const SHOULD_SIMULATE_UPDATES = IS_ELECTRON_DEV && String(process.env.FINLEDGE_SIMULATE_UPDATE || "") === "1";
+const SIMULATE_UPDATE_VALUE = IS_ELECTRON_DEV
+  ? String(process.env.FINLEDGE_SIMULATE_UPDATE || "").trim().toLowerCase()
+  : "";
+const SHOULD_SIMULATE_UPDATES = SIMULATE_UPDATE_VALUE === "1" || SIMULATE_UPDATE_VALUE === "available" || SIMULATE_UPDATE_VALUE === "required";
+const SIMULATE_REQUIRED_UPDATE = SIMULATE_UPDATE_VALUE === "required";
 app.setName("Finledge");
 Menu.setApplicationMenu(null);
 
@@ -578,6 +586,165 @@ function getUpdateVersion(info) {
   return String(info?.version || info?.releaseName || "").trim();
 }
 
+function getReleaseUrl(info) {
+  const version = getUpdateVersion(info);
+  const normalizedVersion = version.replace(/^v/i, "");
+  if (normalizedVersion) {
+    return `${GITHUB_RELEASES_URL}/tag/v${normalizedVersion}`;
+  }
+
+  return GITHUB_RELEASES_URL;
+}
+
+function normalizeReleaseNotes(notes) {
+  if (!notes) {
+    return [];
+  }
+
+  if (Array.isArray(notes)) {
+    return notes
+      .map((item) => {
+        if (typeof item === "string") {
+          return item.trim();
+        }
+        return String(item?.note || item?.text || item?.message || "").trim();
+      })
+      .filter(Boolean)
+      .slice(0, 8);
+  }
+
+  return String(notes)
+    .split(/\r?\n/)
+    .map((line) => line.replace(/^[-*]\s+/, "").trim())
+    .filter(Boolean)
+    .slice(0, 8);
+}
+
+function parseVersionParts(version) {
+  return String(version || "")
+    .replace(/^v/i, "")
+    .split(/[.-]/)
+    .slice(0, 3)
+    .map((part) => Number.parseInt(part, 10) || 0);
+}
+
+function compareVersions(a, b) {
+  const left = parseVersionParts(a);
+  const right = parseVersionParts(b);
+  for (let index = 0; index < 3; index += 1) {
+    if ((left[index] || 0) > (right[index] || 0)) return 1;
+    if ((left[index] || 0) < (right[index] || 0)) return -1;
+  }
+  return 0;
+}
+
+function fetchJson(url, timeoutMs = 5000) {
+  return new Promise((resolve, reject) => {
+    const client = url.startsWith("https:") ? https : http;
+    const req = client.get(
+      url,
+      {
+        headers: {
+          "User-Agent": `Finledge/${app.getVersion()}`,
+          Accept: "application/json",
+        },
+      },
+      (res) => {
+        let body = "";
+        res.setEncoding("utf8");
+        res.on("data", (chunk) => {
+          body += chunk;
+        });
+        res.on("end", () => {
+          if (!res.statusCode || res.statusCode < 200 || res.statusCode >= 300) {
+            reject(new Error(`Policy request failed with ${res.statusCode || "unknown"} status.`));
+            return;
+          }
+          try {
+            resolve(JSON.parse(body));
+          } catch (err) {
+            reject(err);
+          }
+        });
+      }
+    );
+
+    req.on("error", reject);
+    req.setTimeout(timeoutMs, () => req.destroy(new Error("Policy request timed out.")));
+  });
+}
+
+async function checkUpdatePolicy({ silent = true } = {}) {
+  if (!UPDATE_POLICY_URL) {
+    return;
+  }
+
+  try {
+    const policy = await fetchJson(UPDATE_POLICY_URL);
+    const currentVersion = app.getVersion();
+    const minimumSupportedVersion = String(policy.minimumSupportedVersion || "").trim();
+    const latestVersion = String(policy.latestVersion || "").trim();
+    const releaseUrl = String(policy.releaseUrl || GITHUB_RELEASES_URL).trim();
+    const releaseNotes = normalizeReleaseNotes(policy.releaseNotes || policy.notes);
+
+    if (minimumSupportedVersion && compareVersions(currentVersion, minimumSupportedVersion) < 0) {
+      sendUpdateStatus({
+        state: "required",
+        title: "Update required",
+        detail:
+          policy.requiredMessage ||
+          `This Finledge version is no longer supported. Please install Finledge ${minimumSupportedVersion} or newer from GitHub Releases.`,
+        currentVersion,
+        version: latestVersion || minimumSupportedVersion,
+        minimumSupportedVersion,
+        releaseUrl,
+        releaseNotes,
+        force: true,
+        percent: null,
+      });
+      return;
+    }
+
+    if (latestVersion && compareVersions(currentVersion, latestVersion) < 0 && latestUpdateStatus.state !== "required") {
+      sendUpdateStatus({
+        state: "available",
+        title: "Update available",
+        detail:
+          policy.availableMessage ||
+          `Finledge ${latestVersion} is available on GitHub. Review what changed and download it from the official release page.`,
+        currentVersion,
+        version: latestVersion,
+        minimumSupportedVersion,
+        releaseUrl,
+        releaseNotes,
+        force: false,
+        percent: null,
+      });
+      return;
+    }
+
+    if (!silent && latestUpdateStatus.state !== "required") {
+      sendUpdateStatus({
+        state: "not-available",
+        title: "Finledge is up to date",
+        detail: "You already have the latest supported version.",
+        percent: null,
+      });
+    }
+  } catch (err) {
+    logLine("[updater] update policy check failed", String(err && err.stack ? err.stack : err));
+    if (!silent) {
+      sendUpdateStatus({
+        state: "error",
+        title: "Update check failed",
+        detail: "Finledge could not check the update policy. Please check GitHub Releases manually.",
+        releaseUrl: GITHUB_RELEASES_URL,
+        error: String(err && err.message ? err.message : err),
+      });
+    }
+  }
+}
+
 function sendUpdateStatus(status) {
   latestUpdateStatus = {
     ...latestUpdateStatus,
@@ -592,58 +759,45 @@ function sendUpdateStatus(status) {
   mainWindow.webContents.send("app:update-status", latestUpdateStatus);
 }
 
-function clearMockUpdateTimer() {
-  if (mockUpdateTimer) {
-    clearInterval(mockUpdateTimer);
-    mockUpdateTimer = null;
-  }
-}
-
+// ── Dev-only simulation helpers ──────────────────────────────────────────
+// Set FINLEDGE_SIMULATE_UPDATE=1 (or FINLEDGE_SIMULATE_UPDATE=required) to
+// test how the update notice appears on a real client machine.
 function simulateUpdateAvailable() {
   sendUpdateStatus({
     state: "available",
-    title: "Update available",
-    detail: "Finledge test update is ready to download.",
-    version: `${app.getVersion()}-test`,
+    title: "Update available — Finledge 1.2.0",
+    detail: "A new version of Finledge is ready. Download it from GitHub Releases to get the latest features and fixes.",
+    version: "1.2.0",
+    releaseUrl: GITHUB_RELEASES_URL,
+    releaseNotes: [
+      "Interactive onboarding tour with spotlight and step animations.",
+      "Dividend entries: cash adds to total dividend; bonus shares add to portfolio quantity.",
+      "Secondary market buy/sell: enter total amount + quantity, app calculates per-unit price.",
+      "Refresh button now appears beside the Finledge logo for quick data reload.",
+      "Update notice shows version number and expandable 'What's new' section.",
+      "Force-update support via update-policy.json — critical versions can block the app.",
+      "Summary overall net corrected: Bank net + Share profit/loss.",
+    ],
+    force: false,
     isSimulation: true,
   });
 }
 
-function simulateUpdateDownload() {
-  clearMockUpdateTimer();
-
-  const SIMULATED_TOTAL_BYTES = 52 * 1024 * 1024; // 52 MB – realistic Electron app update size
-  let percent = 0;
+function simulateRequiredUpdate() {
   sendUpdateStatus({
-    state: "downloading",
-    title: "Downloading update",
-    detail: "Starting the test update download...",
-    percent,
-    transferred: 0,
-    total: SIMULATED_TOTAL_BYTES,
+    state: "required",
+    title: "Critical update required",
+    detail: "This version of Finledge is no longer supported. You must install the latest release to continue.",
+    version: "1.2.0",
+    minimumSupportedVersion: "1.2.0",
+    releaseUrl: GITHUB_RELEASES_URL,
+    releaseNotes: [
+      "Critical data-integrity fix for share transaction calculations.",
+      "Security patch for local file handling.",
+    ],
+    force: true,
     isSimulation: true,
   });
-
-  mockUpdateTimer = setInterval(() => {
-    percent = Math.min(100, percent + 8 + Math.round(Math.random() * 10));
-
-    sendUpdateStatus({
-      state: percent >= 100 ? "downloaded" : "downloading",
-      title: percent >= 100 ? "Update ready" : "Downloading update",
-      detail:
-        percent >= 100
-          ? "Test update downloaded. Restart would install it in a real release."
-          : `Downloaded ${percent}% of the test update.`,
-      percent,
-      transferred: Math.round((percent / 100) * SIMULATED_TOTAL_BYTES),
-      total: SIMULATED_TOTAL_BYTES,
-      isSimulation: true,
-    });
-
-    if (percent >= 100) {
-      clearMockUpdateTimer();
-    }
-  }, 450);
 }
 
 function configureAutoUpdater() {
@@ -679,13 +833,17 @@ function configureAutoUpdater() {
     logLine("[updater] Update available", info);
     showUpdateCheckStatus = false;
     const version = getUpdateVersion(info);
+    const releaseUrl = getReleaseUrl(info);
+    const releaseNotes = normalizeReleaseNotes(info?.releaseNotes || info?.releaseNotesText);
     sendUpdateStatus({
       state: "available",
       title: "Update available",
       detail: version
-        ? `Finledge ${version} is available. Download it in the background and keep working.`
-        : "A new Finledge update is available. Download it in the background and keep working.",
+        ? `Finledge ${version} is available on GitHub. Review what changed and download it from the official release page.`
+        : "A new Finledge update is available on GitHub. Review what changed and download it from the official release page.",
       version,
+      releaseUrl,
+      releaseNotes,
       percent: null,
     });
   });
@@ -705,42 +863,9 @@ function configureAutoUpdater() {
     });
   });
 
-  autoUpdater.on("download-progress", (progress) => {
-    logLine("[updater] Download progress", {
-      percent: progress.percent,
-      transferred: progress.transferred,
-      total: progress.total,
-    });
-    sendUpdateStatus({
-      state: "downloading",
-      title: "Downloading update",
-      detail: "Finledge is downloading the update in the background.",
-      percent: Number(progress.percent) || 0,
-      transferred: progress.transferred,
-      total: progress.total,
-      bytesPerSecond: progress.bytesPerSecond,
-    });
-  });
-
-  autoUpdater.on("update-downloaded", (info) => {
-    logLine("[updater] Update downloaded", info);
-    const version = getUpdateVersion(info);
-    sendUpdateStatus({
-      state: "downloaded",
-      title: "Update ready",
-      detail: version
-        ? `Finledge ${version} is ready. Restart the app to finish updating.`
-        : "The update is ready. Restart the app to finish updating.",
-      version,
-      percent: 100,
-    });
-  });
-
   autoUpdater.on("error", (err) => {
     logLine("[updater] Error", String(err && err.stack ? err.stack : err));
-    const wasVisibleUpdateFlow = ["available", "checking", "downloading", "downloaded"].includes(
-      latestUpdateStatus.state
-    );
+    const wasVisibleUpdateFlow = ["available", "checking"].includes(latestUpdateStatus.state);
     if (!showUpdateCheckStatus && !wasVisibleUpdateFlow) {
       return;
     }
@@ -749,7 +874,7 @@ function configureAutoUpdater() {
     sendUpdateStatus({
       state: "error",
       title: "Update failed",
-      detail: "Finledge could not complete the update check or download. Please try again later.",
+      detail: "Finledge could not complete the update check. Please try again later.",
       error: String(err && err.message ? err.message : err),
     });
   });
@@ -774,12 +899,22 @@ ipcMain.handle("app:check-for-updates", async () => {
     sendUpdateStatus({
       state: "checking",
       title: "Checking for updates",
-      detail: "Running the test update check...",
+      detail: SIMULATE_REQUIRED_UPDATE
+        ? "Simulating a force-required update check..."
+        : "Running the test update check...",
       percent: null,
       isSimulation: true,
     });
-    setTimeout(simulateUpdateAvailable, 900);
+    setTimeout(
+      SIMULATE_REQUIRED_UPDATE ? simulateRequiredUpdate : simulateUpdateAvailable,
+      900
+    );
     return { ok: true, simulated: true };
+  }
+
+  await checkUpdatePolicy({ silent: false });
+  if (latestUpdateStatus.state === "required" || latestUpdateStatus.state === "available") {
+    return { ok: true, policy: true };
   }
 
   if (IS_ELECTRON_DEV || !app.isPackaged) {
@@ -805,28 +940,66 @@ ipcMain.handle("app:check-for-updates", async () => {
 
 ipcMain.handle("app:get-update-status", async () => latestUpdateStatus);
 
-ipcMain.handle("app:download-update", async () => {
-  if (SHOULD_SIMULATE_UPDATES) {
-    simulateUpdateDownload();
-    return { ok: true, simulated: true };
-  }
-
-  if (IS_ELECTRON_DEV || !app.isPackaged) {
-    return { ok: false, reason: "updates-disabled-in-dev" };
-  }
+ipcMain.handle("app:open-update-release", async (_event, releaseUrl) => {
+  const targetUrl = String(releaseUrl || latestUpdateStatus.releaseUrl || GITHUB_RELEASES_URL).trim();
+  const safeUrl = targetUrl.startsWith("https://github.com/sachinadk2011/FinLedge-App/releases")
+    ? targetUrl
+    : GITHUB_RELEASES_URL;
 
   try {
-    await autoUpdater.downloadUpdate();
-    return { ok: true };
+    await shell.openExternal(safeUrl);
+    return { ok: true, url: safeUrl };
   } catch (err) {
-    logLine("[updater] downloadUpdate failed", String(err && err.stack ? err.stack : err));
-    sendUpdateStatus({
-      state: "error",
-      title: "Update download failed",
-      detail: "Finledge could not download the update. Please try again later.",
-      error: String(err && err.message ? err.message : err),
-    });
-    return { ok: false, reason: "update-download-failed" };
+    logLine("[updater] open release failed", String(err && err.stack ? err.stack : err));
+    return { ok: false, reason: "open-release-failed" };
+  }
+});
+
+ipcMain.handle("app:get-data-locations", async () => {
+  const dataDir = getRuntimeDataDir();
+  return {
+    dataDir,
+    bankFile: path.join(dataDir, "bank_transactions.xlsx"),
+    shareFile: path.join(dataDir, "share_transactions.xlsx"),
+  };
+});
+
+ipcMain.handle("app:open-data-location", async (_event, target = "folder") => {
+  const dataDir = getRuntimeDataDir();
+  const targetMap = {
+    folder: dataDir,
+    bank: path.join(dataDir, "bank_transactions.xlsx"),
+    share: path.join(dataDir, "share_transactions.xlsx"),
+  };
+  const requestedPath = targetMap[String(target)] || dataDir;
+  const pathToOpen = fs.existsSync(requestedPath) ? requestedPath : dataDir;
+
+  try {
+    fs.mkdirSync(dataDir, { recursive: true });
+    if (fs.existsSync(pathToOpen) && fs.statSync(pathToOpen).isFile()) {
+      shell.showItemInFolder(pathToOpen);
+    } else {
+      await shell.openPath(pathToOpen);
+    }
+    return { ok: true, path: pathToOpen };
+  } catch (err) {
+    logLine("[main] open data location failed", String(err && err.stack ? err.stack : err));
+    return { ok: false, reason: "open-data-location-failed" };
+  }
+});
+
+ipcMain.handle("app:download-update", async () => {
+  const targetUrl = String(latestUpdateStatus.releaseUrl || GITHUB_RELEASES_URL).trim();
+  const safeUrl = targetUrl.startsWith("https://github.com/sachinadk2011/FinLedge-App/releases")
+    ? targetUrl
+    : GITHUB_RELEASES_URL;
+
+  try {
+    await shell.openExternal(safeUrl);
+    return { ok: true, url: safeUrl, simulated: SHOULD_SIMULATE_UPDATES };
+  } catch (err) {
+    logLine("[updater] open release failed", String(err && err.stack ? err.stack : err));
+    return { ok: false, reason: "open-release-failed" };
   }
 });
 
@@ -909,7 +1082,10 @@ app.whenReady().then(async () => {
         });
 
       if (SHOULD_SIMULATE_UPDATES) {
-        setTimeout(simulateUpdateAvailable, 2500);
+        setTimeout(
+          SIMULATE_REQUIRED_UPDATE ? simulateRequiredUpdate : simulateUpdateAvailable,
+          2500
+        );
       }
     } else {
       navigateToFrontend(getFrontendUrl());
@@ -920,10 +1096,12 @@ app.whenReady().then(async () => {
           return;
         }
 
+        checkUpdatePolicy({ silent: true });
         autoUpdater.checkForUpdates().catch((err) => {
           logLine("[updater] Initial update check failed", String(err && err.stack ? err.stack : err));
         });
       }, 5000);
+      setInterval(() => checkUpdatePolicy({ silent: true }), 6 * 60 * 60 * 1000);
     }
 
     app.on("activate", () => {
