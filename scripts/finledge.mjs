@@ -196,10 +196,10 @@ async function main() {
       await runNpmWithEnv(commonEnv, "run", "build:frontend");
       await runNpmWithEnv(commonEnv, "run", "build:sidecar");
 
-      if (command === "desktop-build-publish") {
+      if (command === "desktop-build") {
+        await runNpmWithEnv(commonEnv, "run", "build", "--prefix", "desktop", "--", "--publish", "never");
+      } else if (command === "desktop-build-publish") {
         await runNpmWithEnv(commonEnv, "run", "build", "--prefix", "desktop", "--", "--publish", "always");
-      } else {
-        await runNpmWithEnv(commonEnv, "run", "build:desktop");
       }
       return;
     }
