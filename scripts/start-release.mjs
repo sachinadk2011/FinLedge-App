@@ -60,8 +60,19 @@ const existingTag = spawnSync("git", ["rev-parse", "-q", "--verify", `refs/tags/
   encoding: "utf8",
   shell: false,
 });
+const force = process.argv.includes("--force");
 if (existingTag.status === 0) {
-  throw new Error(`Cannot create release: tag ${tag} already exists.`);
+  if (force) {
+    console.log(`Tag ${tag} already exists. --force provided, deleting existing tag...`);
+    run("git", ["tag", "-d", tag]);
+    try {
+      run("git", ["push", "--delete", "origin", tag]);
+    } catch (e) {
+      console.log(`Failed to delete remote tag, it might not exist on remote. Proceeding...`);
+    }
+  } else {
+    throw new Error(`Cannot create release: tag ${tag} already exists. Use '--force' to overwrite.`);
+  }
 }
 
 run(process.execPath, ["./scripts/sync-version.mjs", version]);
