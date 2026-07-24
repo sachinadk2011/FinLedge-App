@@ -2,7 +2,7 @@ import { deleteJson, getJson, postJson, putJson } from "./client";
 
 function buildBankPayload(form) {
   const amountValue = Number(form.amount);
-  const normalizedAmount = form.category === "income" ? Math.abs(amountValue) : -Math.abs(amountValue);
+  const normalizedAmount = String(form.category).toLowerCase() === "interest earned" ? Math.abs(amountValue) : -Math.abs(amountValue);
 
   return {
     category: form.category,

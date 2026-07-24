@@ -7,6 +7,7 @@ import ConfirmDialog from "../components/ConfirmDialog";
 import InteractiveTimelineChart from "../components/InteractiveTimelineChart";
 import StatGrid from "../components/StatGrid";
 import TransactionsTable from "../components/TransactionsTable";
+import { BANK_CATEGORIES } from "../constants/options";
 
 const formatter = new Intl.NumberFormat("en-US", {
   minimumFractionDigits: 2,
@@ -22,6 +23,12 @@ const monthLabelFormatter = new Intl.DateTimeFormat("en-US", {
   month: "short",
   year: "numeric",
 });
+
+const BANK_INCOME_CATEGORIES = new Set(["interest earned", "income"]);
+
+function isBankIncomeCategory(category) {
+  return BANK_INCOME_CATEGORIES.has(String(category || "").trim().toLowerCase());
+}
 
 function parseDate(value) {
   if (!value) return null;
@@ -57,7 +64,7 @@ function addBankRecordToEntry(entry, record) {
   const category = String(record.category || "").trim().toLowerCase();
   const amount = Number(record.amount || 0);
 
-  if (category === "income") {
+  if (isBankIncomeCategory(category)) {
     entry.income += amount;
   } else {
     entry.expenses += Math.abs(amount);
@@ -158,18 +165,16 @@ function BankDashboard() {
   };
 
   const stats = [
-    { label: "Total income", value: formatter.format(summary.total_income) },
-    { label: "Total expenses", value: formatter.format(summary.total_expenses) },
+    { label: "Interest earned", value: formatter.format(summary.total_income) },
+    { label: "Total charges", value: formatter.format(summary.total_expenses) },
     { label: "Net balance", value: formatter.format(summary.net_balance) },
   ];
 
   const categoryTotals = summary.category_totals || {};
-  const chartData = [
-    { label: "Income", value: Number(categoryTotals["income"] || 0) },
-    { label: "Service cost", value: Number(categoryTotals["service cost"] || 0) },
-    { label: "Investment cost", value: Number(categoryTotals["investment cost"] || 0) },
-    { label: "Operation cost", value: Number(categoryTotals["operation cost"] || 0) },
-  ];
+  const chartData = BANK_CATEGORIES.map((category) => ({
+    label: category,
+    value: Number(categoryTotals[category] || 0),
+  }));
 
   const dailyOverview = useMemo(() => buildDailyBankOverview(records), [records]);
   const monthlyOverview = useMemo(() => buildMonthlyBankOverview(records), [records]);
@@ -209,8 +214,8 @@ function BankDashboard() {
     <main className="page">
       <header className="page-header">
         <div>
-          <p className="eyebrow">Bank Module</p>
-          <h1>Bank dashboard</h1>
+          <p className="eyebrow">Bank Services</p>
+          <h1>Bank services dashboard</h1>
         </div>
         <div className="header-actions">
           <button className="ghost" type="button" onClick={() => navigate(-1)}>
@@ -234,30 +239,30 @@ function BankDashboard() {
           <section className="card">
             <div className="page-header" style={{ marginBottom: 12 }}>
               <div>
-                <h3>Bank trends</h3>
+                <h3>Bank services trends</h3>
                 <p className="subtitle">Hover bars to see exact values. Drag the lower scrubber to move through history.</p>
               </div>
             </div>
             <div className="graph-grid">
               <InteractiveTimelineChart
-                title="Daily Bank Overview"
-                subtitle="Income, expenses, and net balance by transaction date."
+                title="Daily Bank Services Overview"
+                subtitle="Interest earned, charges, and net balance by transaction date."
                 data={dailyOverview}
                 windowSize={12}
                 bars={[
-                  { dataKey: "income", name: "Income", color: "#16a34a" },
-                  { dataKey: "expenses", name: "Expenses", color: "#ef4444" },
+                  { dataKey: "income", name: "Interest earned", color: "#16a34a" },
+                  { dataKey: "expenses", name: "Charges", color: "#ef4444" },
                   { dataKey: "netDisplay", rawDataKey: "netRaw", name: "Net balance", color: "#0f766e", negativeColor: "#f59e0b" },
                 ]}
               />
               <InteractiveTimelineChart
-                title="Monthly Bank Overview"
-                subtitle="Month-wise income, expenses, and net balance."
+                title="Monthly Bank Services Overview"
+                subtitle="Month-wise interest earned, charges, and net balance."
                 data={monthlyOverview}
                 windowSize={12}
                 bars={[
-                  { dataKey: "income", name: "Income", color: "#16a34a" },
-                  { dataKey: "expenses", name: "Expenses", color: "#ef4444" },
+                  { dataKey: "income", name: "Interest earned", color: "#16a34a" },
+                  { dataKey: "expenses", name: "Charges", color: "#ef4444" },
                   { dataKey: "netDisplay", rawDataKey: "netRaw", name: "Net balance", color: "#0f766e", negativeColor: "#f59e0b" },
                 ]}
               />

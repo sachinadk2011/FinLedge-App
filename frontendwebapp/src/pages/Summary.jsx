@@ -22,6 +22,12 @@ const monthLabelFormatter = new Intl.DateTimeFormat("en-US", {
   year: "numeric",
 });
 
+const BANK_INCOME_CATEGORIES = new Set(["interest earned", "income"]);
+
+function isBankIncomeCategory(category) {
+  return BANK_INCOME_CATEGORIES.has(String(category || "").trim().toLowerCase());
+}
+
 function parseDate(value) {
   if (!value) return null;
   const text = String(value).trim();
@@ -89,7 +95,7 @@ function buildDailyOverview(bankRecords, shareRecords) {
     const category = String(record.category || "").trim().toLowerCase();
     const amount = Number(record.amount || 0);
 
-    if (category === "income") {
+    if (isBankIncomeCategory(category)) {
       entry.bankIncome += amount;
     } else {
       entry.bankExpenses += Math.abs(amount);
@@ -144,7 +150,7 @@ function buildMonthlyOverview(bankRecords, shareRecords) {
     const category = String(record.category || "").trim().toLowerCase();
     const amount = Number(record.amount || 0);
 
-    if (category === "income") {
+    if (isBankIncomeCategory(category)) {
       entry.bankIncome += amount;
     } else {
       entry.bankExpenses += Math.abs(amount);
@@ -254,17 +260,17 @@ function Summary() {
   const overallNet = Number(bankSummary.net_balance || 0) + totalShareProfitLoss;
 
   const stats = [
-    { label: "Total bank income", value: formatter.format(bankSummary.total_income || 0) },
-    { label: "Total bank expenses", value: formatter.format(bankSummary.total_expenses || 0) },
-    { label: "Bank net balance", value: formatter.format(bankSummary.net_balance || 0) },
-    { label: "Total share investment", value: formatter.format(totalShareInvestment) },
-    { label: "Total share profit/loss", value: formatter.format(totalShareProfitLoss) },
+    { label: "Bank services income", value: formatter.format(bankSummary.total_income || 0) },
+    { label: "Bank services expenses", value: formatter.format(bankSummary.total_expenses || 0) },
+    { label: "Bank services net balance", value: formatter.format(bankSummary.net_balance || 0) },
+    { label: "Share portfolio investment", value: formatter.format(totalShareInvestment) },
+    { label: "Share portfolio profit/loss", value: formatter.format(totalShareProfitLoss) },
     { label: "Overall net position", value: formatter.format(overallNet) },
   ];
 
   const overviewData = [
-    { label: "Bank net", value: Number(bankSummary.net_balance || 0) },
-    { label: "Share profit/loss", value: totalShareProfitLoss },
+    { label: "Bank services net", value: Number(bankSummary.net_balance || 0) },
+    { label: "Share portfolio profit/loss", value: totalShareProfitLoss },
     { label: "Overall net", value: overallNet },
   ];
 
@@ -276,7 +282,7 @@ function Summary() {
     <main className="page">
       <header className="page-header">
         <div>
-          <p className="eyebrow">Overall Summary</p>
+          <p className="eyebrow">Financial Summary</p>
           <h1>Combined view</h1>
         </div>
         <div className="header-actions">
@@ -296,18 +302,18 @@ function Summary() {
         <>
           {!hasAnyData ? (
             <section className="card">
-              <h3>Overall Summary</h3>
+              <h3>Financial Summary</h3>
               <p className="subtitle">Add transaction data to see interactive monthly, yearly, and combined charts.</p>
             </section>
           ) : (
             <>
               <StatGrid items={stats} />
-              <BarChart title="Bank net vs share profit/loss vs overall net" data={overviewData} />
+              <BarChart title="Bank services net vs share portfolio profit/loss vs overall net" data={overviewData} />
 
               <section className="card">
                 <div className="page-header" style={{ marginBottom: 12 }}>
                   <div>
-                    <h3>Summary</h3>
+                    <h3>Financial Summary</h3>
                     <p className="subtitle">Hover bars to see exact values. Drag the lower scrubber to move through history.</p>
                   </div>
                 </div>
@@ -315,14 +321,14 @@ function Summary() {
                 <div className="graph-grid">
                   <InteractiveTimelineChart
                     title="Monthly Overview"
-                    subtitle="Daily view of bank income, bank expenses, share investment, and share profit/loss."
+                    subtitle="Daily view of bank services income, bank services charges, share portfolio investment, and share portfolio profit/loss."
                     data={dailyOverview}
                     windowSize={12}
                     bars={[
-                      { dataKey: "bankIncome", name: "Bank income", color: "#16a34a" },
-                      { dataKey: "bankExpenses", name: "Bank expenses", color: "#ef4444" },
-                      { dataKey: "shareInvestment", name: "Share investment", color: "#2563eb" },
-                      { dataKey: "shareProfitLoss", name: "Share profit/loss", color: "#a855f7" },
+                      { dataKey: "bankIncome", name: "Bank services income", color: "#16a34a" },
+                      { dataKey: "bankExpenses", name: "Bank services expenses", color: "#ef4444" },
+                      { dataKey: "shareInvestment", name: "Share portfolio investment", color: "#2563eb" },
+                      { dataKey: "shareProfitLoss", name: "Share portfolio profit/loss", color: "#a855f7" },
                     ]}
                   />
 
@@ -332,10 +338,10 @@ function Summary() {
                     data={monthlyOverview}
                     windowSize={12}
                     bars={[
-                      { dataKey: "bankIncome", name: "Bank income", color: "#16a34a" },
-                      { dataKey: "bankExpenses", name: "Bank expenses", color: "#ef4444" },
-                      { dataKey: "shareInvestment", name: "Share investment", color: "#2563eb" },
-                      { dataKey: "shareProfitLoss", name: "Share profit/loss", color: "#a855f7" },
+                      { dataKey: "bankIncome", name: "Bank services income", color: "#16a34a" },
+                      { dataKey: "bankExpenses", name: "Bank services expenses", color: "#ef4444" },
+                      { dataKey: "shareInvestment", name: "Share portfolio investment", color: "#2563eb" },
+                      { dataKey: "shareProfitLoss", name: "Share portfolio profit/loss", color: "#a855f7" },
                     ]}
                   />
 
@@ -346,8 +352,8 @@ function Summary() {
                       data={combinedTimeline}
                       windowSize={12}
                       bars={[
-                        { dataKey: "bankNetDisplay", rawDataKey: "bankNetRaw", name: "Bank net balance", color: "#0f766e"},
-                        { dataKey: "shareNetDisplay", rawDataKey: "shareNetRaw", name: "Share net profit/loss", color: "#8b5cf6" },
+                        { dataKey: "bankNetDisplay", rawDataKey: "bankNetRaw", name: "Bank services net balance", color: "#0f766e"},
+                        { dataKey: "shareNetDisplay", rawDataKey: "shareNetRaw", name: "Share portfolio net profit/loss", color: "#8b5cf6" },
                         { dataKey: "overallNetDisplay", rawDataKey: "overallNetRaw", name: "Overall net position", color: "#f59e0b" },
                       ]}
                     />

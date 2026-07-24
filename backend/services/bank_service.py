@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime
 from typing import Optional
 
 from openpyxl import Workbook, load_workbook
@@ -8,7 +8,22 @@ from .path_utils import get_data_dir
 DATA_DIR = get_data_dir()
 FILE_PATH = DATA_DIR / "bank_transactions.xlsx"
 SHEET_NAME = "Bank"
-HEADERS = ["Date", "Category", "Amount", "Cumulative Amount", "Description"]
+HEADERS = ["Date", "Category", "Amount", "Cumulative Amount", "Description", "Timestamp"]
+BANK_SERVICE_CATEGORIES = [
+    "Interest Earned",
+    "Interest Tax",
+    "Mobile Banking Charge",
+    "Debit Card Charge",
+    "ATM Charge",
+    "SMS Charge",
+    "Cheque Book",
+    "Locker",
+    "Demat Renewal",
+    "Broker Renewal",
+    "MeroShare Renewal",
+    "Other Charges",
+]
+BANK_INCOME_CATEGORIES = {"interest earned", "income"}
 
 
 def _to_float(value: object) -> float:
@@ -16,6 +31,14 @@ def _to_float(value: object) -> float:
         return float(value or 0.0)
     except (TypeError, ValueError):
         return 0.0
+
+
+def _is_income_category(category: str) -> bool:
+    return category.strip().lower() in BANK_INCOME_CATEGORIES
+
+
+def _current_timestamp() -> str:
+    return datetime.now().isoformat(timespec="seconds")
 
 
 def _ensure_workbook_exists() -> None:
@@ -73,6 +96,7 @@ def append_bank_record(entry_date: Optional[date], category: str, amount: float,
     _ensure_workbook_exists()
 
     entry_date = entry_date or date.today()
+    timestamp = _current_timestamp()
     workbook = load_workbook(FILE_PATH)
     sheet = workbook[SHEET_NAME]
 
@@ -86,6 +110,7 @@ def append_bank_record(entry_date: Optional[date], category: str, amount: float,
             float(amount),
             cumulative_amount,
             (description or "").strip(),
+            timestamp,
         ]
     )
     workbook.save(FILE_PATH)
@@ -96,6 +121,7 @@ def append_bank_record(entry_date: Optional[date], category: str, amount: float,
         "amount": float(amount),
         "cumulative_amount": cumulative_amount,
         "description": (description or "").strip() or None,
+        "timestamp": timestamp,
         "file": str(FILE_PATH),
     }
 
@@ -119,6 +145,7 @@ def read_bank_records() -> list[dict]:
                 "amount": _to_float(row[2]),
                 "cumulative_amount": _to_float(row[3]),
                 "description": str(row[4] or "") if len(row) > 4 else "",
+                "timestamp": str(row[5] or "") if len(row) > 5 else "",
             }
         )
 
@@ -128,23 +155,21 @@ def read_bank_records() -> list[dict]:
 def summarize_bank_records(records: list[dict]) -> dict:
     total_income = 0.0
     total_expenses = 0.0
-    category_totals = {
-        "income": 0.0,
-        "service cost": 0.0,
-        "investment cost": 0.0,
-        "operation cost": 0.0,
-    }
+    category_totals = {category: 0.0 for category in BANK_SERVICE_CATEGORIES}
 
     for record in records:
-        category = str(record.get("category") or "").strip().lower()
+        category = str(record.get("category") or "").strip()
         amount = _to_float(record.get("amount"))
-        if category == "income":
+        if _is_income_category(category):
             total_income += amount
-            category_totals["income"] += amount
+            if category in category_totals:
+                category_totals[category] += amount
+            elif category:
+                category_totals[category] = category_totals.get(category, 0.0) + amount
         else:
             total_expenses += abs(amount)
-            if category in category_totals:
-                category_totals[category] += abs(amount)
+            if category:
+                category_totals[category] = category_totals.get(category, 0.0) + abs(amount)
 
     net_balance = total_income - total_expenses
 
@@ -204,6 +229,7 @@ def update_bank_record(
         raise ValueError("record_id must be a positive integer.")
 
     entry_date = entry_date or date.today()
+    timestamp = _current_timestamp()
 
     workbook = load_workbook(FILE_PATH)
     sheet = workbook[SHEET_NAME]
@@ -216,6 +242,7 @@ def update_bank_record(
     sheet.cell(row=excel_row, column=2).value = category
     sheet.cell(row=excel_row, column=3).value = float(amount)
     sheet.cell(row=excel_row, column=5).value = (description or "").strip()
+    sheet.cell(row=excel_row, column=6).value = timestamp
 
     _recompute_bank_sheet(sheet)
     workbook.save(FILE_PATH)
@@ -226,5 +253,6 @@ def update_bank_record(
         "category": category,
         "amount": float(amount),
         "description": (description or "").strip() or None,
+        "timestamp": timestamp,
         "file": str(FILE_PATH),
     }

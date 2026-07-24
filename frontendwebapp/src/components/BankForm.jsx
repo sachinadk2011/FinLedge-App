@@ -1,9 +1,9 @@
 import { BANK_CATEGORIES } from "../constants/options";
 
-function BankForm({ value, onChange, onSubmit, submitting, submitLabel = "Add Bank Entry" }) {
+function BankForm({ value, onChange, onSubmit, submitting, submitLabel = "Add Bank Service Entry" }) {
   return (
     <section className="card">
-      <h2>Bank Entry</h2>
+      <h2>Bank Service Entry</h2>
       <form onSubmit={onSubmit}>
         <label className="field">
           <span>Date</span>
@@ -43,7 +43,7 @@ function BankForm({ value, onChange, onSubmit, submitting, submitLabel = "Add Ba
         <label className="field">
           <span>Description (optional)</span>
           <input
-            placeholder="e.g., salary, freelancing, refund"
+            placeholder="e.g., interest, tax, renewal, service charge"
             value={value.description || ""}
             onChange={(e) => onChange({ ...value, description: e.target.value })}
           />

@@ -33,6 +33,17 @@ function IconSummary() {
   );
 }
 
+function IconPersonalFinance() {
+  return (
+    <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+      <path
+        fill="currentColor"
+        d="M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Zm2 4v3h10V7H7Zm0 5v2h4v-2H7Zm6 0v2h4v-2h-4Zm-6 4v2h4v-2H7Zm6 0v2h4v-2h-4Z"
+      />
+    </svg>
+  );
+}
+
 function Home() {
   return (
     <main className="min-h-[calc(100vh-84px)] px-4 py-14 sm:px-6">
@@ -43,11 +54,11 @@ function Home() {
             Keep your money story tidy
           </h1>
           <p className="mt-4 text-base font-medium leading-relaxed text-slate-700 md:text-lg">
-            Track bank income/expenses, IPO and trades, and view a combined summary with clean dashboards.
+            Track bank services, share portfolio activity, everyday personal finance, and your financial summary with clean dashboards.
           </p>
         </header>
 
-        <div className="grid w-full gap-5 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid w-full gap-5 sm:grid-cols-2 lg:grid-cols-4">
           <Link
             to="/bank"
             className="group relative overflow-hidden rounded-3xl bg-gradient-to-br from-emerald-700 to-teal-500 p-[1px] shadow-soft transition duration-200 hover:-translate-y-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70 no-underline"
@@ -56,9 +67,9 @@ function Home() {
               <span className="grid h-12 w-12 place-items-center rounded-2xl bg-emerald-100 text-emerald-800 transition group-hover:scale-[1.06]">
                 <IconBank />
               </span>
-              <div className="mt-5 text-xl font-extrabold tracking-tight text-slate-900">Bank Module</div>
+              <div className="mt-5 text-xl font-extrabold tracking-tight text-slate-900">Bank Services</div>
               <div className="mt-2 text-sm font-semibold leading-relaxed text-slate-600">
-                Track income and expenses
+                Track interest earned, charges, and renewals
               </div>
             </div>
           </Link>
@@ -71,8 +82,23 @@ function Home() {
               <span className="grid h-12 w-12 place-items-center rounded-2xl bg-sky-100 text-sky-800 transition group-hover:scale-[1.06]">
                 <IconShare />
               </span>
-              <div className="mt-5 text-xl font-extrabold tracking-tight text-slate-900">Share Module</div>
-              <div className="mt-2 text-sm font-semibold leading-relaxed text-slate-600">Track IPO and trades</div>
+              <div className="mt-5 text-xl font-extrabold tracking-tight text-slate-900">Share Portfolio</div>
+              <div className="mt-2 text-sm font-semibold leading-relaxed text-slate-600">Track IPO, SIP, trades, and dividends</div>
+            </div>
+          </Link>
+
+          <Link
+            to="/personal-finance"
+            className="group relative overflow-hidden rounded-3xl bg-gradient-to-br from-rose-700 to-amber-500 p-[1px] shadow-soft transition duration-200 hover:-translate-y-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/70 no-underline"
+          >
+            <div className="flex h-full flex-col items-center rounded-3xl bg-white/80 p-6 text-center sm:p-7 md:supports-[backdrop-filter]:bg-white/65 md:supports-[backdrop-filter]:backdrop-blur">
+              <span className="grid h-12 w-12 place-items-center rounded-2xl bg-amber-100 text-amber-800 transition group-hover:scale-[1.06]">
+                <IconPersonalFinance />
+              </span>
+              <div className="mt-5 text-xl font-extrabold tracking-tight text-slate-900">Personal Finance</div>
+              <div className="mt-2 text-sm font-semibold leading-relaxed text-slate-600">
+                Track everyday bank and cash flow
+              </div>
             </div>
           </Link>
 
@@ -84,8 +110,8 @@ function Home() {
               <span className="grid h-12 w-12 place-items-center rounded-2xl bg-slate-200/70 text-slate-800 transition group-hover:scale-[1.06]">
                 <IconSummary />
               </span>
-              <div className="mt-5 text-xl font-extrabold tracking-tight text-slate-900">Overall Summary</div>
-              <div className="mt-2 text-sm font-semibold leading-relaxed text-slate-600">View overall portfolio</div>
+              <div className="mt-5 text-xl font-extrabold tracking-tight text-slate-900">Financial Summary</div>
+              <div className="mt-2 text-sm font-semibold leading-relaxed text-slate-600">View your overall financial position</div>
             </div>
           </Link>
         </div>

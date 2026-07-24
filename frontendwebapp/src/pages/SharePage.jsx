@@ -73,7 +73,7 @@ function SharePage() {
         if (!editId) return;
         const record = (records || []).find((r) => Number(r.id) === Number(editId));
         if (!record) {
-          throw new Error("Share record not found for editing.");
+          throw new Error("Share portfolio record not found for editing.");
         }
         setForm({
           dates: record.date || getTodayInputValue(),
@@ -184,8 +184,8 @@ function SharePage() {
     <main className="page">
       <header className="page-header">
         <div>
-          <p className="eyebrow">Share Module</p>
-          <h1>{editId ? "Edit share entry" : "Add share entry"}</h1>
+          <p className="eyebrow">Share Portfolio</p>
+          <h1>{editId ? "Edit share portfolio entry" : "Add share portfolio entry"}</h1>
         </div>
         <div className="header-actions">
           <button className="ghost" type="button" onClick={() => navigate(-1)}>
@@ -208,7 +208,7 @@ function SharePage() {
             onChange={setForm}
             onSubmit={handleSubmit}
             submitting={submitting}
-            submitLabel={editId ? "Update Share Entry" : "Add Share Entry"}
+            submitLabel={editId ? "Update Share Portfolio Entry" : "Add Share Portfolio Entry"}
             suggestions={form.category === "sip" ? sipShares : knownShares}
           />
           {success ? <p className="success">{success}</p> : null}

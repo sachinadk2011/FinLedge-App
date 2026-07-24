@@ -454,8 +454,8 @@ function ShareDashboard() {
     <main className="page">
       <header className="page-header">
         <div>
-          <p className="eyebrow">Share Module</p>
-          <h1>Share dashboard</h1>
+          <p className="eyebrow">Share Portfolio</p>
+          <h1>Share portfolio dashboard</h1>
         </div>
         <div className="header-actions">
           <button className="ghost" type="button" onClick={() => navigate(-1)}>
@@ -494,13 +494,13 @@ function ShareDashboard() {
           <section className="card">
             <div className="page-header" style={{ marginBottom: 12 }}>
               <div>
-                <h3>Share trends</h3>
+                <h3>Share portfolio trends</h3>
                 <p className="subtitle">Hover bars to see exact values. Drag the lower scrubber to move through history.</p>
               </div>
             </div>
             <div className="graph-grid">
               <InteractiveTimelineChart
-                title="Daily Share Overview"
+                title="Daily Share Portfolio Overview"
                 subtitle="IPO/secondary investment, SIP investment, sell amount, and profit/loss by date."
                 data={dailyOverview}
                 windowSize={12}
@@ -513,7 +513,7 @@ function ShareDashboard() {
                 ]}
               />
               <InteractiveTimelineChart
-                title="Monthly Share Overview"
+                title="Monthly Share Portfolio Overview"
                 subtitle="Month-wise summary of normal share activity and SIP investment."
                 data={monthlyOverview}
                 windowSize={12}

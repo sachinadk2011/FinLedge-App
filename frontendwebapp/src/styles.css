@@ -457,6 +457,32 @@ tbody tr:hover {
   align-items: end;
 }
 
+.view-switcher {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  margin: 0 0 1rem;
+}
+
+.view-switcher button {
+  border: 1px solid rgba(15, 118, 110, 0.22);
+  background: rgba(255, 255, 255, 0.72);
+  color: #334155;
+  box-shadow: none;
+}
+
+.view-switcher button.active {
+  background: #0f766e;
+  color: #fff;
+  border-color: #0f766e;
+}
+
+.muted-text {
+  color: #64748b;
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
 .match-list {
   display: flex;
   gap: 8px;

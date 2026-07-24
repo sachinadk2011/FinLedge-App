@@ -7,6 +7,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from backend.routes.bank import router as bank_router
+from backend.routes.personal_finance import router as personal_finance_router
 from backend.routes.share import router as share_router
 from backend.routes.summary import router as summary_router
 
@@ -21,6 +22,7 @@ app.add_middleware(
 )
 
 app.include_router(bank_router)
+app.include_router(personal_finance_router)
 app.include_router(share_router)
 app.include_router(summary_router)
 

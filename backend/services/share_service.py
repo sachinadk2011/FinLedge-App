@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from typing import Optional
 
@@ -20,6 +20,7 @@ HEADERS = [
     "Total Amount",
     "Profit/Loss",
     "Cumulative Profit",
+    "Timestamp",
 ]
 
 
@@ -35,6 +36,10 @@ def _to_int(value: object) -> int:
         return int(float(value or 0))
     except (TypeError, ValueError):
         return 0
+
+
+def _current_timestamp() -> str:
+    return datetime.now().isoformat(timespec="seconds")
 
 
 def _ensure_workbook_exists() -> None:
@@ -216,6 +221,7 @@ def append_share_record(
     _ensure_workbook_exists()
 
     entry_date = entry_date or date.today()
+    timestamp = _current_timestamp()
     share_name = share_name.strip().upper()
     category = category.strip().lower()
     if category not in {"ipo", "sip", "buy", "sell", "dividend"}:
@@ -309,6 +315,7 @@ def append_share_record(
             str(total_amount_dec),
             str(profit_loss_dec),
             cumulative_profit,
+            timestamp,
         ]
     )
     workbook.save(FILE_PATH)
@@ -324,6 +331,7 @@ def append_share_record(
         "total_amount": str(total_amount_dec),
         "profit_loss": str(profit_loss_dec),
         "cumulative_profit": cumulative_profit,
+        "timestamp": timestamp,
         "file": str(FILE_PATH),
     }
 
@@ -352,6 +360,7 @@ def read_share_records() -> list[dict]:
                 "total_amount": _to_float(row[7]),
                 "profit_loss": _to_float(row[8]),
                 "cumulative_profit": _to_float(row[9]),
+                "timestamp": str(row[10] or "") if len(row) > 10 else "",
             }
         )
 
@@ -506,8 +515,10 @@ def update_share_allotment(share_name: str, allotted: int) -> dict:
     previous_allotted = _to_int(sheet.cell(row=target_row, column=6).value)
     updated_date = str(sheet.cell(row=target_row, column=1).value or "")
     normalized_share_name = str(sheet.cell(row=target_row, column=2).value or share_name).strip().upper()
+    timestamp = _current_timestamp()
 
     sheet.cell(row=target_row, column=6).value = int(allotted)
+    sheet.cell(row=target_row, column=11).value = timestamp
     _recompute_sheet(sheet)
     workbook.save(FILE_PATH)
 
@@ -517,6 +528,7 @@ def update_share_allotment(share_name: str, allotted: int) -> dict:
         "share_name": normalized_share_name,
         "previous_allotted": previous_allotted,
         "allotted": int(allotted),
+        "timestamp": timestamp,
     }
 
 
@@ -549,8 +561,10 @@ def update_sip_allotment(share_name: str, allotted: int) -> dict:
     updated_date = str(sheet.cell(row=target_row, column=1).value or "")
     normalized_share_name = str(sheet.cell(row=target_row, column=2).value or share_name).strip().upper()
     total_investment = _to_float(sheet.cell(row=target_row, column=8).value)
+    timestamp = _current_timestamp()
 
     sheet.cell(row=target_row, column=6).value = int(allotted)
+    sheet.cell(row=target_row, column=11).value = timestamp
     _recompute_sheet(sheet)
     average_price = _to_float(sheet.cell(row=target_row, column=4).value)
     workbook.save(FILE_PATH)
@@ -563,6 +577,7 @@ def update_sip_allotment(share_name: str, allotted: int) -> dict:
         "allotted": int(allotted),
         "total_investment": total_investment,
         "average_price": average_price,
+        "timestamp": timestamp,
     }
 
 
@@ -610,6 +625,7 @@ def update_share_record(
         raise ValueError("record_id must be a positive integer.")
 
     entry_date = entry_date or date.today()
+    timestamp = _current_timestamp()
     share_name = share_name.strip().upper()
     category = category.strip().lower()
     if category not in {"ipo", "sip", "buy", "sell", "dividend"}:
@@ -661,6 +677,7 @@ def update_share_record(
     sheet.cell(row=excel_row, column=7).value = str(buy_sell or category).strip().lower()
     if category == "sip":
         sheet.cell(row=excel_row, column=8).value = str(unit_price)
+    sheet.cell(row=excel_row, column=11).value = timestamp
 
     _recompute_sheet(sheet)
     workbook.save(FILE_PATH)
@@ -673,5 +690,6 @@ def update_share_record(
         "per_unit_price": str(unit_price),
         "allotted": int(allotted),
         "buy_sell": str(buy_sell or category).strip().lower(),
+        "timestamp": timestamp,
         "file": str(FILE_PATH),
     }

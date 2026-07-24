@@ -118,14 +118,14 @@ function Settings() {
             </button>
           </div>
           <div className="file-location-row">
-            <span>Bank Excel file</span>
+            <span>Bank Services Excel file</span>
             <code>{locations?.bankFile || "bank_transactions.xlsx"}</code>
             <button type="button" className="ghost" onClick={() => openLocation("bank")}>
               Show file
             </button>
           </div>
           <div className="file-location-row">
-            <span>Share Excel file</span>
+            <span>Share Portfolio Excel file</span>
             <code>{locations?.shareFile || "share_transactions.xlsx"}</code>
             <button type="button" className="ghost" onClick={() => openLocation("share")}>
               Show file
