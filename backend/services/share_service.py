@@ -5,7 +5,7 @@ from typing import Optional
 
 from openpyxl import Workbook, load_workbook
 
-from .excel_utils import safe_load_workbook, to_float as _to_float, to_int as _to_int, current_timestamp as _current_timestamp
+from .excel_utils import safe_load_workbook
 from .path_utils import get_data_dir
 
 DATA_DIR = get_data_dir()
