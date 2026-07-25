@@ -736,7 +736,8 @@ def import_data_file(
     backup_file = _backup_live_file(live_path)
 
     tag = datetime.now().strftime("%Y%m%d-%H%M%S")
-    staged_path = DATA_DIR / f".import-{data_type}-{tag}.xlsx"
+    safe_stem = Path(str(config["filename"])).stem
+    staged_path = DATA_DIR / f".import-{safe_stem}-{tag}.xlsx"
 
     try:
         wb = Workbook()
