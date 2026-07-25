@@ -5,7 +5,7 @@ function ShareForm({
   onChange,
   onSubmit,
   submitting,
-  submitLabel = "Add Share Entry",
+  submitLabel = "Add Share Portfolio Entry",
   suggestions = [],
 }) {
   const isDividend = value.category === "dividend";
@@ -28,7 +28,7 @@ function ShareForm({
 
   return (
     <section className="card">
-      <h2>Share Entry</h2>
+      <h2>Share Portfolio Entry</h2>
       <form onSubmit={onSubmit}>
         <label className="field">
           <span>Date</span>

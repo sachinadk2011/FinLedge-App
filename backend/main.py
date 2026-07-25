@@ -7,10 +7,20 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from backend.routes.bank import router as bank_router
+from backend.routes.personal_finance import router as personal_finance_router
+from backend.routes.settings import router as settings_router
 from backend.routes.share import router as share_router
 from backend.routes.summary import router as summary_router
+from backend.services.data_migration_service import run_pending_data_migrations
 
 app = FastAPI(title="Financial Tracker API")
+
+
+@app.on_event("startup")
+def apply_pending_data_migrations() -> None:
+    """Upgrade legacy local data before API routes can read it."""
+    result = run_pending_data_migrations()
+    print(f"[migration] {result.get('status', 'unknown')}: {result.get('source_file', '')}")
 
 app.add_middleware(
     CORSMiddleware,
@@ -21,8 +31,10 @@ app.add_middleware(
 )
 
 app.include_router(bank_router)
+app.include_router(personal_finance_router)
 app.include_router(share_router)
 app.include_router(summary_router)
+app.include_router(settings_router)
 
 
 @app.get("/health", include_in_schema=False)

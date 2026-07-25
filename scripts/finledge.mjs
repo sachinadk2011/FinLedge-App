@@ -55,13 +55,20 @@ function runProcess(commandName, args, extraEnv = {}, cwd = projectRoot) {
       },
     });
 
-    child.on("error", reject);
+    const env = { ...loadEnvFile(), ...process.env };
+    const isCustomPythonEnv = Boolean(env.FINLEDGE_PYTHON_PATH && commandName === env.FINLEDGE_PYTHON_PATH);
+    const displayCommand = isCustomPythonEnv ? "FINLEDGE_PYTHON_PATH" : commandName;
+
+    child.on("error", (err) => {
+      const message = err instanceof Error ? err.message : String(err);
+      reject(new Error(`Failed to start ${displayCommand}: ${message}`));
+    });
     child.on("exit", (code) => {
       if (code === 0) {
         resolve();
         return;
       }
-      reject(new Error(`${commandName} ${args.join(" ")} exited with code ${code ?? "unknown"}`));
+      reject(new Error(`${displayCommand} ${args.join(" ")} exited with code ${code ?? "unknown"}`));
     });
   });
 }
@@ -210,6 +217,10 @@ async function main() {
 }
 
 main().catch((err) => {
-  console.error("FinLedge command failed:", err);
+  const message = err instanceof Error ? err.message : String(err);
+  console.error(`FinLedge command failed: ${message}`);
+  if (err instanceof Error && err.stack) {
+    console.error(err.stack);
+  }
   process.exit(1);
 });

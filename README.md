@@ -222,6 +222,10 @@ To preview the in-app update notification during desktop development, set `FINLE
 | Desktop production build | `npm run desktop-build` |
 | Desktop build + publish | `npm run desktop-build:publish` |
 | Signed release tag | `node ./scripts/start-release.mjs x.y.z` |
+| Preview Bank data migration | `npm run migrate:preview` |
+| Apply Bank data migration | `npm run migrate:apply` |
+
+The migration preview changes nothing. Before applying it, review the printed mapping decisions. On first backend start after upgrading from v1.1.0, FinLedge automatically performs the same safe migration: it copies the original Bank workbook into `backups/v1.1.0-to-v1.2.0/<timestamp>/`, writes a JSON mapping report there, validates a staged workbook, and only then switches the active file. A combined legacy Demat + MeroShare renewal stays one transaction with the `Demat & MeroShare Renewal` category, preserving its original description and amount.
 
 ---
 

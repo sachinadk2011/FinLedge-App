@@ -6,16 +6,15 @@ import BankForm from "../components/BankForm";
 import { BANK_CATEGORIES } from "../constants/options";
 import { getTodayInputValue } from "../utils/date";
 
-const VALID_BANK_CATEGORIES = new Set(
+const DEFAULT_BANK_CATEGORY = "Interest Earned";
+
+const BANK_CATEGORY_BY_NORMALIZED_VALUE = new Map(
   (BANK_CATEGORIES || [])
     .map((category) =>
-      String(
-        typeof category === "string" ? category : category?.value ?? category?.label ?? "",
-      )
-        .trim()
-        .toLowerCase(),
+      String(typeof category === "string" ? category : category?.value ?? category?.label ?? "").trim(),
     )
-    .filter(Boolean),
+    .filter(Boolean)
+    .map((category) => [category.toLowerCase(), category]),
 );
 
 function BankPage() {
@@ -25,7 +24,7 @@ function BankPage() {
   const editId = editIdRaw ? Number(editIdRaw) : null;
   const [form, setForm] = useState({
     dates: getTodayInputValue(),
-    category: "income",
+    category: DEFAULT_BANK_CATEGORY,
     amount: "",
     description: "",
   });
@@ -43,11 +42,10 @@ function BankPage() {
       .then((response) => {
         const record = (response?.records || []).find((r) => Number(r.id) === Number(editId));
         if (!record) {
-          throw new Error("Bank record not found for editing.");
+          throw new Error("Bank service record not found for editing.");
         }
-        const normalizedCategory = VALID_BANK_CATEGORIES.has(String(record.category || "").trim().toLowerCase())
-          ? String(record.category || "").trim().toLowerCase()
-          : "income";
+        const normalizedCategory =
+          BANK_CATEGORY_BY_NORMALIZED_VALUE.get(String(record.category || "").trim().toLowerCase()) || DEFAULT_BANK_CATEGORY;
         setForm({
           dates: record.date || getTodayInputValue(),
           category: normalizedCategory,
@@ -81,7 +79,7 @@ function BankPage() {
         navigate("/bank", { replace: true });
         setForm({
           dates: getTodayInputValue(),
-          category: "income",
+          category: DEFAULT_BANK_CATEGORY,
           amount: "",
           description: "",
         });
@@ -106,8 +104,8 @@ function BankPage() {
     <main className="page">
       <header className="page-header">
         <div>
-          <p className="eyebrow">Bank Module</p>
-          <h1>{editId ? "Edit bank entry" : "Add bank entry"}</h1>
+          <p className="eyebrow">Bank Services</p>
+          <h1>{editId ? "Edit bank service entry" : "Add bank service entry"}</h1>
         </div>
         <div className="header-actions">
           <button className="ghost" type="button" onClick={() => navigate(-1)}>
@@ -127,7 +125,7 @@ function BankPage() {
         onChange={setForm}
         onSubmit={handleSubmit}
         submitting={submitting}
-        submitLabel={editId ? "Update Bank Entry" : "Add Bank Entry"}
+        submitLabel={editId ? "Update Bank Service Entry" : "Add Bank Service Entry"}
       />
       {success ? <p className="success">{success}</p> : null}
       {error ? <pre className="error-pre">{error}</pre> : null}

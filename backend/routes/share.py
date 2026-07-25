@@ -17,7 +17,6 @@ from backend.services.share_service import (
     update_sip_allotment,
     update_share_record,
 )
-
 router = APIRouter(prefix="/share", tags=["share"])
 
 

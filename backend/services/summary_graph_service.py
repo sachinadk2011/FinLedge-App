@@ -146,6 +146,10 @@ def _format_month_label(month_key: str) -> str:
         return month_key
 
 
+def _is_bank_income_category(category: str) -> bool:
+    return category.strip().lower() in {"interest earned", "income"}
+
+
 def build_monthly_bank_png(records: Iterable[dict]) -> bytes:
     # Day-wise activity for the last 14 days (matches "date-wise" request).
     dated = _iter_dated_records(records)
@@ -159,7 +163,7 @@ def build_monthly_bank_png(records: Iterable[dict]) -> bytes:
             continue
         category = str(r.get("category") or "").strip().lower()
         amt = float(r.get("amount") or 0.0)
-        if category == "income":
+        if _is_bank_income_category(category):
             by_day[d]["income"] += amt
         else:
             by_day[d]["expense"] += abs(amt)
@@ -167,10 +171,10 @@ def build_monthly_bank_png(records: Iterable[dict]) -> bytes:
     keys = day_keys
 
     return _render_bar_chart(
-        title="Monthly bank transactions (last 14 days)",
+        title="Monthly bank services transactions (last 14 days)",
         x_labels=[_format_day_label(k) for k in keys],
         series=[
-            ("Income", [by_day[k]["income"] for k in keys], "#16a34a"),
+            ("Interest earned", [by_day[k]["income"] for k in keys], "#16a34a"),
             ("Expenses", [by_day[k]["expense"] for k in keys], "#ef4444"),
         ],
         y_label="Amount",
@@ -201,16 +205,16 @@ def build_yearly_bank_png(records: Iterable[dict]) -> bytes:
             continue
         category = str(r.get("category") or "").strip().lower()
         amt = float(r.get("amount") or 0.0)
-        if category == "income":
+        if _is_bank_income_category(category):
             by_month[key]["income"] += amt
         else:
             by_month[key]["expense"] += abs(amt)
 
     return _render_bar_chart(
-        title="Yearly bank transactions (last 12 months)",
+        title="Yearly bank services transactions (last 12 months)",
         x_labels=[_format_month_label(k) for k in keys],
         series=[
-            ("Income", [by_month[k]["income"] for k in keys], "#16a34a"),
+            ("Interest earned", [by_month[k]["income"] for k in keys], "#16a34a"),
             ("Expenses", [by_month[k]["expense"] for k in keys], "#ef4444"),
         ],
         y_label="Amount",
@@ -317,7 +321,7 @@ def build_combined_position_png(*, bank_summary: dict, share_summary: dict) -> b
     bank_net = bank_income - bank_expenses
     overall_net = bank_net - share_investment + share_profit
 
-    labels = ["Bank net", "Share investment", "Share profit/loss", "Overall net"]
+    labels = ["Bank services net", "Share portfolio investment", "Share portfolio profit/loss", "Overall net"]
     values = [bank_net, share_investment, share_profit, overall_net]
 
     return _render_bar_chart(
@@ -345,7 +349,7 @@ def build_monthly_overview_png(*, bank_records: Iterable[dict], share_records: I
             continue
         category = str(r.get("category") or "").strip().lower()
         amt = float(r.get("amount") or 0.0)
-        if category == "income":
+        if _is_bank_income_category(category):
             by_day[d]["bank_income"] += amt
         else:
             by_day[d]["bank_expense"] += abs(amt)
@@ -376,11 +380,11 @@ def build_monthly_overview_png(*, bank_records: Iterable[dict], share_records: I
         title="Monthly financial overview (last 14 days)",
         x_labels=[_format_day_label(k) for k in keys],
         series=[
-            ("Bank income", [by_day[k]["bank_income"] for k in keys], "#16a34a"),
-            ("Bank expenses", [by_day[k]["bank_expense"] for k in keys], "#ef4444"),
-            ("Share investment", [by_day[k]["share_investment"] for k in keys], "#2563eb"),
-            ("Share profit", [by_day[k]["share_profit"] for k in keys], "#22c55e"),
-            ("Share loss", [by_day[k]["share_loss"] for k in keys], "#f43f5e"),
+            ("Bank services income", [by_day[k]["bank_income"] for k in keys], "#16a34a"),
+            ("Bank services expenses", [by_day[k]["bank_expense"] for k in keys], "#ef4444"),
+            ("Share portfolio investment", [by_day[k]["share_investment"] for k in keys], "#2563eb"),
+            ("Share portfolio profit", [by_day[k]["share_profit"] for k in keys], "#22c55e"),
+            ("Share portfolio loss", [by_day[k]["share_loss"] for k in keys], "#f43f5e"),
         ],
         y_label="Amount",
     )
@@ -413,7 +417,7 @@ def build_yearly_overview_png(*, bank_records: Iterable[dict], share_records: It
             continue
         category = str(r.get("category") or "").strip().lower()
         amt = float(r.get("amount") or 0.0)
-        if category == "income":
+        if _is_bank_income_category(category):
             by_month[key]["bank_income"] += amt
         else:
             by_month[key]["bank_expense"] += abs(amt)
@@ -443,11 +447,11 @@ def build_yearly_overview_png(*, bank_records: Iterable[dict], share_records: It
         title="Yearly financial overview (last 12 months)",
         x_labels=[_format_month_label(k) for k in keys],
         series=[
-            ("Bank income", [by_month[k]["bank_income"] for k in keys], "#16a34a"),
-            ("Bank expenses", [by_month[k]["bank_expense"] for k in keys], "#ef4444"),
-            ("Share investment", [by_month[k]["share_investment"] for k in keys], "#2563eb"),
-            ("Share profit", [by_month[k]["share_profit"] for k in keys], "#22c55e"),
-            ("Share loss", [by_month[k]["share_loss"] for k in keys], "#f43f5e"),
+            ("Bank services income", [by_month[k]["bank_income"] for k in keys], "#16a34a"),
+            ("Bank services expenses", [by_month[k]["bank_expense"] for k in keys], "#ef4444"),
+            ("Share portfolio investment", [by_month[k]["share_investment"] for k in keys], "#2563eb"),
+            ("Share portfolio profit", [by_month[k]["share_profit"] for k in keys], "#22c55e"),
+            ("Share portfolio loss", [by_month[k]["share_loss"] for k in keys], "#f43f5e"),
         ],
         y_label="Amount",
     )

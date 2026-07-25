@@ -457,6 +457,32 @@ tbody tr:hover {
   align-items: end;
 }
 
+.view-switcher {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  margin: 0 0 1rem;
+}
+
+.view-switcher button {
+  border: 1px solid rgba(15, 118, 110, 0.22);
+  background: rgba(255, 255, 255, 0.72);
+  color: #334155;
+  box-shadow: none;
+}
+
+.view-switcher button.active {
+  background: #0f766e;
+  color: #fff;
+  border-color: #0f766e;
+}
+
+.muted-text {
+  color: #64748b;
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
 .match-list {
   display: flex;
   gap: 8px;
@@ -627,6 +653,154 @@ pre {
   justify-content: flex-end;
   gap: 10px;
   margin-top: 18px;
+}
+
+.settings-layout {
+  display: grid;
+  grid-template-columns: minmax(180px, 220px) minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+
+.settings-nav {
+  display: grid;
+  gap: 6px;
+  position: sticky;
+  top: 92px;
+}
+
+.settings-nav-item {
+  width: 100%;
+  text-align: left;
+  padding: 11px 14px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.72);
+  color: #334155;
+  border: 1px solid rgba(226, 232, 240, 0.92);
+  font-weight: 700;
+}
+
+.settings-nav-item:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.96);
+  color: var(--accent-dark);
+}
+
+.settings-nav-item.is-active {
+  background: rgba(15, 118, 110, 0.12);
+  color: var(--accent-dark);
+  border-color: rgba(15, 118, 110, 0.28);
+}
+
+.settings-content {
+  min-width: 0;
+}
+
+.settings-panel {
+  margin-bottom: 0;
+}
+
+.settings-panel--disabled .settings-actions {
+  margin-top: 16px;
+}
+
+.settings-import-form {
+  margin-top: 16px;
+}
+
+.settings-header-preview {
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1px solid #edf1f7;
+  border-radius: 12px;
+  background: rgba(248, 250, 252, 0.7);
+}
+
+.settings-header-preview code {
+  overflow-wrap: anywhere;
+  color: #334155;
+  font-size: 0.82rem;
+}
+
+.settings-merge-prompt {
+  margin-top: 4px;
+  padding: 14px 16px;
+  border: 1.5px solid #6366f1;
+  border-radius: 12px;
+  background: #f5f3ff;
+}
+
+.settings-merge-options {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.settings-merge-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #ffffff;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.settings-merge-option:has(input:checked) {
+  border-color: #6366f1;
+  background: #eef2ff;
+}
+
+.settings-merge-option input[type="radio"] {
+  margin-top: 3px;
+  flex-shrink: 0;
+  accent-color: #6366f1;
+  width: 16px;
+  height: 16px;
+}
+
+.settings-merge-option span {
+  font-size: 0.9rem;
+  color: #334155;
+  line-height: 1.5;
+}
+
+.settings-export-grid {
+  display: grid;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+@media (min-width: 720px) {
+  .settings-export-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.settings-version-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-top: 16px;
+  padding: 12px 14px;
+  border: 1px solid #edf1f7;
+  border-radius: 12px;
+  background: rgba(248, 250, 252, 0.7);
+}
+
+@media (max-width: 860px) {
+  .settings-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-nav {
+    position: static;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  }
 }
 
 .settings-row,

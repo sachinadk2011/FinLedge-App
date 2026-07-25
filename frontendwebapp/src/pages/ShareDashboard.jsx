@@ -8,40 +8,12 @@ import InteractiveTimelineChart from "../components/InteractiveTimelineChart";
 import StatGrid from "../components/StatGrid";
 import TransactionsTable from "../components/TransactionsTable";
 
-const formatter = new Intl.NumberFormat("en-US", {
-  minimumFractionDigits: 2,
-  maximumFractionDigits: 2,
-});
+import { formatCurrency } from "../utils/format";
+import { parseDate, isoDayKey, isoMonthKey, dayLabelFormatter, monthLabelFormatter } from "../utils/date";
 
-const dayLabelFormatter = new Intl.DateTimeFormat("en-US", {
-  month: "short",
-  day: "numeric",
-});
-
-const monthLabelFormatter = new Intl.DateTimeFormat("en-US", {
-  month: "short",
-  year: "numeric",
-});
-
-function parseDate(value) {
-  if (!value) return null;
-  const text = String(value).trim();
-  if (!text) return null;
-  const parsed = new Date(text.includes("T") ? text : `${text}T00:00:00`);
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
-}
-
-function isoDayKey(dateValue) {
-  return [
-    dateValue.getFullYear(),
-    String(dateValue.getMonth() + 1).padStart(2, "0"),
-    String(dateValue.getDate()).padStart(2, "0"),
-  ].join("-");
-}
-
-function isoMonthKey(dateValue) {
-  return [dateValue.getFullYear(), String(dateValue.getMonth() + 1).padStart(2, "0")].join("-");
-}
+const formatter = {
+  format: (val) => formatCurrency(val)
+};
 
 function createShareTimelineEntry(label) {
   return {
@@ -454,8 +426,8 @@ function ShareDashboard() {
     <main className="page">
       <header className="page-header">
         <div>
-          <p className="eyebrow">Share Module</p>
-          <h1>Share dashboard</h1>
+          <p className="eyebrow">Share Portfolio</p>
+          <h1>Share portfolio dashboard</h1>
         </div>
         <div className="header-actions">
           <button className="ghost" type="button" onClick={() => navigate(-1)}>
@@ -494,13 +466,13 @@ function ShareDashboard() {
           <section className="card">
             <div className="page-header" style={{ marginBottom: 12 }}>
               <div>
-                <h3>Share trends</h3>
+                <h3>Share portfolio trends</h3>
                 <p className="subtitle">Hover bars to see exact values. Drag the lower scrubber to move through history.</p>
               </div>
             </div>
             <div className="graph-grid">
               <InteractiveTimelineChart
-                title="Daily Share Overview"
+                title="Daily Share Portfolio Overview"
                 subtitle="IPO/secondary investment, SIP investment, sell amount, and profit/loss by date."
                 data={dailyOverview}
                 windowSize={12}
@@ -513,7 +485,7 @@ function ShareDashboard() {
                 ]}
               />
               <InteractiveTimelineChart
-                title="Monthly Share Overview"
+                title="Monthly Share Portfolio Overview"
                 subtitle="Month-wise summary of normal share activity and SIP investment."
                 data={monthlyOverview}
                 windowSize={12}
