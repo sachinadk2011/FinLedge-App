@@ -596,24 +596,36 @@ function getReleaseUrl(info) {
   return GITHUB_RELEASES_URL;
 }
 
-function normalizeReleaseNotes(notes) {
-  if (!notes) {
-    return [];
-  }
+function stripHtml(text) {
+  return String(text || "")
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
+    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/(p|div|li|h[1-6])>/gi, "\n")
+    .replace(/<li[^>]*>/gi, "- ")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .trim();
+}
 
+
+function normalizeReleaseNotes(notes) {
+  if (!notes) return [];
   if (Array.isArray(notes)) {
     return notes
       .map((item) => {
-        if (typeof item === "string") {
-          return item.trim();
-        }
-        return String(item?.note || item?.text || item?.message || "").trim();
+        if (typeof item === "string") return stripHtml(item);
+        return stripHtml(item?.note || item?.text || item?.message || "");
       })
       .filter(Boolean)
       .slice(0, 8);
   }
-
-  return String(notes)
+  return stripHtml(notes)
     .split(/\r?\n/)
     .map((line) => line.replace(/^[-*]\s+/, "").trim())
     .filter(Boolean)
@@ -763,24 +775,26 @@ function sendUpdateStatus(status) {
 // Set FINLEDGE_SIMULATE_UPDATE=1 (or FINLEDGE_SIMULATE_UPDATE=required) to
 // test how the update notice appears on a real client machine.
 function simulateUpdateAvailable() {
-  sendUpdateStatus({
-    state: "available",
-    title: "Update available — Finledge 1.2.0",
-    detail: "A new version of Finledge is ready. Download it from GitHub Releases to get the latest features and fixes.",
-    version: "1.2.0",
-    releaseUrl: GITHUB_RELEASES_URL,
-    releaseNotes: [
-      "Interactive onboarding tour with spotlight and step animations.",
+  const releaseNotes = normalizeReleaseNotes( [
+      "<p>Interactive onboarding tour with spotlight and step animations.</p>",
       "Dividend entries: cash adds to total dividend; bonus shares add to portfolio quantity.",
       "Secondary market buy/sell: enter total amount + quantity, app calculates per-unit price.",
       "Refresh button now appears beside the Finledge logo for quick data reload.",
       "Update notice shows version number and expandable 'What's new' section.",
       "Force-update support via update-policy.json — critical versions can block the app.",
       "Summary overall net corrected: Bank net + Share profit/loss.",
-    ],
+    ]);
+  sendUpdateStatus({
+    state: "available",
+    title: "Update available — Finledge 1.2.0",
+    detail: "A new version of Finledge is ready. Download it from GitHub Releases to get the latest features and fixes.",
+    version: "1.2.0",
+    releaseUrl: GITHUB_RELEASES_URL,
+    releaseNotes: releaseNotes,
     force: false,
     isSimulation: true,
   });
+  
 }
 
 function simulateRequiredUpdate() {
