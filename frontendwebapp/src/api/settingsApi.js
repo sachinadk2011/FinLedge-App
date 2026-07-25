@@ -19,9 +19,7 @@ function getFilenameFromDisposition(contentDisposition, fallback) {
 
 async function blobFromResponse(response, meta) {
   if (!response.ok) {
-    const data = await readJsonSafe(response);
-    const message = data?.detail ? formatDetail(data.detail) : "Request failed";
-    throw new Error(message);
+    await handleResponse(response, meta);
   }
 
   const blob = await response.blob();
