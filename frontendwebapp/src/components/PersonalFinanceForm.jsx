@@ -14,7 +14,7 @@ function PersonalFinanceForm({
   onChange,
   onSubmit,
   submitting,
-  submitLabel = "Add Personal Finance Entry",
+  submitLabel = "Add Personal Expenses Entry",
 }) {
   const categories = getCategories(value.direction);
 
@@ -28,7 +28,7 @@ function PersonalFinanceForm({
 
   return (
     <section className="card">
-      <h2>Personal Finance Entry</h2>
+      <h2>Personal Expenses Entry</h2>
       <form onSubmit={onSubmit}>
         <label className="field">
           <span>Date</span>

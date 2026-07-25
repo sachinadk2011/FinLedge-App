@@ -1,232 +1,238 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
 import { getBankData } from "../api/bankApi";
+import { getPersonalFinanceData } from "../api/personalFinanceApi";
 import { getShareData } from "../api/shareApi";
 import BarChart from "../components/BarChart";
 import InteractiveTimelineChart from "../components/InteractiveTimelineChart";
 import StatGrid from "../components/StatGrid";
 
-const formatter = new Intl.NumberFormat("en-US", {
-  minimumFractionDigits: 2,
-  maximumFractionDigits: 2,
-});
+import { formatCurrency } from "../utils/format";
+import { parseDate, isoMonthKey, monthLabelFormatter } from "../utils/date";
+import { BANK_INCOME_CATEGORIES } from "../constants/options";
 
-const dayLabelFormatter = new Intl.DateTimeFormat("en-US", {
-  month: "short",
-  day: "numeric",
-});
-
-const monthLabelFormatter = new Intl.DateTimeFormat("en-US", {
-  month: "short",
-  year: "numeric",
-});
-
-const BANK_INCOME_CATEGORIES = new Set(["interest earned", "income"]);
+const formatter = {
+  format: (val) => formatCurrency(val)
+};
 
 function isBankIncomeCategory(category) {
   return BANK_INCOME_CATEGORIES.has(String(category || "").trim().toLowerCase());
 }
 
-function parseDate(value) {
-  if (!value) return null;
-  const text = String(value).trim();
-  if (!text) return null;
-  const parsed = new Date(text.includes("T") ? text : `${text}T00:00:00`);
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
+function getMonthLabel(monthKey) {
+  return monthLabelFormatter.format(new Date(`${monthKey}-01T00:00:00`));
 }
 
-function isoDayKey(dateValue) {
-  return [
-    dateValue.getFullYear(),
-    String(dateValue.getMonth() + 1).padStart(2, "0"),
-    String(dateValue.getDate()).padStart(2, "0"),
-  ].join("-");
+function ensureMonth(map, parsedDate, defaults) {
+  const key = isoMonthKey(parsedDate);
+  if (!map.has(key)) {
+    map.set(key, { month_key: key, label: getMonthLabel(key), ...defaults });
+  }
+  return map.get(key);
 }
 
-function isoMonthKey(dateValue) {
-  return [dateValue.getFullYear(), String(dateValue.getMonth() + 1).padStart(2, "0")].join("-");
+function sortedMonthRows(map) {
+  return Array.from(map.entries())
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([, row]) => row);
 }
 
-function createOverviewEntry(label) {
-  return {
-    label,
-    bankIncome: 0,
-    bankExpenses: 0,
-    bankNet: 0,
-    shareInvestment: 0,
-    shareProfitLoss: 0,
-    overallNet: 0,
-  };
+function buildBreakdownRows(values = {}, { excludeIncome = false } = {}) {
+  return Object.entries(values)
+    .filter(([label]) => !excludeIncome || !isBankIncomeCategory(label))
+    .map(([label, value]) => ({ label, value: Math.abs(Number(value || 0)) }))
+    .filter((item) => item.value > 0)
+    .sort((a, b) => b.value - a.value);
 }
 
-function buildDailyOverview(bankRecords, shareRecords) {
-  const datedItems = [];
-
-  for (const record of bankRecords) {
-    const parsed = parseDate(record.date);
-    if (parsed) datedItems.push(parsed);
-  }
-
-  for (const record of shareRecords) {
-    const parsed = parseDate(record.date);
-    if (parsed) datedItems.push(parsed);
-  }
-
-  if (datedItems.length === 0) return [];
-
-  const start = new Date(Math.min(...datedItems.map((item) => item.getTime())));
-  const end = new Date(Math.max(...datedItems.map((item) => item.getTime())));
-  const byDay = new Map();
-
-  const cursor = new Date(start);
-  while (cursor <= end) {
-    const key = isoDayKey(cursor);
-    byDay.set(key, createOverviewEntry(dayLabelFormatter.format(cursor)));
-    cursor.setDate(cursor.getDate() + 1);
-  }
-
-  for (const record of bankRecords) {
-    const parsed = parseDate(record.date);
-    if (!parsed) continue;
-    const entry = byDay.get(isoDayKey(parsed));
-    if (!entry) continue;
-
-    const category = String(record.category || "").trim().toLowerCase();
-    const amount = Number(record.amount || 0);
-
-    if (isBankIncomeCategory(category)) {
-      entry.bankIncome += amount;
-    } else {
-      entry.bankExpenses += Math.abs(amount);
-    }
-
-    entry.bankNet += amount;
-  }
-
-  for (const record of shareRecords) {
-    const parsed = parseDate(record.date);
-    if (!parsed) continue;
-    const entry = byDay.get(isoDayKey(parsed));
-    if (!entry) continue;
-
-    const category = String(record.category || "").trim().toLowerCase();
-    const buySell = String(record.buy_sell || "").trim().toLowerCase();
-    const totalAmount = Number(record.total_amount || 0);
-    const profitLoss = Number(record.profit_loss || 0);
-
-    if (category === "ipo" || category === "buy" || (category === "sip" && buySell !== "redeem")) {
-      entry.shareInvestment += totalAmount;
-    } else if (category === "sip" && buySell === "redeem") {
-      entry.shareProfitLoss += profitLoss;
-    } else if (category === "sell") {
-      entry.shareProfitLoss += profitLoss;
-    } else if (category === "dividend" && buySell === "cash") {
-      entry.shareProfitLoss += totalAmount;
-    }
-  }
-
-  return Array.from(byDay.values()).map((entry) => ({
-    ...entry,
-    overallNet: entry.bankNet + entry.shareProfitLoss - entry.shareInvestment,
-  }));
-}
-
-function buildMonthlyOverview(bankRecords, shareRecords) {
+function buildBankMonthly(records) {
   const byMonth = new Map();
 
-  const ensureMonth = (parsedDate) => {
-    const key = isoMonthKey(parsedDate);
-    if (!byMonth.has(key)) {
-      byMonth.set(key, createOverviewEntry(monthLabelFormatter.format(new Date(`${key}-01T00:00:00`))));
-    }
-    return byMonth.get(key);
-  };
-
-  for (const record of bankRecords) {
+  for (const record of records) {
     const parsed = parseDate(record.date);
     if (!parsed) continue;
-    const entry = ensureMonth(parsed);
-    const category = String(record.category || "").trim().toLowerCase();
+    const row = ensureMonth(byMonth, parsed, {
+      income: 0,
+      expenses: 0,
+      netDisplay: 0,
+      netRaw: 0,
+    });
     const amount = Number(record.amount || 0);
-
-    if (isBankIncomeCategory(category)) {
-      entry.bankIncome += amount;
+    if (isBankIncomeCategory(record.category)) {
+      row.income += amount;
     } else {
-      entry.bankExpenses += Math.abs(amount);
+      row.expenses += Math.abs(amount);
     }
-
-    entry.bankNet += amount;
+    row.netRaw += amount;
+    row.netDisplay = Math.abs(row.netRaw);
   }
 
-  for (const record of shareRecords) {
+  return sortedMonthRows(byMonth);
+}
+
+function buildShareMonthly(records) {
+  const byMonth = new Map();
+
+  for (const record of records) {
     const parsed = parseDate(record.date);
     if (!parsed) continue;
-    const entry = ensureMonth(parsed);
+    const row = ensureMonth(byMonth, parsed, {
+      investment: 0,
+      income: 0,
+      profitDisplay: 0,
+      profitRaw: 0,
+      netMovementDisplay: 0,
+      netMovementRaw: 0,
+    });
     const category = String(record.category || "").trim().toLowerCase();
     const buySell = String(record.buy_sell || "").trim().toLowerCase();
     const totalAmount = Number(record.total_amount || 0);
     const profitLoss = Number(record.profit_loss || 0);
 
-    if (category === "ipo" || category === "buy" || (category === "sip" && buySell !== "redeem")) {
-      entry.shareInvestment += totalAmount;
-    } else if (category === "sip" && buySell === "redeem") {
-      entry.shareProfitLoss += profitLoss;
+    if (category === "ipo" || category === "buy") {
+      row.investment += totalAmount;
+      row.netMovementRaw -= totalAmount;
+    } else if (category === "sip" && !["redeem", "redeemed"].includes(buySell)) {
+      row.investment += totalAmount;
+    } else if (category === "sip" && ["redeem", "redeemed"].includes(buySell)) {
+      row.income += totalAmount;
+      row.profitRaw += profitLoss;
+      row.netMovementRaw += profitLoss;
     } else if (category === "sell") {
-      entry.shareProfitLoss += profitLoss;
+      row.income += totalAmount;
+      row.profitRaw += profitLoss;
+      row.netMovementRaw += profitLoss;
     } else if (category === "dividend" && buySell === "cash") {
-      entry.shareProfitLoss += totalAmount;
+      row.income += totalAmount;
+      row.profitRaw += totalAmount;
+      row.netMovementRaw += totalAmount;
     }
+
+    row.profitDisplay = Math.abs(row.profitRaw);
+    row.netMovementDisplay = Math.abs(row.netMovementRaw);
   }
 
-  return Array.from(byMonth.entries())
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([, entry]) => ({
-      ...entry,
-      overallNet: entry.bankNet + entry.shareProfitLoss - entry.shareInvestment,
-    }));
+  return sortedMonthRows(byMonth);
 }
 
-function buildCombinedTimeline(monthlyOverview) {
-  let runningBankNet = 0;
-  let runningShareNet = 0;
+function buildPersonalFinanceMonthly(records, { manualOnly = false } = {}) {
+  const byMonth = new Map();
 
-  return monthlyOverview.map((entry) => {
-    runningBankNet += entry.bankNet;
-    runningShareNet += entry.shareProfitLoss - entry.shareInvestment;
-    const overallNet = runningBankNet + runningShareNet;
+  for (const record of records) {
+    if (manualOnly && record.source !== "manual") continue;
+    const parsed = parseDate(record.date);
+    if (!parsed) continue;
+    const row = ensureMonth(byMonth, parsed, {
+      income: 0,
+      expenses: 0,
+      netDisplay: 0,
+      netRaw: 0,
+    });
+    const amount = Math.abs(Number(record.amount || 0));
+    if (record.direction === "income") {
+      row.income += amount;
+      row.netRaw += amount;
+    } else {
+      row.expenses += amount;
+      row.netRaw -= amount;
+    }
+    row.netDisplay = Math.abs(row.netRaw);
+  }
 
-    return {
-      label: entry.label,
-      bankNetDisplay: Math.abs(runningBankNet),
-      bankNetRaw: runningBankNet,
-      shareNetDisplay: Math.abs(runningShareNet),
-      shareNetRaw: runningShareNet,
-      overallNetDisplay: Math.abs(overallNet),
-      overallNetRaw: overallNet,
+  return sortedMonthRows(byMonth);
+}
+
+function buildOverallTimeline({ bankRecords, shareRecords, personalRecords }) {
+  const byMonth = new Map();
+
+  for (const row of buildBankMonthly(bankRecords)) {
+    byMonth.set(row.month_key, {
+      month_key: row.month_key,
+      label: row.label,
+      bankNet: row.netRaw,
+      shareNet: 0,
+      personalNet: 0,
+    });
+  }
+
+  for (const row of buildShareMonthly(shareRecords)) {
+    const existing = byMonth.get(row.month_key) || {
+      month_key: row.month_key,
+      label: row.label,
+      bankNet: 0,
+      shareNet: 0,
+      personalNet: 0,
     };
-  });
+    existing.shareNet = row.netMovementRaw;
+    byMonth.set(row.month_key, existing);
+  }
+
+  for (const row of buildPersonalFinanceMonthly(personalRecords, { manualOnly: true })) {
+    const existing = byMonth.get(row.month_key) || {
+      month_key: row.month_key,
+      label: row.label,
+      bankNet: 0,
+      shareNet: 0,
+      personalNet: 0,
+    };
+    existing.personalNet = row.netRaw;
+    byMonth.set(row.month_key, existing);
+  }
+
+  let runningBank = 0;
+  let runningShare = 0;
+  let runningPersonal = 0;
+
+  return Array.from(byMonth.values())
+    .sort((a, b) => a.month_key.localeCompare(b.month_key))
+    .map((row) => {
+      runningBank += row.bankNet;
+      runningShare += row.shareNet;
+      runningPersonal += row.personalNet;
+      const overall = runningBank + runningShare + runningPersonal;
+      return {
+        label: row.label,
+        bankDisplay: Math.abs(runningBank),
+        bankRaw: runningBank,
+        shareDisplay: Math.abs(runningShare),
+        shareRaw: runningShare,
+        personalDisplay: Math.abs(runningPersonal),
+        personalRaw: runningPersonal,
+        overallDisplay: Math.abs(overall),
+        overallRaw: overall,
+      };
+    });
+}
+
+function sumManualPersonalNet(records) {
+  return records.reduce((total, record) => {
+    if (record.source !== "manual") return total;
+    const amount = Math.abs(Number(record.amount || 0));
+    return record.direction === "income" ? total + amount : total - amount;
+  }, 0);
 }
 
 function Summary() {
   const navigate = useNavigate();
   const [bankData, setBankData] = useState(null);
   const [shareData, setShareData] = useState(null);
+  const [personalFinanceData, setPersonalFinanceData] = useState(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let active = true;
-    Promise.all([getBankData(), getShareData()])
-      .then(([bankResponse, shareResponse]) => {
-        if (active) {
-          setBankData(bankResponse);
-          setShareData(shareResponse);
-        }
-      })
-      .catch((err) => {
-        if (active) {
-          setError(err.message || "Unable to load summary data.");
+    Promise.allSettled([getBankData(), getShareData(), getPersonalFinanceData()])
+      .then(([bankRes, shareRes, personalRes]) => {
+        if (!active) return;
+        if (bankRes.status === "fulfilled") setBankData(bankRes.value);
+        if (shareRes.status === "fulfilled") setShareData(shareRes.value);
+        if (personalRes.status === "fulfilled") setPersonalFinanceData(personalRes.value);
+
+        if (bankRes.status === "rejected" && shareRes.status === "rejected" && personalRes.status === "rejected") {
+          const err = bankRes.reason || shareRes.reason || personalRes.reason;
+          setError(err?.message || "Unable to load summary data.");
         }
       })
       .finally(() => {
@@ -244,46 +250,47 @@ function Summary() {
     total_income: 0,
     total_expenses: 0,
     net_balance: 0,
+    category_totals: {},
   };
   const shareSummary = shareData?.summary || {
-    overall_investment: 0,
-    overall_profit_loss: 0,
+    total_ipo_investment: 0,
+    total_sip_investment: 0,
+    total_buy_amount: 0,
+    total_sell_amount: 0,
+    total_dividend: 0,
+    grand_total_investment: 0,
+    grand_profit_loss: 0,
+  };
+  const personalSummary = personalFinanceData?.summary?.combined || {
+    overall_income: 0,
+    overall_expenses: 0,
+    overall_net: 0,
   };
 
   const bankRecords = bankData?.records || [];
   const shareRecords = shareData?.records || [];
-  const totalRecords = bankRecords.length + shareRecords.length;
-  const hasAnyData = totalRecords > 0;
+  const personalRecords = personalFinanceData?.records || [];
+  const hasAnyData = bankRecords.length + shareRecords.length + personalRecords.length > 0;
 
   const totalShareInvestment = Number(shareSummary.grand_total_investment ?? shareSummary.overall_investment ?? 0);
   const totalShareProfitLoss = Number(shareSummary.grand_profit_loss ?? shareSummary.overall_profit_loss ?? 0);
-  const overallNet = Number(bankSummary.net_balance || 0) + totalShareProfitLoss;
+  const manualPersonalNet = sumManualPersonalNet(personalRecords);
+  const overallNet = Number(bankSummary.net_balance || 0) + totalShareProfitLoss + manualPersonalNet;
 
-  const stats = [
-    { label: "Bank services income", value: formatter.format(bankSummary.total_income || 0) },
-    { label: "Bank services expenses", value: formatter.format(bankSummary.total_expenses || 0) },
-    { label: "Bank services net balance", value: formatter.format(bankSummary.net_balance || 0) },
-    { label: "Share portfolio investment", value: formatter.format(totalShareInvestment) },
-    { label: "Share portfolio profit/loss", value: formatter.format(totalShareProfitLoss) },
-    { label: "Overall net position", value: formatter.format(overallNet) },
-  ];
-
-  const overviewData = [
-    { label: "Bank services net", value: Number(bankSummary.net_balance || 0) },
-    { label: "Share portfolio profit/loss", value: totalShareProfitLoss },
-    { label: "Overall net", value: overallNet },
-  ];
-
-  const dailyOverview = buildDailyOverview(bankRecords, shareRecords);
-  const monthlyOverview = buildMonthlyOverview(bankRecords, shareRecords);
-  const combinedTimeline = buildCombinedTimeline(monthlyOverview);
+  const bankMonthly = useMemo(() => buildBankMonthly(bankRecords), [bankRecords]);
+  const shareMonthly = useMemo(() => buildShareMonthly(shareRecords), [shareRecords]);
+  const personalMonthly = useMemo(() => buildPersonalFinanceMonthly(personalRecords), [personalRecords]);
+  const overallTimeline = useMemo(
+    () => buildOverallTimeline({ bankRecords, shareRecords, personalRecords }),
+    [bankRecords, shareRecords, personalRecords],
+  );
 
   return (
     <main className="page">
       <header className="page-header">
         <div>
           <p className="eyebrow">Financial Summary</p>
-          <h1>Combined view</h1>
+          <h1>Financial summary</h1>
         </div>
         <div className="header-actions">
           <button className="ghost" type="button" onClick={() => navigate(-1)}>
@@ -303,63 +310,130 @@ function Summary() {
           {!hasAnyData ? (
             <section className="card">
               <h3>Financial Summary</h3>
-              <p className="subtitle">Add transaction data to see interactive monthly, yearly, and combined charts.</p>
+              <p className="subtitle">Add transaction data to see Bank Services, Share Portfolio, Personal Expenses, and overall position analytics.</p>
             </section>
           ) : (
             <>
-              <StatGrid items={stats} />
-              <BarChart title="Bank services net vs share portfolio profit/loss vs overall net" data={overviewData} />
+              <section className="card">
+                <h3>Bank Services summary</h3>
+                <StatGrid
+                  items={[
+                    { label: "Total Interest Earned", value: formatter.format(bankSummary.total_income || 0) },
+                    { label: "Total Charges", value: formatter.format(bankSummary.total_expenses || 0) },
+                    { label: "Net Bank Benefit/Loss", value: formatter.format(bankSummary.net_balance || 0) },
+                  ]}
+                />
+              </section>
+              <div className="graph-grid">
+                <BarChart title="Bank Services charges by category" data={buildBreakdownRows(bankSummary.category_totals, { excludeIncome: true })} />
+                <InteractiveTimelineChart
+                  title="Bank Services monthly trend"
+                  data={bankMonthly}
+                  windowSize={12}
+                  bars={[
+                    { dataKey: "income", name: "Interest earned", color: "#16a34a" },
+                    { dataKey: "expenses", name: "Charges", color: "#ef4444" },
+                    { dataKey: "netDisplay", rawDataKey: "netRaw", name: "Net benefit/loss", color: "#0f766e", negativeColor: "#f59e0b" },
+                  ]}
+                />
+              </div>
 
               <section className="card">
-                <div className="page-header" style={{ marginBottom: 12 }}>
-                  <div>
-                    <h3>Financial Summary</h3>
-                    <p className="subtitle">Hover bars to see exact values. Drag the lower scrubber to move through history.</p>
-                  </div>
-                </div>
-
-                <div className="graph-grid">
-                  <InteractiveTimelineChart
-                    title="Monthly Overview"
-                    subtitle="Daily view of bank services income, bank services charges, share portfolio investment, and share portfolio profit/loss."
-                    data={dailyOverview}
-                    windowSize={12}
-                    bars={[
-                      { dataKey: "bankIncome", name: "Bank services income", color: "#16a34a" },
-                      { dataKey: "bankExpenses", name: "Bank services expenses", color: "#ef4444" },
-                      { dataKey: "shareInvestment", name: "Share portfolio investment", color: "#2563eb" },
-                      { dataKey: "shareProfitLoss", name: "Share portfolio profit/loss", color: "#a855f7" },
-                    ]}
-                  />
-
-                  <InteractiveTimelineChart
-                    title="Yearly Overview"
-                    subtitle="Month-wise summary so you can scroll across the full yearly history."
-                    data={monthlyOverview}
-                    windowSize={12}
-                    bars={[
-                      { dataKey: "bankIncome", name: "Bank services income", color: "#16a34a" },
-                      { dataKey: "bankExpenses", name: "Bank services expenses", color: "#ef4444" },
-                      { dataKey: "shareInvestment", name: "Share portfolio investment", color: "#2563eb" },
-                      { dataKey: "shareProfitLoss", name: "Share portfolio profit/loss", color: "#a855f7" },
-                    ]}
-                  />
-
-                  <div className="graph-span">
-                    <InteractiveTimelineChart
-                      title="Combined Financial Overview"
-                      subtitle="Running bank net balance plus running share profit/loss, with the overall net position on top."
-                      data={combinedTimeline}
-                      windowSize={12}
-                      bars={[
-                        { dataKey: "bankNetDisplay", rawDataKey: "bankNetRaw", name: "Bank services net balance", color: "#0f766e"},
-                        { dataKey: "shareNetDisplay", rawDataKey: "shareNetRaw", name: "Share portfolio net profit/loss", color: "#8b5cf6" },
-                        { dataKey: "overallNetDisplay", rawDataKey: "overallNetRaw", name: "Overall net position", color: "#f59e0b" },
-                      ]}
-                    />
-                  </div>
-                </div>
+                <h3>Share Portfolio summary</h3>
+                <StatGrid
+                  items={[
+                    { label: "IPO investment", value: formatter.format(shareSummary.total_ipo_investment || 0) },
+                    { label: "Secondary investment", value: formatter.format(shareSummary.total_buy_amount || 0) },
+                    { label: "SIP investment", value: formatter.format(shareSummary.total_sip_investment || 0) },
+                    { label: "Sell proceeds", value: formatter.format(shareSummary.total_sell_amount || 0) },
+                    { label: "Dividend income", value: formatter.format(shareSummary.total_dividend || 0) },
+                    { label: "Grand profit/loss", value: formatter.format(totalShareProfitLoss) },
+                  ]}
+                />
               </section>
+              <div className="graph-grid">
+                <BarChart
+                  title="Share Portfolio totals"
+                  data={[
+                    { label: "Total investment", value: totalShareInvestment },
+                    { label: "Sell proceeds", value: Number(shareSummary.total_sell_amount || 0) },
+                    { label: "Dividend income", value: Number(shareSummary.total_dividend || 0) },
+                    { label: "Profit/loss", value: totalShareProfitLoss },
+                  ]}
+                />
+                <InteractiveTimelineChart
+                  title="Share Portfolio monthly trend"
+                  data={shareMonthly}
+                  windowSize={12}
+                  bars={[
+                    { dataKey: "investment", name: "Investment", color: "#2563eb" },
+                    { dataKey: "income", name: "Income received", color: "#16a34a" },
+                    { dataKey: "profitDisplay", rawDataKey: "profitRaw", name: "Profit/loss", color: "#8b5cf6", negativeColor: "#f43f5e" },
+                  ]}
+                />
+              </div>
+
+              <section className="card">
+                <h3>Personal Expenses summary</h3>
+                <p className="subtitle">Combined Overview output from Bank Flow and Cash Flow.</p>
+                <StatGrid
+                  items={[
+                    { label: "Overall income", value: formatter.format(personalSummary.overall_income || 0) },
+                    { label: "Overall expenses", value: formatter.format(personalSummary.overall_expenses || 0) },
+                    { label: "Overall net/savings", value: formatter.format(personalSummary.overall_net || 0) },
+                    { label: "Bank Flow net", value: formatter.format(personalFinanceData?.summary?.bank?.net || 0) },
+                    { label: "Cash Flow net", value: formatter.format(personalFinanceData?.summary?.cash?.net || 0) },
+                  ]}
+                />
+              </section>
+              <div className="graph-grid">
+                <BarChart
+                  title="Personal Expenses flow totals"
+                  data={[
+                    { label: "Income", value: Number(personalSummary.overall_income || 0) },
+                    { label: "Expenses", value: Number(personalSummary.overall_expenses || 0) },
+                    { label: "Net/savings", value: Number(personalSummary.overall_net || 0) },
+                  ]}
+                />
+                <InteractiveTimelineChart
+                  title="Personal Expenses monthly trend"
+                  data={personalMonthly}
+                  windowSize={12}
+                  bars={[
+                    { dataKey: "income", name: "Income", color: "#16a34a" },
+                    { dataKey: "expenses", name: "Expenses", color: "#ef4444" },
+                    { dataKey: "netDisplay", rawDataKey: "netRaw", name: "Net/savings", color: "#0f766e", negativeColor: "#f59e0b" },
+                  ]}
+                />
+              </div>
+
+              <section className="card">
+                <h3>Overall financial position</h3>
+                <p className="subtitle">Combines Bank Services, Share Portfolio, and manual Personal Expenses movement without double-counting the live Bank Flow view.</p>
+                <StatGrid
+                  items={[
+                    { label: "Bank Services net", value: formatter.format(bankSummary.net_balance || 0) },
+                    { label: "Share Portfolio profit/loss", value: formatter.format(totalShareProfitLoss) },
+                    { label: "Manual Personal Expenses net", value: formatter.format(manualPersonalNet) },
+                    { label: "Overall net position", value: formatter.format(overallNet) },
+                  ]}
+                />
+              </section>
+              <div className="graph-grid">
+                <div className="graph-span">
+                  <InteractiveTimelineChart
+                    title="Net worth trend"
+                    data={overallTimeline}
+                    windowSize={12}
+                    bars={[
+                      { dataKey: "bankDisplay", rawDataKey: "bankRaw", name: "Bank Services net", color: "#0f766e", negativeColor: "#f59e0b" },
+                      { dataKey: "shareDisplay", rawDataKey: "shareRaw", name: "Share Portfolio movement", color: "#8b5cf6", negativeColor: "#f43f5e" },
+                      { dataKey: "personalDisplay", rawDataKey: "personalRaw", name: "Personal Expenses net", color: "#2563eb", negativeColor: "#ef4444" },
+                      { dataKey: "overallDisplay", rawDataKey: "overallRaw", name: "Overall net position", color: "#16a34a", negativeColor: "#dc2626" },
+                    ]}
+                  />
+                </div>
+              </div>
             </>
           )}
         </>

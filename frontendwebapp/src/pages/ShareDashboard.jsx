@@ -8,40 +8,12 @@ import InteractiveTimelineChart from "../components/InteractiveTimelineChart";
 import StatGrid from "../components/StatGrid";
 import TransactionsTable from "../components/TransactionsTable";
 
-const formatter = new Intl.NumberFormat("en-US", {
-  minimumFractionDigits: 2,
-  maximumFractionDigits: 2,
-});
+import { formatCurrency } from "../utils/format";
+import { parseDate, isoDayKey, isoMonthKey, dayLabelFormatter, monthLabelFormatter } from "../utils/date";
 
-const dayLabelFormatter = new Intl.DateTimeFormat("en-US", {
-  month: "short",
-  day: "numeric",
-});
-
-const monthLabelFormatter = new Intl.DateTimeFormat("en-US", {
-  month: "short",
-  year: "numeric",
-});
-
-function parseDate(value) {
-  if (!value) return null;
-  const text = String(value).trim();
-  if (!text) return null;
-  const parsed = new Date(text.includes("T") ? text : `${text}T00:00:00`);
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
-}
-
-function isoDayKey(dateValue) {
-  return [
-    dateValue.getFullYear(),
-    String(dateValue.getMonth() + 1).padStart(2, "0"),
-    String(dateValue.getDate()).padStart(2, "0"),
-  ].join("-");
-}
-
-function isoMonthKey(dateValue) {
-  return [dateValue.getFullYear(), String(dateValue.getMonth() + 1).padStart(2, "0")].join("-");
-}
+const formatter = {
+  format: (val) => formatCurrency(val)
+};
 
 function createShareTimelineEntry(label) {
   return {

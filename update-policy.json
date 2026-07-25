@@ -1,13 +1,15 @@
 {
-  "latestVersion": "1.1.0",
+  "latestVersion": "1.2.0",
   "minimumSupportedVersion": "1.1.0",
   "releaseUrl": "https://github.com/sachinadk2011/FinLedge-App/releases/latest",
   "availableMessage": "A newer Finledge release is available on GitHub. Review what changed and install it from the official release page.",
   "requiredMessage": "This Finledge version is no longer supported. Please install the latest release from GitHub to continue receiving important fixes.",
   "releaseNotes": [
-    "Added SIP investment and redemption tracking.",
-    "Added bar charts to individual module dashboards for quicker insights.",
-    "Introduced a new update policy system with required/optional update indicators and release notes support.",
-    "Enhanced the dashboard with SIP summaries and a combined Grand Total for IPO and SIP."
+    "Bank Services now uses clearer interest and charge categories.",
+    "Added Personal Expenses with Bank Flow, Cash Flow, and Combined Overview.",
+    "Bank Flow now includes read-only activity from Bank Services and Share Portfolio automatically.",
+    "Financial Summary now separates Bank Services, Share Portfolio, Personal Expenses, and overall position analytics.",
+    "Settings now includes file management, Import/Export, About, and How To Use sections.",
+    "Added automatic, non-destructive data migration from FinLedge 1.1.0."
   ]
 }

@@ -43,6 +43,12 @@ function normalizeEditCategory(record) {
   return found || categories[0];
 }
 
+function getSourceLabel(source) {
+  if (source === "share-sync") return "Share Portfolio";
+  if (source === "bank-services-sync") return "Bank Services";
+  return "Manual";
+}
+
 function PersonalFinancePage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -70,7 +76,7 @@ function PersonalFinancePage() {
         return response?.records || [];
       })
       .catch((err) => {
-        setError(err.message || "Unable to load Personal Finance data.");
+        setError(err.message || "Unable to load Personal Expenses data.");
         return [];
       })
       .finally(() => {
@@ -85,11 +91,11 @@ function PersonalFinancePage() {
         (item) => Number(item.id) === Number(editId) && String(item.flow_type || "bank") === recordFlow,
       );
       if (!record) {
-        setError("Personal Finance record not found for editing.");
+        setError("Personal Expenses record not found for editing.");
         return;
       }
-      if (record.source === "share-sync") {
-        setError("Share-synced Personal Finance records are read-only.");
+      if (record.source !== "manual") {
+        setError("Synced Personal Expenses records are read-only.");
         return;
       }
       setForm({
@@ -141,7 +147,7 @@ function PersonalFinancePage() {
       }));
       loadData({ background: true });
     } catch (err) {
-      setError(err.message || "Unable to save Personal Finance entry.");
+      setError(err.message || "Unable to save Personal Expenses entry.");
     } finally {
       setSubmitting(false);
     }
@@ -156,7 +162,7 @@ function PersonalFinancePage() {
       setPendingDeleteRow(null);
       loadData({ background: true });
     } catch (err) {
-      setError(err.message || "Unable to delete Personal Finance record.");
+      setError(err.message || "Unable to delete Personal Expenses record.");
     } finally {
       setDeletingId(null);
     }
@@ -165,6 +171,7 @@ function PersonalFinancePage() {
   const tableRows = useMemo(
     () =>
       [...(data?.records || [])]
+        .filter((record) => record.source === "manual")
         .filter((record) => requestedFlow === "combined" || record.flow_type === form.flow_type)
         .reverse()
         .slice(0, 20)
@@ -175,19 +182,20 @@ function PersonalFinancePage() {
           flow: record.flow_type === "cash" ? "Cash Flow" : "Bank Flow",
           direction: record.direction === "income" ? "Income" : "Expense",
           category: record.category,
+          description: record.description || "-",
           amount: formatter.format(record.amount),
-          source: record.source === "share-sync" ? "Share sync" : "Manual",
+          source: getSourceLabel(record.source),
           raw: record,
         })),
     [data, form.flow_type, requestedFlow],
   );
 
   const columns = [
-    { key: "display_id", label: "ID" },
     { key: "date", label: "Date" },
     { key: "flow", label: "Flow" },
     { key: "direction", label: "Type" },
     { key: "category", label: "Category" },
+    { key: "description", label: "Description" },
     { key: "amount", label: "Amount" },
     { key: "source", label: "Source" },
   ];
@@ -196,8 +204,8 @@ function PersonalFinancePage() {
     <main className="page">
       <header className="page-header">
         <div>
-          <p className="eyebrow">Personal Finance</p>
-          <h1>{editId ? "Edit personal finance entry" : "Add personal finance entry"}</h1>
+          <p className="eyebrow">Personal Expenses</p>
+          <h1>{editId ? "Edit personal expenses entry" : "Add personal expenses entry"}</h1>
         </div>
         <div className="header-actions">
           <button className="ghost" type="button" onClick={() => navigate(-1)}>
@@ -207,7 +215,7 @@ function PersonalFinancePage() {
             Home
           </Link>
           <Link className="ghost" to="/personal-finance">
-            Personal Finance
+            Personal Expenses
           </Link>
           <button className="ghost" type="button" onClick={() => navigate(`/personal-finance-dashboard?view=${form.flow_type}`)}>
             View dashboard
@@ -215,13 +223,13 @@ function PersonalFinancePage() {
         </div>
       </header>
 
-      {loading ? <p>Loading Personal Finance data...</p> : null}
+      {loading ? <p>Loading Personal Expenses data...</p> : null}
       <PersonalFinanceForm
         value={form}
         onChange={setForm}
         onSubmit={handleSubmit}
         submitting={submitting}
-        submitLabel={editId ? "Update Personal Finance Entry" : "Add Personal Finance Entry"}
+        submitLabel={editId ? "Update Personal Expenses Entry" : "Add Personal Expenses Entry"}
       />
       {success ? <p className="success">{success}</p> : null}
       {error ? <pre className="error-pre">{error}</pre> : null}
@@ -232,7 +240,7 @@ function PersonalFinancePage() {
           columns={columns}
           rows={tableRows}
           actions={(row) =>
-            row.raw?.source === "share-sync" ? (
+            row.raw?.source !== "manual" ? (
               <span className="muted-text">Read-only</span>
             ) : (
               <>

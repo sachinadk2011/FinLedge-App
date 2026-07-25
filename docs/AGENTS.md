@@ -16,7 +16,7 @@ Read this before every task. This is a checklist, not documentation.
 | Pydantic models | PascalCase | `BankAddRequest`, `ShareCategory` |
 | Enums | snake_case values | `operation_cost`, `investment_cost`, `service_cost` |
 | API routes | lowercase prefix | `/bank/add`, `/share/data`, `/personal-finance/data`, `/summary/graphs/monthly` |
-| Excel columns | Title Case | `Date`, `Category`, `Amount`, `Cumulative Amount`, `Timestamp` |
+| Excel columns | Title Case | `Date`, `Category`, `Amount`, `Cumulative Amount`, `Created Timestamp`, `Last Updated Timestamp` |
 
 ## 2. File Map — Module → Files
 
@@ -40,7 +40,7 @@ Share Portfolio:
   frontendwebapp/src/components/ShareForm.jsx
   frontendwebapp/src/api/shareApi.js
 
-Personal Finance:
+Personal Expenses:
   backend/routes/personal_finance.py
   backend/services/personal_finance_service.py — Excel I/O for separate Bank Flow and Cash Flow files
   backend/models.py               — PersonalFinance* enums and PersonalFinanceAddRequest
@@ -99,10 +99,11 @@ def _ensure_workbook_exists() -> None:
 
 - Call `_ensure_workbook_exists()` at the TOP of every read/write function.
 - Use `load_workbook()` for reads, `sheet.append()` for writes, `workbook.save()` after every mutation.
-- Every new or updated record must store a backend-generated `Timestamp` value using ISO format with seconds.
+- Every new record must store backend-generated `Created Timestamp` and `Last Updated Timestamp` values. Updates preserve Created Timestamp and replace Last Updated Timestamp.
 - No shared data-access layer exists — each service manages its own file directly.
 - Never import or directly read another module's Excel file from a route handler. Use the service layer.
-- Personal Finance uses separate files for Bank Flow and Cash Flow, and combined views only aggregate those outputs.
+- Personal Expenses uses separate files for manual Bank Flow and Cash Flow data. Combined views aggregate those outputs; Bank Flow additionally derives read-only live activity from the Bank Services and Share Portfolio source workbooks.
+- Do not copy Share Portfolio or Bank Services rows into a Personal Expenses workbook. The backend aggregation creates read-only `share-sync` and `bank-services-sync` view rows, so edits and deletes in their source modules are reflected immediately without duplicate storage.
 
 **New modules** must create:
 1. `backend/services/personal_finance_service.py` — own file paths, sheet names, headers, `_ensure_workbook_exists()`
@@ -178,7 +179,7 @@ function ModulePage() {
 1. **Never move top-level app navigation.** The nav in `App.jsx` Layout must stay top-level and keep this order: Bank Services, Share Portfolio, Personal Finance, Financial Summary, Settings. Do not move it into Settings or any sidebar.
 2. **Never consolidate dashboards.** Each module keeps its own `*Dashboard.jsx`. Summary gets its own page.
 3. **Migration must never destroy data.** Always write to a backup file first, then modify. Never overwrite `bank_transactions.xlsx` or `share_transactions.xlsx` in-place during migration.
-4. **Auto-synced entries are read-only in the target UI.** Any row with `source="share-sync"` in the Personal Finance Bank Flow or Cash Flow files must NOT show edit/delete buttons in the Personal Finance UI.
+4. **Synced entries are read-only in the target UI.** Any row whose source is not `manual` in the Personal Expenses Bank Flow view must NOT show edit/delete buttons.
 5. **Financial Summary is analytics-only.** No entry forms, no mutation endpoints, no write operations on the Summary page.
 6. **Do not build anything under Deferred.** See PLAN.md: v1.3.0 (opportunity cost engine, interest settings, daily interest sim) and v2.0.0 (Google Sign-In, Drive sync, Android) are explicitly off-limits.
 

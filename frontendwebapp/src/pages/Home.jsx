@@ -54,7 +54,7 @@ function Home() {
             Keep your money story tidy
           </h1>
           <p className="mt-4 text-base font-medium leading-relaxed text-slate-700 md:text-lg">
-            Track bank services, share portfolio activity, everyday personal finance, and your financial summary with clean dashboards.
+            Track bank services, share portfolio activity, everyday personal expenses, and your financial summary with clean dashboards.
           </p>
         </header>
 
@@ -95,7 +95,7 @@ function Home() {
               <span className="grid h-12 w-12 place-items-center rounded-2xl bg-amber-100 text-amber-800 transition group-hover:scale-[1.06]">
                 <IconPersonalFinance />
               </span>
-              <div className="mt-5 text-xl font-extrabold tracking-tight text-slate-900">Personal Finance</div>
+              <div className="mt-5 text-xl font-extrabold tracking-tight text-slate-900">Personal Expenses</div>
               <div className="mt-2 text-sm font-semibold leading-relaxed text-slate-600">
                 Track everyday bank and cash flow
               </div>

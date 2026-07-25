@@ -11,11 +11,10 @@ class BankCategory(str, Enum):
     interest_tax = "Interest Tax"
     mobile_banking_charge = "Mobile Banking Charge"
     debit_card_charge = "Debit Card Charge"
-    atm_charge = "ATM Charge"
-    sms_charge = "SMS Charge"
     cheque_book = "Cheque Book"
     locker = "Locker"
     demat_renewal = "Demat Renewal"
+    demat_meroshare_renewal = "Demat & MeroShare Renewal"
     broker_renewal = "Broker Renewal"
     meroshare_renewal = "MeroShare Renewal"
     other_charges = "Other Charges"
@@ -60,6 +59,7 @@ class PersonalFinanceCategory(str, Enum):
     prize_lottery = "Prize/Lottery"
     gift = "Gift"
     refund = "Refund"
+    investment_income = "Investment Income"
     investment_return = "Investment Return"
     dividend = "Dividend"
     share_sell_proceeds = "Share Sell Proceeds"
@@ -81,6 +81,38 @@ class BankAddRequest(BaseModel):
         return self
 
 
+PF_EXPENSE_CATEGORIES = {
+    PersonalFinanceCategory.food,
+    PersonalFinanceCategory.transportation,
+    PersonalFinanceCategory.entertainment,
+    PersonalFinanceCategory.shopping,
+    PersonalFinanceCategory.health,
+    PersonalFinanceCategory.education,
+    PersonalFinanceCategory.bills,
+    PersonalFinanceCategory.rent,
+    PersonalFinanceCategory.travel,
+    PersonalFinanceCategory.insurance,
+    PersonalFinanceCategory.investment,
+    PersonalFinanceCategory.sip,
+    PersonalFinanceCategory.share_market,
+    PersonalFinanceCategory.other,
+}
+
+PF_INCOME_CATEGORIES = {
+    PersonalFinanceCategory.salary,
+    PersonalFinanceCategory.freelance,
+    PersonalFinanceCategory.business,
+    PersonalFinanceCategory.prize_lottery,
+    PersonalFinanceCategory.gift,
+    PersonalFinanceCategory.refund,
+    PersonalFinanceCategory.investment_income,
+    PersonalFinanceCategory.investment_return,
+    PersonalFinanceCategory.dividend,
+    PersonalFinanceCategory.share_sell_proceeds,
+    PersonalFinanceCategory.other_income,
+}
+
+
 class PersonalFinanceAddRequest(BaseModel):
     dates: date | None = None
     flow_type: PersonalFinanceFlow
@@ -92,38 +124,9 @@ class PersonalFinanceAddRequest(BaseModel):
 
     @model_validator(mode="after")
     def validate_category_group(self):
-        expense_categories = {
-            PersonalFinanceCategory.food,
-            PersonalFinanceCategory.transportation,
-            PersonalFinanceCategory.entertainment,
-            PersonalFinanceCategory.shopping,
-            PersonalFinanceCategory.health,
-            PersonalFinanceCategory.education,
-            PersonalFinanceCategory.bills,
-            PersonalFinanceCategory.rent,
-            PersonalFinanceCategory.travel,
-            PersonalFinanceCategory.insurance,
-            PersonalFinanceCategory.investment,
-            PersonalFinanceCategory.sip,
-            PersonalFinanceCategory.share_market,
-            PersonalFinanceCategory.other,
-        }
-        income_categories = {
-            PersonalFinanceCategory.salary,
-            PersonalFinanceCategory.freelance,
-            PersonalFinanceCategory.business,
-            PersonalFinanceCategory.prize_lottery,
-            PersonalFinanceCategory.gift,
-            PersonalFinanceCategory.refund,
-            PersonalFinanceCategory.investment_return,
-            PersonalFinanceCategory.dividend,
-            PersonalFinanceCategory.share_sell_proceeds,
-            PersonalFinanceCategory.other_income,
-        }
-
-        if self.direction == PersonalFinanceDirection.expense and self.category not in expense_categories:
+        if self.direction == PersonalFinanceDirection.expense and self.category not in PF_EXPENSE_CATEGORIES:
             raise ValueError("Expense entries must use an expense category.")
-        if self.direction == PersonalFinanceDirection.income and self.category not in income_categories:
+        if self.direction == PersonalFinanceDirection.income and self.category not in PF_INCOME_CATEGORIES:
             raise ValueError("Income entries must use an income category.")
         return self
 

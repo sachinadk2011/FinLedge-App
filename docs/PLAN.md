@@ -7,7 +7,7 @@ Personal Financial Operating System.
 ## Hard Constraints (do not violate these in any task)
 1. Preserve current UI and navigation exactly — this includes the
    top-level app navigation (Bank Services, Share Portfolio, Personal
-   Finance, Financial Summary, Settings). Never move app nav into a
+   Expenses, Financial Summary, Settings). Never move app nav into a
    sidebar or restructure it.
 2. Preserve workflow: Home → Module → Entry Form → Transaction Table →
    Dashboard button.
@@ -18,21 +18,22 @@ Personal Financial Operating System.
 
 ## Modules (v1.2.0)
 - Bank → Bank Services: category list replaced entirely with Interest
-  Earned, Interest Tax, Mobile Banking Charge, Debit Card Charge, ATM
-  Charge, SMS Charge, Cheque Book, Locker, Demat Renewal, Broker
+  Earned, Interest Tax, Mobile Banking Charge, Debit Card Charge, Cheque
+  Book, Locker, Demat Renewal, Demat & MeroShare Renewal, Broker
   Renewal, MeroShare Renewal, Other Charges. No new fields — same form
   structure (date, category, amount, description).
-- Share → Share Portfolio: unchanged logic, renamed only. New: one-way
-  auto-sync into Personal Finance > Bank Flow on IPO/Buy/SIP/Sell/
-  Dividend, tagged source="share-sync", read-only in Personal Finance UI.
-- Personal Finance (NEW): own storage split by flow:
+- Share → Share Portfolio: unchanged storage and primary logic, renamed
+  only. Its cash-impact events are derived live in Personal Expenses > Bank
+  Flow: IPO/Buy/SIP installment are Investment Expense; Sell/Cash Dividend/
+  SIP redeem are Investment Income. No Share data is copied into another
+  workbook.
+- Personal Expenses (NEW): own manual storage split by flow:
   personal_finance_bank_flow.xlsx and personal_finance_cash_flow.xlsx. Three
-  sub-views: Bank Flow, Cash Flow, Combined Overview (Combined Overview
-  only aggregates Bank Flow + Cash Flow, never touches bank_
-  transactions.xlsx or share_transactions.xlsx directly). No connection
-  to Bank Services' bank_transactions.xlsx.
+  sub-views: Bank Flow, Cash Flow, Combined Overview. Bank Flow derives
+  read-only Bank Services and Share Portfolio cash activity at read time,
+  while all source workbooks remain separate.
 - Summary → Financial Summary: 4 separate sections, not merged —
-  Bank Services summary, Share Portfolio summary, Personal Finance
+  Bank Services summary, Share Portfolio summary, Personal Expenses
   summary, Overall financial position (net worth trend).
 - Settings: only the Settings page internals get a left-nav + right-
   content layout. App-level navigation is untouched (see Constraint 1).

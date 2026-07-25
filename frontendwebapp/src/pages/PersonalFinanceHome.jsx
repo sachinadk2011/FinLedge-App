@@ -38,12 +38,12 @@ function PersonalFinanceHome() {
     <main className="min-h-[calc(100vh-84px)] px-4 py-14 sm:px-6">
       <section className="mx-auto flex w-full max-w-6xl flex-col items-center justify-center gap-10">
         <header className="w-full max-w-3xl text-center">
-          <p className="text-xs font-extrabold uppercase tracking-[0.22em] text-slate-600">Personal Finance</p>
+          <p className="text-xs font-extrabold uppercase tracking-[0.22em] text-slate-600">Personal Expenses</p>
           <h1 className="mt-4 text-4xl font-extrabold tracking-tight text-slate-900 md:text-6xl">
             Track everyday money flow
           </h1>
           <p className="mt-4 text-base font-medium leading-relaxed text-slate-700 md:text-lg">
-            Keep bank spending, cash spending, and your combined savings picture separate from Bank Services and Share Portfolio.
+            Keep everyday bank and cash spending separate. Bank Flow also shows the live money impact of Bank Services and Share Portfolio without copying their data.
           </p>
         </header>
 

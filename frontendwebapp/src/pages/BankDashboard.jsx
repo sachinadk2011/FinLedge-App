@@ -7,47 +7,12 @@ import ConfirmDialog from "../components/ConfirmDialog";
 import InteractiveTimelineChart from "../components/InteractiveTimelineChart";
 import StatGrid from "../components/StatGrid";
 import TransactionsTable from "../components/TransactionsTable";
-import { BANK_CATEGORIES } from "../constants/options";
-
-const formatter = new Intl.NumberFormat("en-US", {
-  minimumFractionDigits: 2,
-  maximumFractionDigits: 2,
-});
-
-const dayLabelFormatter = new Intl.DateTimeFormat("en-US", {
-  month: "short",
-  day: "numeric",
-});
-
-const monthLabelFormatter = new Intl.DateTimeFormat("en-US", {
-  month: "short",
-  year: "numeric",
-});
-
-const BANK_INCOME_CATEGORIES = new Set(["interest earned", "income"]);
+import { BANK_CATEGORIES, BANK_INCOME_CATEGORIES } from "../constants/options";
+import { formatCurrency } from "../utils/format";
+import { parseDate, isoDayKey, isoMonthKey, dayLabelFormatter, monthLabelFormatter } from "../utils/date";
 
 function isBankIncomeCategory(category) {
   return BANK_INCOME_CATEGORIES.has(String(category || "").trim().toLowerCase());
-}
-
-function parseDate(value) {
-  if (!value) return null;
-  const text = String(value).trim();
-  if (!text) return null;
-  const parsed = new Date(text.includes("T") ? text : `${text}T00:00:00`);
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
-}
-
-function isoDayKey(dateValue) {
-  return [
-    dateValue.getFullYear(),
-    String(dateValue.getMonth() + 1).padStart(2, "0"),
-    String(dateValue.getDate()).padStart(2, "0"),
-  ].join("-");
-}
-
-function isoMonthKey(dateValue) {
-  return [dateValue.getFullYear(), String(dateValue.getMonth() + 1).padStart(2, "0")].join("-");
 }
 
 function createBankTimelineEntry(label) {
@@ -165,9 +130,9 @@ function BankDashboard() {
   };
 
   const stats = [
-    { label: "Interest earned", value: formatter.format(summary.total_income) },
-    { label: "Total charges", value: formatter.format(summary.total_expenses) },
-    { label: "Net balance", value: formatter.format(summary.net_balance) },
+    { label: "Interest earned", value: formatCurrency(summary.total_income) },
+    { label: "Total charges", value: formatCurrency(summary.total_expenses) },
+    { label: "Net balance", value: formatCurrency(summary.net_balance) },
   ];
 
   const categoryTotals = summary.category_totals || {};
@@ -184,7 +149,7 @@ function BankDashboard() {
     date: record.date,
     category: record.category,
     description: record.description || "",
-    amount: formatter.format(record.amount),
+    amount: formatCurrency(record.amount),
   }));
 
   const columns = [

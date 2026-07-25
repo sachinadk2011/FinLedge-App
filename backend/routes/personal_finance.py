@@ -24,7 +24,7 @@ def add_personal_finance_record(payload: PersonalFinanceAddRequest):
             description=payload.description,
             source=payload.source,
         )
-        return {"message": "Personal Finance record added successfully", "data": record}
+        return {"message": "Personal Expenses record added successfully", "data": record}
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
@@ -48,7 +48,7 @@ def get_personal_finance_data(flow_type: str | None = None):
 def delete_personal_finance_row(flow_type: str, record_id: int):
     try:
         result = delete_personal_finance_record(record_id, flow_type)
-        return {"message": "Personal Finance record deleted", "data": result}
+        return {"message": "Personal Expenses record deleted", "data": result}
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
@@ -69,7 +69,7 @@ def update_personal_finance_row(record_flow_type: str, record_id: int, payload: 
             description=payload.description,
             source=payload.source,
         )
-        return {"message": "Personal Finance record updated", "data": result}
+        return {"message": "Personal Expenses record updated", "data": result}
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:

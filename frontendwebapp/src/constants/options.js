@@ -3,15 +3,20 @@ export const BANK_CATEGORIES = [
   "Interest Tax",
   "Mobile Banking Charge",
   "Debit Card Charge",
-  "ATM Charge",
-  "SMS Charge",
   "Cheque Book",
   "Locker",
   "Demat Renewal",
+  "Demat & MeroShare Renewal",
   "Broker Renewal",
   "MeroShare Renewal",
   "Other Charges",
 ];
+
+/**
+ * Categories that represent income (positive amount) in Bank Services.
+ * Kept here as a single source of truth — used by BankDashboard and Summary.
+ */
+export const BANK_INCOME_CATEGORIES = new Set(["interest earned", "income"]);
 
 export const SHARE_CATEGORIES = ["ipo", "sip", "buy", "sell", "dividend"];
 
@@ -57,6 +62,7 @@ export const PERSONAL_FINANCE_INCOME_CATEGORIES = [
   "Prize/Lottery",
   "Gift",
   "Refund",
+  "Investment Income",
   "Investment Return",
   "Dividend",
   "Share Sell Proceeds",

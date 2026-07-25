@@ -7,27 +7,12 @@ import InteractiveTimelineChart from "../components/InteractiveTimelineChart";
 import StatGrid from "../components/StatGrid";
 import TransactionsTable from "../components/TransactionsTable";
 
-const formatter = new Intl.NumberFormat("en-US", {
-  minimumFractionDigits: 2,
-  maximumFractionDigits: 2,
-});
+import { formatCurrency } from "../utils/format";
+import { parseDate, isoMonthKey, monthLabelFormatter } from "../utils/date";
 
-const monthLabelFormatter = new Intl.DateTimeFormat("en-US", {
-  month: "short",
-  year: "numeric",
-});
-
-function parseDate(value) {
-  if (!value) return null;
-  const text = String(value).trim();
-  if (!text) return null;
-  const parsed = new Date(text.includes("T") ? text : `${text}T00:00:00`);
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
-}
-
-function isoMonthKey(dateValue) {
-  return [dateValue.getFullYear(), String(dateValue.getMonth() + 1).padStart(2, "0")].join("-");
-}
+const formatter = {
+  format: (val) => formatCurrency(val)
+};
 
 function buildBreakdownRows(values = {}) {
   return Object.entries(values)
@@ -69,6 +54,12 @@ function buildMonthlyFlowOverview(records, flowType) {
     .map(([, entry]) => entry);
 }
 
+function getSourceLabel(source) {
+  if (source === "share-sync") return "Share Portfolio";
+  if (source === "bank-services-sync") return "Bank Services";
+  return "Manual";
+}
+
 function FlowDashboard({ title, netLabel, summary, records, flowType }) {
   const monthlyOverview = useMemo(() => buildMonthlyFlowOverview(records, flowType), [records, flowType]);
   const flowRows = useMemo(
@@ -83,21 +74,34 @@ function FlowDashboard({ title, netLabel, summary, records, flowType }) {
           date: record.date,
           direction: record.direction === "income" ? "Income" : "Expense",
           category: record.category,
+          description: record.description || "-",
           amount: formatter.format(record.amount),
-          source: record.source === "share-sync" ? "Share sync" : "Manual",
+          source: getSourceLabel(record.source),
         })),
     [records, flowType],
   );
-  const stats = [
-    { label: "Income", value: formatter.format(summary.total_income || 0) },
-    { label: "Expenses", value: formatter.format(summary.total_expenses || 0) },
-    { label: netLabel, value: formatter.format(summary.net || 0) },
-  ];
+  const stats = flowType === "bank"
+    ? [
+        { label: "Income", value: formatter.format(summary.income || 0) },
+        { label: "Expense", value: formatter.format(summary.expenses || 0) },
+        { label: "Investment expense", value: formatter.format(summary.investment_expense || 0) },
+        { label: "Investment income", value: formatter.format(summary.investment_income || 0) },
+        { label: "Interest earned", value: formatter.format(summary.interest_earned || 0) },
+        { label: "Service cost", value: formatter.format(summary.service_cost || 0) },
+        { label: "Total income", value: formatter.format(summary.total_income || 0) },
+        { label: "Total expense", value: formatter.format(summary.total_expenses || 0) },
+        { label: "Net profit/loss", value: formatter.format(summary.net || 0) },
+      ]
+    : [
+        { label: "Income", value: formatter.format(summary.total_income || 0) },
+        { label: "Expense", value: formatter.format(summary.total_expenses || 0) },
+        { label: "Net profit/loss", value: formatter.format(summary.net || 0) },
+      ];
   const columns = [
-    { key: "display_id", label: "ID" },
     { key: "date", label: "Date" },
     { key: "direction", label: "Type" },
     { key: "category", label: "Category" },
+    { key: "description", label: "Description" },
     { key: "amount", label: "Amount" },
     { key: "source", label: "Source" },
   ];
@@ -156,7 +160,7 @@ function PersonalFinanceDashboard() {
   useEffect(() => {
     getPersonalFinanceData()
       .then((response) => setData(response))
-      .catch((err) => setError(err.message || "Unable to load Personal Finance data."))
+      .catch((err) => setError(err.message || "Unable to load Personal Expenses data."))
       .finally(() => setLoading(false));
   }, []);
 
@@ -188,15 +192,16 @@ function PersonalFinanceDashboard() {
       direction: record.direction === "income" ? "Income" : "Expense",
       category: record.category,
       amount: formatter.format(record.amount),
-      source: record.source === "share-sync" ? "Share sync" : "Manual",
+      description: record.description || "-",
+      source: getSourceLabel(record.source),
     }));
 
   const columns = [
-    { key: "display_id", label: "ID" },
     { key: "date", label: "Date" },
     { key: "flow", label: "Flow" },
     { key: "direction", label: "Type" },
     { key: "category", label: "Category" },
+    { key: "description", label: "Description" },
     { key: "amount", label: "Amount" },
     { key: "source", label: "Source" },
   ];
@@ -205,8 +210,8 @@ function PersonalFinanceDashboard() {
     <main className="page">
       <header className="page-header">
         <div>
-          <p className="eyebrow">Personal Finance</p>
-          <h1>Personal finance dashboard</h1>
+          <p className="eyebrow">Personal Expenses</p>
+          <h1>Personal expenses dashboard</h1>
         </div>
         <div className="header-actions">
           <button className="ghost" type="button" onClick={() => navigate(-1)}>
@@ -216,7 +221,7 @@ function PersonalFinanceDashboard() {
             Home
           </Link>
           <Link className="ghost" to="/personal-finance">
-            Personal Finance
+            Personal Expenses
           </Link>
           <Link className="ghost" to={`/personal-finance-entry?flow=${activeView}`}>
             Add entry
@@ -224,7 +229,7 @@ function PersonalFinanceDashboard() {
         </div>
       </header>
 
-      <div className="view-switcher" role="tablist" aria-label="Personal Finance dashboard views">
+      <div className="view-switcher" role="tablist" aria-label="Personal Expenses dashboard views">
         <button type="button" className={activeView === "combined" ? "active" : ""} onClick={() => setActiveView("combined")}>
           Combined Overview
         </button>
@@ -236,7 +241,7 @@ function PersonalFinanceDashboard() {
         </button>
       </div>
 
-      {loading ? <p>Loading Personal Finance dashboard...</p> : null}
+      {loading ? <p>Loading Personal Expenses dashboard...</p> : null}
       {error ? <pre className="error-pre">{error}</pre> : null}
 
       {!loading && !error ? (
@@ -245,18 +250,18 @@ function PersonalFinanceDashboard() {
             <>
               <section className="card">
                 <h3>Combined Overview</h3>
-                <p className="subtitle">Aggregates Personal Finance Bank Flow and Cash Flow only.</p>
+                <p className="subtitle">Combines manual Personal Expenses entries with live Bank Services and Share Portfolio activity in Bank Flow.</p>
                 <StatGrid items={combinedStats} />
               </section>
               <section className="card">
                 <div className="page-header" style={{ marginBottom: 12 }}>
                   <div>
                     <h3>Combined trend</h3>
-                    <p className="subtitle">Month-wise Personal Finance income, expenses, and net/savings.</p>
+                    <p className="subtitle">Month-wise Personal Expenses income, expenses, and net movement.</p>
                   </div>
                 </div>
                 <InteractiveTimelineChart
-                  title="Monthly Personal Finance Overview"
+                  title="Monthly Personal Expenses Overview"
                   data={combinedOverview}
                   windowSize={12}
                   bars={[
@@ -279,7 +284,7 @@ function PersonalFinanceDashboard() {
                 ]} />
               </div>
               <section className="card">
-                <h3>Recent Personal Finance transactions</h3>
+                <h3>Recent Personal Expenses transactions</h3>
                 <TransactionsTable columns={columns} rows={recentRows} />
               </section>
             </>

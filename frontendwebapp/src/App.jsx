@@ -16,9 +16,9 @@ import Summary from "./pages/Summary";
 function getRouteLabel(pathname) {
   if (pathname.startsWith("/bank-dashboard")) return "Bank Services Dashboard";
   if (pathname.startsWith("/bank")) return "Bank Services";
-  if (pathname.startsWith("/personal-finance-dashboard")) return "Personal Finance Dashboard";
-  if (pathname.startsWith("/personal-finance-entry")) return "Personal Finance Entry";
-  if (pathname.startsWith("/personal-finance")) return "Personal Finance";
+  if (pathname.startsWith("/personal-finance-dashboard")) return "Personal Expenses Dashboard";
+  if (pathname.startsWith("/personal-finance-entry")) return "Personal Expenses Entry";
+  if (pathname.startsWith("/personal-finance")) return "Personal Expenses";
   if (pathname.startsWith("/share-dashboard")) return "Share Portfolio Dashboard";
   if (pathname.startsWith("/share")) return "Share Portfolio";
   if (pathname.startsWith("/summary")) return "Financial Summary";
@@ -68,7 +68,7 @@ function Layout() {
               to="/personal-finance"
               data-tour="nav-personal-finance"
             >
-              Personal Finance
+              Personal Expenses
             </Link>
             <Link
               className="no-underline rounded-full px-4 py-2 text-sm font-bold text-slate-700 transition hover:-translate-y-0.5 hover:bg-white/70 hover:text-slate-900 hover:shadow-soft"

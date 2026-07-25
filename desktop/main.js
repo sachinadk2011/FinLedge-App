@@ -1,6 +1,6 @@
 "use strict";
 
-const { app, BrowserWindow, Menu, ipcMain, screen, shell } = require("electron");
+const { app, BrowserWindow, Menu, ipcMain, screen, shell, dialog } = require("electron");
 const { autoUpdater } = require("electron-updater");
 const path = require("path");
 const fs = require("fs");
@@ -940,6 +940,8 @@ ipcMain.handle("app:check-for-updates", async () => {
 
 ipcMain.handle("app:get-update-status", async () => latestUpdateStatus);
 
+ipcMain.handle("app:get-version", () => app.getVersion());
+
 ipcMain.handle("app:open-update-release", async (_event, releaseUrl) => {
   const targetUrl = String(releaseUrl || latestUpdateStatus.releaseUrl || GITHUB_RELEASES_URL).trim();
   const safeUrl = targetUrl.startsWith("https://github.com/sachinadk2011/FinLedge-App/releases")
@@ -961,6 +963,8 @@ ipcMain.handle("app:get-data-locations", async () => {
     dataDir,
     bankFile: path.join(dataDir, "bank_transactions.xlsx"),
     shareFile: path.join(dataDir, "share_transactions.xlsx"),
+    personalFinanceBankFile: path.join(dataDir, "personal_finance_bank_flow.xlsx"),
+    personalFinanceCashFile: path.join(dataDir, "personal_finance_cash_flow.xlsx"),
   };
 });
 
@@ -970,6 +974,8 @@ ipcMain.handle("app:open-data-location", async (_event, target = "folder") => {
     folder: dataDir,
     bank: path.join(dataDir, "bank_transactions.xlsx"),
     share: path.join(dataDir, "share_transactions.xlsx"),
+    "pf-bank": path.join(dataDir, "personal_finance_bank_flow.xlsx"),
+    "pf-cash": path.join(dataDir, "personal_finance_cash_flow.xlsx"),
   };
   const requestedPath = targetMap[String(target)] || dataDir;
   const pathToOpen = fs.existsSync(requestedPath) ? requestedPath : dataDir;
@@ -977,7 +983,9 @@ ipcMain.handle("app:open-data-location", async (_event, target = "folder") => {
   try {
     fs.mkdirSync(dataDir, { recursive: true });
     if (fs.existsSync(pathToOpen) && fs.statSync(pathToOpen).isFile()) {
-      shell.showItemInFolder(pathToOpen);
+      // shell.openPath opens the file in the default app (e.g. Excel).
+      // Do NOT fall back to showItemInFolder — that would open the folder instead.
+      await shell.openPath(pathToOpen);
     } else {
       await shell.openPath(pathToOpen);
     }
@@ -985,6 +993,36 @@ ipcMain.handle("app:open-data-location", async (_event, target = "folder") => {
   } catch (err) {
     logLine("[main] open data location failed", String(err && err.stack ? err.stack : err));
     return { ok: false, reason: "open-data-location-failed" };
+  }
+});
+
+ipcMain.handle("app:save-export-file", async (_event, payload = {}) => {
+  const defaultName = String(payload.defaultName || "finledge-export.xlsx").trim() || "finledge-export.xlsx";
+  const base64 = String(payload.base64 || "");
+  const isZip = defaultName.toLowerCase().endsWith(".zip");
+
+  if (!base64) {
+    return { ok: false, reason: "missing-export-data" };
+  }
+
+  const { canceled, filePath } = await dialog.showSaveDialog({
+    title: "Export FinLedge data",
+    defaultPath: defaultName,
+    filters: isZip
+      ? [{ name: "Zip archive", extensions: ["zip"] }]
+      : [{ name: "Excel workbook", extensions: ["xlsx"] }],
+  });
+
+  if (canceled || !filePath) {
+    return { ok: false, cancelled: true };
+  }
+
+  try {
+    fs.writeFileSync(filePath, Buffer.from(base64, "base64"));
+    return { ok: true, path: filePath };
+  } catch (err) {
+    logLine("[main] save export file failed", String(err && err.stack ? err.stack : err));
+    return { ok: false, reason: "save-export-file-failed" };
   }
 });
 
