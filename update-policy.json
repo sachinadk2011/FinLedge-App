@@ -10,6 +10,7 @@
     "Bank Flow now includes read-only activity from Bank Services and Share Portfolio automatically.",
     "Financial Summary now separates Bank Services, Share Portfolio, Personal Expenses, and overall position analytics.",
     "Settings now includes file management, Import/Export, About, and How To Use sections.",
-    "Added automatic, non-destructive data migration from FinLedge 1.1.0."
+    "Added automatic, non-destructive data migration from FinLedge 1.1.0.",
+    "Fixed update notifications sometimes showing raw formatting codes instead of plain text."
   ]
 }

@@ -13,9 +13,6 @@
     "start": "electron .",
     "build": "electron-builder"
   },
-  "dependencies": {
-    "electron-updater": "^6.3.9"
-  },
   "devDependencies": {
     "electron": "^42.4.0",
     "electron-builder": "^26.15.3"
