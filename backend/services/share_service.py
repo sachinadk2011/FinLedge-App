@@ -675,6 +675,7 @@ def update_share_record(
 
         excel_row = record_id + 1  # +1 for header row
         if excel_row < 2 or excel_row > sheet.max_row:
+            workbook.close()
             raise ValueError("record_id is out of range.")
 
         sheet.cell(row=excel_row, column=1).value = entry_date.isoformat()
