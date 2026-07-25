@@ -120,8 +120,7 @@ class PersonalFinanceAddRequest(BaseModel):
     category: PersonalFinanceCategory
     amount: Decimal = Field(..., gt=0)
     description: str | None = Field(default=None, max_length=500)
-    source: Literal["manual", "share-sync"] = "manual"
-
+    source: Literal["manual"] = "manual"
     @model_validator(mode="after")
     def validate_category_group(self):
         if self.direction == PersonalFinanceDirection.expense and self.category not in PF_EXPENSE_CATEGORIES:
