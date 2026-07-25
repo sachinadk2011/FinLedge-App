@@ -1,7 +1,6 @@
 "use strict";
 
 const { app, BrowserWindow, Menu, ipcMain, screen, shell, dialog } = require("electron");
-const { autoUpdater } = require("electron-updater");
 const path = require("path");
 const fs = require("fs");
 const os = require("os");
@@ -814,85 +813,6 @@ function simulateRequiredUpdate() {
   });
 }
 
-function configureAutoUpdater() {
-  if (SHOULD_SIMULATE_UPDATES) {
-    logLine("[updater] Running with simulated update flow");
-    return;
-  }
-
-  if (IS_ELECTRON_DEV || !app.isPackaged) {
-    logLine("[updater] Skipping auto-updater outside packaged production mode");
-    return;
-  }
-
-  autoUpdater.autoDownload = false;
-  autoUpdater.autoInstallOnAppQuit = false;
-  autoUpdater.disableDifferentialDownload = true;
-
-  autoUpdater.on("checking-for-update", () => {
-    logLine("[updater] Checking for updates");
-    if (!showUpdateCheckStatus) {
-      return;
-    }
-
-    sendUpdateStatus({
-      state: "checking",
-      title: "Checking for updates",
-      detail: "Looking for the latest Finledge release...",
-      percent: null,
-    });
-  });
-
-  autoUpdater.on("update-available", (info) => {
-    logLine("[updater] Update available", info);
-    showUpdateCheckStatus = false;
-    const version = getUpdateVersion(info);
-    const releaseUrl = getReleaseUrl(info);
-    const releaseNotes = normalizeReleaseNotes(info?.releaseNotes || info?.releaseNotesText);
-    sendUpdateStatus({
-      state: "available",
-      title: "Update available",
-      detail: version
-        ? `Finledge ${version} is available on GitHub. Review what changed and download it from the official release page.`
-        : "A new Finledge update is available on GitHub. Review what changed and download it from the official release page.",
-      version,
-      releaseUrl,
-      releaseNotes,
-      percent: null,
-    });
-  });
-
-  autoUpdater.on("update-not-available", (info) => {
-    logLine("[updater] No update available", info);
-    if (!showUpdateCheckStatus) {
-      return;
-    }
-
-    showUpdateCheckStatus = false;
-    sendUpdateStatus({
-      state: "not-available",
-      title: "Finledge is up to date",
-      detail: "You already have the latest available version.",
-      percent: null,
-    });
-  });
-
-  autoUpdater.on("error", (err) => {
-    logLine("[updater] Error", String(err && err.stack ? err.stack : err));
-    const wasVisibleUpdateFlow = ["available", "checking"].includes(latestUpdateStatus.state);
-    if (!showUpdateCheckStatus && !wasVisibleUpdateFlow) {
-      return;
-    }
-
-    showUpdateCheckStatus = false;
-    sendUpdateStatus({
-      state: "error",
-      title: "Update failed",
-      detail: "Finledge could not complete the update check. Please try again later.",
-      error: String(err && err.message ? err.message : err),
-    });
-  });
-}
 
 ipcMain.handle("app:refresh", async () => {
   if (!mainWindow || mainWindow.isDestroyed()) {
@@ -943,7 +863,7 @@ ipcMain.handle("app:check-for-updates", async () => {
 
   try {
     showUpdateCheckStatus = true;
-    await autoUpdater.checkForUpdates();
+    
     return { ok: true };
   } catch (err) {
     showUpdateCheckStatus = false;
@@ -1067,11 +987,8 @@ ipcMain.handle("app:install-update", async () => {
     return { ok: true, simulated: true };
   }
 
-  if (IS_ELECTRON_DEV || !app.isPackaged) {
-    return { ok: false, reason: "updates-disabled-in-dev" };
-  }
-
-  setImmediate(() => autoUpdater.quitAndInstall());
+  
+  
   return { ok: true };
 });
 
@@ -1097,7 +1014,7 @@ app.whenReady().then(async () => {
     logLine("[main] frontend built?", hasBuiltFrontend);
 
     if (IS_ELECTRON_DEV) {
-      configureAutoUpdater();
+      
       const preferredDevUrl = `http://${FRONTEND_HOST}:${FRONTEND_PORT}`;
       const preferredLocalhostDevUrl = `http://localhost:${FRONTEND_PORT}`;
 
@@ -1141,7 +1058,7 @@ app.whenReady().then(async () => {
       }
     } else {
       navigateToFrontend(getFrontendUrl());
-      configureAutoUpdater();
+      
       setTimeout(() => {
         if (SHOULD_SIMULATE_UPDATES) {
           simulateUpdateAvailable();
@@ -1149,9 +1066,7 @@ app.whenReady().then(async () => {
         }
 
         checkUpdatePolicy({ silent: true });
-        autoUpdater.checkForUpdates().catch((err) => {
-          logLine("[updater] Initial update check failed", String(err && err.stack ? err.stack : err));
-        });
+        
       }, 5000);
       setInterval(() => checkUpdatePolicy({ silent: true }), 6 * 60 * 60 * 1000);
     }
