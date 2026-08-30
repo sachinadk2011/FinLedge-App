@@ -291,3 +291,6 @@
   **Backend test verification:**
   - `.\venv\Scripts\python.exe -m pytest backend\tests` passed: 66 passed, 0 failed.
   - Only warnings were FastAPI deprecation warnings for `@app.on_event("startup")`.
+
+  **Follow-up — desktop branding rename "Financial Tracker" → "FinLedge"**
+  Notes: Completed as visible UI text only per AGENTS.md §6 Hard Rule 2 (renaming UI labels, no logic changes). Updated desktop window title and loading text in `desktop/main.js`, the badge mark `FT` → `FL` and header text "Financial Tracker" → "FinLedge" in `frontendwebapp/src/App.jsx`, the Home hero eyebrow in `frontendwebapp/src/pages/Home.jsx`, and the page title in `frontendwebapp/index.html`. Files, routes, service names, API/bridge identifiers (`window.financialTracker`), and `package.json` package names were intentionally left unchanged, matching the v1.2.0 module rename pattern.

@@ -4,6 +4,18 @@ Read this before every task. This is a checklist, not documentation.
 
 ---
 
+## 0. Which files to read before starting a task — a routing table:
+
+
+Any task → always read AGENTS.md (this file) and PLAN.md first.
+Desktop task → also read CODEBASE.md (Backend + Desktop Frontend sections), TASKS.md.
+Mobile task → also read CODEBASE.md (Mobile Repo Structure section), TASKS-mobile.md, schema.md, design.md, and finledge-mobile-design-v3.html directly if the task touches UI.
+Keep Notes import task → also read keepNotesImport.md.
+Release/versioning/CI task → also read techSpec.md and the relevant update-policy-*.json.
+Any schema or column change (e.g. new Updated Device field) → also read schema.md, update it in the same task, and check rules.md for whether the change applies to desktop, mobile, or both.
+State explicitly: this table exists because desktop and mobile are diverging tracks — reading only the old sections below is not enough once a task is mobile- or release-specific.
+
+
 ## 1. Naming Conventions (observed, do not change)
 
 | Layer | Convention | Examples |
@@ -192,3 +204,44 @@ function ModulePage() {
 - [ ] Am I adding a new route? If yes → follow the error handling pattern (§4).
 - [ ] Am I adding a new page? If yes → follow the component pattern (§5).
 - [ ] Am I renaming UI labels? Check that only text changes — no logic changes unless explicitly required.
+
+## 8. Mobile-Specific Rules:
+
+
+Logic must be ported, not shelled out to Python — mobile has no background-process story on Android.
+Every ported service needs a parity test against its backend/services/ counterpart before being marked done.
+SQLite schema changes go in docs/schema.md first, before implementation.
+Every module screen follows Add-entry ⇄ Dashboard as two screens — never combined into one page.
+UI must be tested at minimum 360px and maximum ~430px width and remain legible and visually consistent at both.
+
+
+## 9. Keeping this file current — whenever a task adds, removes, renames, or moves a file, folder, module, script, or config that is referenced anywhere in this file or in CODEBASE.md, the agent must update both files in the same task, before considering the task complete. This includes new pages, components, services, data files, scripts, docs, changed route prefixes, or changed folder structure. Do not leave AGENTS.md or CODEBASE.md stale — a future agent trusts these files completely and will not independently re-verify them against the actual repo.
+
+## 10. Code Quality & Scalability Rules (non-negotiable, every task)
+
+- **No duplicate logic.** If the same logic exists in two or more places, extract it into a shared function/module instead of writing it again. `backend/services/excel_utils.py` (see CODEBASE.md / TASKS.md Pass B) is the reference pattern for this — `to_float()`, `to_int()`, and timestamp helpers were pulled out of three duplicated copies into one shared module. Apply the same instinct everywhere, on both platforms.
+- **One responsibility per file.** No file should mix unrelated concerns (e.g. a page component that also contains business logic that belongs in a service, or a service that also does routing). Split by concern, matching the existing `routes/` → `services/` → `models.py` layering on backend, and `pages/` → `components/` → `api/` on frontend.
+- **Reusable over copy-pasted.** Before writing a new function or component, check whether an existing one already does this or can be generalized to. Prefer composition (small, combinable functions/components) over one large function that does everything.
+- **No monolithic files.** If a file is growing long enough that it's doing multiple jobs, split it into smaller, clearly-named files before continuing — don't let one file become a dumping ground.
+- **Match existing conventions exactly** (per AGENTS.md §1 Naming Conventions) — this is what "consistency" means in practice: same naming, same file layout, same patterns as the rest of the codebase, not a new personal style per task.
+- **If you find inconsistency or duplication while working nearby** (not necessarily the thing you were asked to fix), correct it as part of the task — but only if you can verify it still runs/passes tests afterward. Never leave the codebase in a broken state to "clean up" something unrelated. If fixing it safely isn't possible in scope, leave a note in the relevant TASKS.md/TASKS-mobile.md entry instead of silently skipping it.
+- **Design for scalability, not just the immediate ask.** Avoid hardcoding values or logic that will obviously need to change as new modules/platforms are added (e.g. category lists, platform-specific paths) — centralize them the way `models.py`'s enums are meant to be the source of truth (even though `bank_service.py`'s duplicate list is a known counterexample to fix, not follow).
+- **"Simplify" never means merging files.** "Simplify" or "make it easier to understand" never means merging multiple screens/components into fewer files — that is the opposite of this rule. It means splitting further: smaller, single-responsibility files with clearer names. No screen/component file should mix more than one screen's rendering logic; `main.ts` is bootstrap/render-loop/event-binding only and must never contain screen markup directly (see CODEBASE.md's Mobile Repo Structure for the correct `screens/` / `components/` / `data/` split — that structure is the answer to "simplify," not a starting point to abandon).
+
+
+## 11. Self-check before marking any task done
+
+Before finishing any task that creates, updates, or deletes code, answer these honestly — if any answer is "no," fix it before considering the task complete:
+
+- Did I duplicate logic that already exists elsewhere in the codebase? (If yes → extract it instead.)
+- Does every file I touched still do exactly one job? (If a file now does two, split it.)
+- Would another developer, unfamiliar with this codebase, understand this in under a minute? (If not, it needs clearer structure or naming, not just a comment.)
+- Did I find inconsistent or duplicated code nearby that I could safely fix? (If yes and safe → fix it. If yes but risky → note it, don't silently skip it.)
+- Is what I wrote reusable elsewhere, or is it a one-off that should have been generalized?
+- Have I verified the code still runs / existing tests still pass after any change or refactor I made?
+
+This checklist applies in addition to, not instead of, the existing ## 7. Before You Write Code — Checklist.
+
+## 12. Doc authority — do not silently rewrite user decisions
+
+These docs encode explicit user decisions, not agent scratch space. Progress trackers (TASKS.md, TASKS-mobile.md) may be freely appended to per §9. Every other doc (PLAN.md, design.md, schema.md, appflow.md, prd.md, rules.md, keepNotesImport.md, CODEBASE.md, AGENTS.md itself) may only be edited by: (a) pure additions that don't remove or reword existing content, or (b) a change the user explicitly requested in this task. If a task seems to require changing an existing requirement in one of these files, stop and show the user the exact before/after diff before applying it — never resolve a conflict by quietly rewriting the doc to match new code behavior.

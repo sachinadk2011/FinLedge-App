@@ -19,6 +19,7 @@ HEADERS = [
     "Description",
     "Created Timestamp",
     "Last Updated Timestamp",
+    "Updated Device",
 ]
 # Derive category list from the Pydantic enum — single source of truth.
 BANK_SERVICE_CATEGORIES = [c.value for c in BankCategory]
@@ -101,6 +102,7 @@ def append_bank_record(entry_date: Optional[date], category: str, amount: float,
                 (description or "").strip(),
                 timestamp,
                 timestamp,
+                "desktop",
             ]
         )
         workbook.save(FILE_PATH)
@@ -114,6 +116,7 @@ def append_bank_record(entry_date: Optional[date], category: str, amount: float,
             "description": (description or "").strip() or None,
             "created_timestamp": timestamp,
             "last_updated_timestamp": timestamp,
+            "updated_device": "desktop",
             "file": str(FILE_PATH),
         }
 
@@ -140,6 +143,7 @@ def read_bank_records() -> list[dict]:
                     "description": str(row[4] or "") if len(row) > 4 else "",
                     "created_timestamp": str(row[5] or "") if len(row) > 5 else "",
                     "last_updated_timestamp": str(row[6] or row[5] or "") if len(row) > 6 else str(row[5] or ""),
+                    "updated_device": str(row[7] or "legacy") if len(row) > 7 else "legacy",
                 }
             )
 
@@ -244,6 +248,7 @@ def update_bank_record(
         if not sheet.cell(row=excel_row, column=6).value:
             sheet.cell(row=excel_row, column=6).value = timestamp
         sheet.cell(row=excel_row, column=7).value = timestamp
+        sheet.cell(row=excel_row, column=8).value = "desktop"
 
         _recompute_bank_sheet(sheet)
         workbook.save(FILE_PATH)
@@ -257,6 +262,7 @@ def update_bank_record(
             "description": (description or "").strip() or None,
             "created_timestamp": str(sheet.cell(row=excel_row, column=6).value or timestamp),
             "last_updated_timestamp": timestamp,
+            "updated_device": "desktop",
             "file": str(FILE_PATH),
         }
 

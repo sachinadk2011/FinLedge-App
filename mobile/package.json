@@ -1,0 +1,29 @@
+{
+  "name": "finledge-mobile",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Mobile scaffold for the FinLedge app.",
+  "type": "module",
+  "scripts": {
+    "build": "npm run build:web && npm run build:services",
+    "build:web": "vite build",
+    "build:services": "tsc -p tsconfig.json",
+    "dev": "vite --host 127.0.0.1",
+    "cap:sync:android": "npx cap sync android",
+    "cap:run:android": "npm run build && npm run cap:sync:android && npx cap run android",
+    "test": "npm run build:services && node --test \"dist/tests/**/*.test.js\""
+  },
+  "dependencies": {
+    "@capacitor-community/sqlite": "^7.0.0",
+    "@capacitor/android": "^7.0.0",
+    "@capacitor/app": "^7.0.0",
+    "@capacitor/core": "^7.0.0",
+    "financial-tracker-root": "file:.."
+  },
+  "devDependencies": {
+    "@capacitor/assets": "^3.0.5",
+    "@capacitor/cli": "^7.0.0",
+    "typescript": "^5.9.3",
+    "vite": "^8.2.2"
+  }
+}

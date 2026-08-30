@@ -49,7 +49,7 @@ function Home() {
     <main className="min-h-[calc(100vh-84px)] px-4 py-14 sm:px-6">
       <section className="mx-auto flex w-full max-w-6xl flex-col items-center justify-center gap-10">
         <header className="w-full max-w-3xl text-center">
-          <p className="text-xs font-extrabold uppercase tracking-[0.22em] text-slate-600">Financial Tracker</p>
+          <p className="text-xs font-extrabold uppercase tracking-[0.22em] text-slate-600">FinLedge</p>
           <h1 className="mt-4 text-4xl font-extrabold tracking-tight text-slate-900 md:text-6xl">
             Keep your money story tidy
           </h1>

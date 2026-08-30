@@ -7,6 +7,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const projectRoot = path.resolve(__dirname, "..");
 const envPath = path.join(projectRoot, ".env");
+const mobileRoot = path.join(projectRoot, "mobile");
 const command = process.argv[2];
 
 function loadEnvFile() {
@@ -76,6 +77,16 @@ function runProcess(commandName, args, extraEnv = {}, cwd = projectRoot) {
 async function runNpmWithEnv(extraEnv, ...args) {
   const commandName = process.platform === "win32" ? "npm.cmd" : "npm";
   await runProcess(commandName, args, extraEnv);
+}
+
+async function runMobileNpm(...args) {
+  const commandName = process.platform === "win32" ? "npm.cmd" : "npm";
+  await runProcess(commandName, args, {}, mobileRoot);
+}
+
+async function runMobileNpx(...args) {
+  const commandName = process.platform === "win32" ? "npx.cmd" : "npx";
+  await runProcess(commandName, args, {}, mobileRoot);
 }
 
 function resolvePythonExecutable(env) {
@@ -210,6 +221,30 @@ async function main() {
       }
       return;
     }
+
+    case "mobile-build":
+      await runMobileNpm("run", "build");
+      return;
+
+    case "mobile-test":
+      await runMobileNpm("test");
+      return;
+
+    case "mobile-sync-android":
+      await runMobileNpm("run", "cap:sync:android");
+      return;
+
+    case "mobile-android":
+      await runMobileNpm("run", "build");
+      await runMobileNpm("run", "cap:sync:android");
+      return;
+
+    case "mobile-android-run":
+      // Build + sync, then install and launch on the connected device.
+      await runMobileNpm("run", "build");
+      await runMobileNpm("run", "cap:sync:android");
+      await runMobileNpx("cap", "run", "android");
+      return;
 
     default:
       throw new Error(`Unknown FinLedge command: ${command}`);
