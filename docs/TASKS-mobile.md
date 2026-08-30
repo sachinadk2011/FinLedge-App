@@ -26,7 +26,9 @@
   are Add-entry ⇄ Dashboard pairs (never combined). Fixed drawer brand asset
   packaging, drawer pictogram icons, chart compact-money formatting/color
   audit issues, Settings sub-navigation, mobile form/dashboard parity gaps,
-  and confirmed `main.ts` remains bootstrap/render-loop/event-binding only.
+  Android launcher icon/splash generation, no-crop splash scaling, launch
+  theme dark background, and confirmed `main.ts` remains
+  bootstrap/render-loop/event-binding only.
   Browser/ADB-based on-device 360px/430px visual verification is still
   needed in an environment with a connected browser or Android device bridge.
 

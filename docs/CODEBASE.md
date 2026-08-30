@@ -199,7 +199,9 @@ tracker financial/mobile/
 │  ├─ icon.png                    — 1024 master, FL mark on green brand background
 │  ├─ icon-only.png               — full icon source for @capacitor/assets
 │  ├─ icon-foreground.png         — FL mark (transparent) for Android adaptive icon
-│  └─ icon-background.png         — green brand fill for Android adaptive icon
+│  ├─ icon-background.png         — green brand fill for Android adaptive icon
+│  ├─ splash.png                  — dark Android splash master, generated into res/drawable*
+│  └─ splash-dark.png             — dark-mode splash master for @capacitor/assets
 ├─ android/                       — generated Capacitor Android project
 ├─ www/                           — Capacitor web build output (from frontendwebapp)
 │  └─ index.html
