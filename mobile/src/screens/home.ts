@@ -30,7 +30,7 @@ export function homeScreen(): string {
       <div class="metric-row"><div><div class="metric-label">${currentMonthLabel} net balance</div><div class="money big ${monthly.net >= 0 ? "pos" : "neg"}">${money(monthly.net, { sign: true })}</div></div></div>
       <div class="split split-3"><div><span>Total income</span><b class="money pos">${money(monthly.income)}</b></div><div><span>Total expense</span><b class="money neg">${money(monthly.expense)}</b></div><div><span>Selected ${appState.homeMode}</span><b class="money ${appState.homeMode === "income" ? "pos" : "neg"}">${money(selectedTotal)}</b></div></div>
     </section>
-    <div class="stat-grid" style="margin:0 0 12px;">
+    <div class="stat-grid stat-grid-spaced">
       <div class="stat-box"><div class="label">Today income</div><div class="value money pos">${money(daily.income)}</div></div>
       <div class="stat-box"><div class="label">Today expense</div><div class="value money neg">${money(daily.expense)}</div></div>
       <div class="stat-box stat-box-full"><div class="label">Today net</div><div class="value money ${daily.net >= 0 ? "pos" : "neg"}">${money(daily.net, { sign: true })}</div></div>

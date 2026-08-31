@@ -16,15 +16,11 @@ const C_EXPENSE = "var(--accent-red)";
 const C_NET_POS = "var(--brand-teal)";
 const C_NET_NEG = "var(--accent-amber)";
 
-// Chart dimensions — extra vertical room so value labels don't overlap bars
-const COL_W    = 64;
-const COL_H    = 178;
-const LBL_H    = 14;
-const SUB_H    = 12;
-const VAL_ZONE = 34;
-const BAR_W    = 14;
-const BAR_GAP  = 6;
-const BAR_MAX  = COL_H - LBL_H - SUB_H - VAL_ZONE - 14;
+// Plot area height — labels sit directly above each bar, not in a fixed top band
+const COL_W   = 72;
+const COL_H   = 168;
+const PLOT_H  = 104;
+const BAR_MAX = PLOT_H - 16;
 
 /**
  * Home chart — 3 grouped bars per period (income green, expense red, net teal/amber).
@@ -75,30 +71,27 @@ function groupedBarCol(b: ChartBucket, maxVal: number): string {
     { value: Math.abs(b.net), color: netColor, show: b.net !== 0, label: compactMoney(b.net) },
   ];
 
-  const valueLabels = specs.map((spec) => valueLabelHtml(spec.label, spec.color, spec.show)).join("");
-  const bars = specs.map((spec) => barBodyHtml(spec.value, maxVal, spec.color, spec.show)).join("");
+  const sticks = specs.map((spec) => stickHtml(spec, maxVal)).join("");
 
   return `<div class="grouped-bar-col" style="width:${COL_W}px;">
-    <div class="grouped-bar-values">${valueLabels}</div>
-    <div class="grouped-bar-sticks">${bars}</div>
+    <div class="grouped-bar-sticks">${sticks}</div>
     <span class="grouped-bar-x">${b.label}</span>
     <span class="grouped-bar-sub">${b.sublabel ?? ""}</span>
   </div>`;
 }
 
-function valueLabelHtml(label: string, color: string, show: boolean): string {
-  if (!show) {
-    return `<span class="grouped-bar-val grouped-bar-val-empty"></span>`;
+function stickHtml(
+  spec: { value: number; color: string; show: boolean; label: string },
+  maxVal: number,
+): string {
+  if (!spec.show || Math.abs(spec.value) < 0.01) {
+    return `<div class="grouped-bar-stick grouped-bar-stick-empty"></div>`;
   }
-  return `<span class="grouped-bar-val" style="color:${color};" title="${label}">${label}</span>`;
-}
-
-function barBodyHtml(value: number, maxVal: number, color: string, show: boolean): string {
-  if (!show || Math.abs(value) < 0.01) {
-    return `<div class="grouped-bar-body grouped-bar-body-empty"></div>`;
-  }
-  const barPx = Math.max(6, (Math.abs(value) / maxVal) * BAR_MAX);
-  return `<div class="grouped-bar-body" style="height:${barPx}px;background:${color};"></div>`;
+  const barPx = Math.max(4, (Math.abs(spec.value) / maxVal) * BAR_MAX);
+  return `<div class="grouped-bar-stick">
+    <span class="grouped-bar-val" style="color:${spec.color};" title="${spec.label}">${spec.label}</span>
+    <div class="grouped-bar-body" style="height:${barPx}px;background:${spec.color};"></div>
+  </div>`;
 }
 
 export function categoryBars(rows: PersonalFinanceRecord[]): string {

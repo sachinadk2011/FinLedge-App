@@ -189,7 +189,21 @@ button {
 }
 
 .screen.active {
-  display: block;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.screen.active > * {
+  flex-shrink: 0;
+}
+
+.card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  margin: 0;
+  padding: 16px;
 }
 
 .eyebrow {
@@ -197,7 +211,7 @@ button {
   font-size: 11px;
   font-weight: 800;
   letter-spacing: 0;
-  margin: 0 0 5px;
+  margin: 0;
   text-transform: uppercase;
 }
 
@@ -206,22 +220,14 @@ button {
   font-size: 22px;
   font-weight: 800;
   line-height: 1.15;
-  margin: 0 0 6px;
+  margin: 0;
 }
 
 .sub {
   color: var(--text-2);
   font-size: 13px;
   line-height: 1.45;
-  margin: 0 0 16px;
-}
-
-.card {
-  background: var(--bg-surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  margin: 0 0 14px;
-  padding: 16px;
+  margin: 0;
 }
 
 .balance-card {
@@ -348,6 +354,11 @@ button {
   width: 100%;
 }
 
+.screen > .btn-primary,
+.screen > .btn-secondary:not(.btn-row *) {
+  margin: 0;
+}
+
 .btn-primary {
   background: var(--accent-green);
   border: 0;
@@ -364,7 +375,7 @@ button {
 .btn-row {
   display: grid;
   gap: 8px;
-  margin-bottom: 24px;
+  margin: 0;
 }
 
 .btn-row-3 {
@@ -420,6 +431,11 @@ button {
   display: grid;
   gap: 10px;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 0;
+}
+
+.stat-grid-spaced {
+  margin: 0;
 }
 
 .stat-box {
@@ -651,7 +667,7 @@ button {
   display: grid;
   gap: 8px;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  margin: 0 0 14px;
+  margin: 0;
 }
 
 .today-strip div {
@@ -726,9 +742,10 @@ button {
 }
 
 .chart-scroll {
-  margin: 0 -4px;
+  margin: 4px 0 0;
   overflow-x: auto;
-  padding: 10px 4px 8px;
+  overflow-y: visible;
+  padding: 4px 4px 8px;
   scroll-snap-type: x proximity;
   scrollbar-width: thin;
   -webkit-overflow-scrolling: touch;
@@ -753,71 +770,62 @@ button {
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
-  height: 178px;
   justify-content: flex-end;
-}
-
-.grouped-bar-values {
-  align-items: flex-end;
-  display: flex;
-  gap: 6px;
-  height: 34px;
-  justify-content: center;
-  margin-bottom: 8px;
-  padding-top: 2px;
-}
-
-.grouped-bar-val {
-  display: block;
-  font-size: 7px;
-  font-variant-numeric: tabular-nums;
-  font-weight: 700;
-  line-height: 1.15;
-  max-width: 14px;
-  overflow: hidden;
-  text-align: center;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  width: 14px;
-}
-
-.grouped-bar-val-empty {
-  visibility: hidden;
 }
 
 .grouped-bar-sticks {
   align-items: flex-end;
   display: flex;
   gap: 6px;
+  height: 104px;
   justify-content: center;
-  margin-bottom: 6px;
-  min-height: 96px;
+  margin-bottom: 8px;
+}
+
+.grouped-bar-stick {
+  align-items: center;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  justify-content: flex-end;
+  width: 18px;
+}
+
+.grouped-bar-stick-empty {
+  width: 18px;
+}
+
+.grouped-bar-val {
+  display: block;
+  font-size: 8px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  line-height: 1.1;
+  margin-bottom: 2px;
+  max-width: 22px;
+  overflow: hidden;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .grouped-bar-body {
   border-radius: 3px 3px 1px 1px;
   flex-shrink: 0;
-  width: 14px;
-}
-
-.grouped-bar-body-empty {
-  width: 14px;
+  width: 16px;
 }
 
 .grouped-bar-x {
   color: var(--text-2);
   font-size: 9px;
   font-weight: 500;
-  height: 14px;
   line-height: 14px;
-  margin-top: 2px;
   text-align: center;
 }
 
 .grouped-bar-sub {
   color: var(--text-3);
   font-size: 8px;
-  height: 12px;
   line-height: 12px;
   margin-top: 2px;
   text-align: center;
@@ -827,9 +835,56 @@ button {
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
-  gap: 4px;
-  height: 168px;
   justify-content: flex-end;
+}
+
+.single-bar-plot {
+  align-items: center;
+  display: flex;
+  height: 104px;
+  justify-content: center;
+  margin-bottom: 6px;
+}
+
+.single-bar-stick {
+  align-items: center;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  justify-content: flex-end;
+  width: 20px;
+}
+
+.single-bar-val {
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  line-height: 1.1;
+  margin-bottom: 2px;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.single-bar-body {
+  border-radius: 4px 4px 2px 2px;
+  flex-shrink: 0;
+  width: 18px;
+}
+
+.single-bar-x {
+  color: var(--text-2);
+  font-size: 9px;
+  font-weight: 500;
+  line-height: 14px;
+  text-align: center;
+}
+
+.single-bar-sub {
+  color: var(--text-3);
+  font-size: 8px;
+  line-height: 12px;
+  margin-top: 2px;
+  text-align: center;
 }
 
 @keyframes chartFadeIn {
@@ -1082,6 +1137,11 @@ button {
 
 .period-controls {
   margin-bottom: 12px;
+  transition: opacity 0.2s ease;
+}
+
+.chart-legend {
+  margin-top: 14px;
 }
 
 .toast {

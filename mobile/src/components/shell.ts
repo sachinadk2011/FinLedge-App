@@ -218,11 +218,9 @@ export type BarChartBucket = {
 };
 
 const COL_W   = 44;
-const COL_H   = 168;
-const LBL_H   = 14;
-const SUB_H   = 12;
-const VAL_H   = 18;
-const BAR_MAX = COL_H - LBL_H - SUB_H - VAL_H - 12;
+const COL_H   = 160;
+const PLOT_H  = 104;
+const BAR_MAX = PLOT_H - 16;
 
 /**
  * Prototype-matching bar chart.
@@ -239,18 +237,21 @@ export function renderBars(buckets: BarChartBucket[]): string {
 
   const cols = buckets.map((b) => {
     const hasBar = Math.abs(b.value) >= 0.01;
-    const barPx  = hasBar ? Math.max(6, (Math.abs(b.value) / maxVal) * BAR_MAX) : 0;
-    const valHtml = hasBar
-      ? `<span style="height:${VAL_H}px;font-size:9px;font-weight:700;color:${b.color};font-variant-numeric:tabular-nums;white-space:nowrap;">${compactMoney(b.value)}</span>`
-      : `<span style="height:${VAL_H}px;"></span>`;
-    const barHtml = hasBar
-      ? `<div style="height:${barPx}px;width:18px;background:${b.color};border-radius:4px 4px 2px 2px;flex-shrink:0;"></div>`
-      : `<div style="height:0;"></div>`;
-    const dayHtml = `<span style="height:${LBL_H}px;font-size:9px;color:var(--text-2);font-weight:500;">${b.label}</span>`;
+    const barPx  = hasBar ? Math.max(4, (Math.abs(b.value) / maxVal) * BAR_MAX) : 0;
+    const stickHtml = hasBar
+      ? `<div class="single-bar-stick">
+          <span class="single-bar-val" style="color:${b.color};">${compactMoney(b.value)}</span>
+          <div class="single-bar-body" style="height:${barPx}px;background:${b.color};"></div>
+        </div>`
+      : "";
     const subHtml = b.sublabel
-      ? `<span style="height:${SUB_H}px;font-size:8px;color:var(--text-3);">${b.sublabel}</span>`
-      : `<span style="height:${SUB_H}px;"></span>`;
-    return `<div class="single-bar-col" style="width:${COL_W}px;">${valHtml}${barHtml}${dayHtml}${subHtml}</div>`;
+      ? `<span class="single-bar-sub">${b.sublabel}</span>`
+      : `<span class="single-bar-sub"></span>`;
+    return `<div class="single-bar-col" style="width:${COL_W}px;">
+      <div class="single-bar-plot">${stickHtml}</div>
+      <span class="single-bar-x">${b.label}</span>
+      ${subHtml}
+    </div>`;
   }).join("");
 
   return `<div class="chart-scroll chart-animate" data-scroll-end style="-webkit-overflow-scrolling:touch;">
