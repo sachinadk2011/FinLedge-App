@@ -1,17 +1,18 @@
-import { summarizeBankRecords } from "../../services/bank-category-totals.js";
+import { isIncomeCategory, summarizeBankRecords, type BankRecord } from "../../services/bank-category-totals.js";
 import {
   addFormScreen,
   bottomNav,
   categoryBarsSection,
   getPeriodBuckets,
   historyRows,
-  periodBarsChart,
+  periodGroupedBarsChart,
   searchInput,
   sectionTitle,
   statGrid,
-  type BarChartBucket,
 } from "../components/shell.js";
+import { appState } from "../app-state.js";
 import { bankRecords } from "../data/demo-data.js";
+import type { ChartBucket } from "../types.js";
 
 export function bankAddScreen(): string {
   return addFormScreen(
@@ -37,14 +38,7 @@ export function bankDashboardScreen(): string {
     .filter((t) => t.value > 0)
     .sort((a, b) => b.value - a.value);
 
-  // Period-aware bar chart — design.md §5 colors: pos=green, neg=red, net=teal/amber
-  const buckets = getPeriodBuckets().map<BarChartBucket>((b) => {
-    const net = bankRecords
-      .filter((r) => b.isDay ? r.date === b.key : String(r.date).startsWith(b.key))
-      .reduce((sum, r) => sum + Number(r.amount), 0);
-    const color = net >= 0 ? "var(--brand-teal)" : "var(--accent-amber)";
-    return { label: b.label, sublabel: b.sublabel, value: net, color };
-  });
+  const trendBuckets = buildBankTrendBuckets(bankRecords);
 
   const rows = bankRecords.map((row) => ({
     ...row,
@@ -70,14 +64,11 @@ export function bankDashboardScreen(): string {
 
     ${categoryBarsSection("Charges by category", chargeTotals, "var(--brand-teal)")}
 
-    ${periodBarsChart(
-      "Bank services trend",
-      buckets,
-      [
-        { label: "Net ≥ 0", color: "var(--brand-teal)" },
-        { label: "Net < 0", color: "var(--accent-amber)" },
-      ],
-    )}
+    ${periodGroupedBarsChart("Bank services trend", trendBuckets, {
+      ranges: ["month", "year", "custom"],
+      activeRange: appState.bankRange,
+      rangeAttr: "data-bank-range",
+    })}
 
     <section class="card">
       ${sectionTitle("All transactions", "Filter")}
@@ -87,4 +78,30 @@ export function bankDashboardScreen(): string {
 
     ${bottomNav("home", "bank-add")}
   `;
+}
+
+function buildBankTrendBuckets(records: BankRecord[]): ChartBucket[] {
+  return getPeriodBuckets(appState.bankRange, true).map((b) => {
+    let income = 0;
+    let expense = 0;
+    for (const record of records) {
+      const matches = b.isDay ? record.date === b.key : String(record.date).startsWith(b.key);
+      if (!matches) continue;
+      const amount = Number(record.amount ?? 0);
+      const category = String(record.category ?? "");
+      if (isIncomeCategory(category)) {
+        income += amount;
+      } else {
+        expense += Math.abs(amount);
+      }
+    }
+    return {
+      label: b.label,
+      sublabel: b.sublabel,
+      key: b.key,
+      income,
+      expense,
+      net: income - expense,
+    };
+  });
 }

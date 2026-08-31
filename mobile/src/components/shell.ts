@@ -8,7 +8,8 @@ import {
   SHARE_CATEGORIES,
   SHARE_CATEGORY_LABELS,
 } from "../constants/options.js";
-import type { ChartRange, ScreenId } from "../types.js";
+import { groupedBarsLegend, renderGroupedBars } from "./home-chart.js";
+import type { ChartBucket, ChartRange, ScreenId } from "../types.js";
 import { compactMoney, money } from "../utils/format.js";
 import { addDays, daysBetween, monthKey, parseDateKey, toDateKey, today } from "../utils/date.js";
 
@@ -55,9 +56,17 @@ export function drawer(): string {
   `;
 }
 
-export function bottomNav(back: ScreenId, action: ScreenId): string {
-  const label = action.endsWith("dash") ? "View dashboard" : "Add entry";
-  return `<div class="btn-row"><button class="btn-secondary" data-back="${back}">Back</button><button class="btn-secondary" data-nav="home">Home</button><button class="btn-secondary active" data-nav="${action}">${label}</button></div>`;
+export function bottomNav(back: ScreenId, action?: ScreenId): string {
+  const buttons = [
+    `<button class="btn-secondary" type="button" data-back="${back}">Back</button>`,
+    `<button class="btn-secondary" type="button" data-nav="home">Home</button>`,
+  ];
+  if (action) {
+    const label = action.endsWith("dash") ? "View dashboard" : "Add entry";
+    buttons.push(`<button class="btn-secondary" type="button" data-nav="${action}">${label}</button>`);
+  }
+  const colClass = action ? "btn-row-3" : "btn-row-2";
+  return `<div class="btn-row ${colClass}">${buttons.join("")}</div>`;
 }
 
 export function addFormScreen(eyebrow: string, title: string, fields: string[][], submit: string, next: ScreenId): string {
@@ -136,11 +145,13 @@ export type PeriodBucket = {
  *   year  → 48 monthly buckets (~4 years of monthly data)
  *   custom→ daily ≤60d, monthly >60d
  */
-export function getPeriodBuckets(): PeriodBucket[] {
+export function getPeriodBuckets(range: ChartRange = appState.homeRange, bankMode = false): PeriodBucket[] {
   const now = today();
-  const range = appState.homeRange;
+  if (bankMode && range === "week") {
+    range = "month";
+  }
 
-  if (range === "week") {
+  if (range === "week" && !bankMode) {
     return Array.from({ length: 90 }, (_, i) => {
       const d = addDays(now, i - 89);
       return { label: String(d.getDate()), sublabel: d.toLocaleString("en-US", { month: "short" }), key: toDateKey(d), isDay: true };
@@ -148,6 +159,13 @@ export function getPeriodBuckets(): PeriodBucket[] {
   }
 
   if (range === "month") {
+    if (bankMode) {
+      return Array.from({ length: 13 }, (_, i) => {
+        const d = new Date(now.getFullYear(), now.getMonth() - (12 - i), 1);
+        const yr = String(d.getFullYear()).slice(2);
+        return { label: d.toLocaleString("en-US", { month: "short" }), sublabel: `'${yr}`, key: monthKey(d), isDay: false };
+      });
+    }
     return Array.from({ length: 400 }, (_, i) => {
       const d = addDays(now, i - 399);
       return { label: String(d.getDate()), sublabel: d.toLocaleString("en-US", { month: "short" }), key: toDateKey(d), isDay: true };
@@ -160,6 +178,10 @@ export function getPeriodBuckets(): PeriodBucket[] {
       const yr = String(d.getFullYear()).slice(2);
       return { label: d.toLocaleString("en-US", { month: "short" }), sublabel: `'${yr}`, key: monthKey(d), isDay: false };
     });
+  }
+
+  if (range !== "custom") {
+    return [];
   }
 
   // custom
@@ -195,12 +217,12 @@ export type BarChartBucket = {
   color: string;       // CSS var string
 };
 
-const COL_W   = 44;  // px — column width
-const COL_H   = 148; // px — total column height
-const LBL_H   = 14;  // px — day label height
-const SUB_H   = 12;  // px — month sublabel height
-const VAL_H   = 14;  // px — value label height
-const BAR_MAX = COL_H - LBL_H - SUB_H - VAL_H - 6; // usable bar px ≈ 102px
+const COL_W   = 44;
+const COL_H   = 168;
+const LBL_H   = 14;
+const SUB_H   = 12;
+const VAL_H   = 18;
+const BAR_MAX = COL_H - LBL_H - SUB_H - VAL_H - 12;
 
 /**
  * Prototype-matching bar chart.
@@ -228,11 +250,11 @@ export function renderBars(buckets: BarChartBucket[]): string {
     const subHtml = b.sublabel
       ? `<span style="height:${SUB_H}px;font-size:8px;color:var(--text-3);">${b.sublabel}</span>`
       : `<span style="height:${SUB_H}px;"></span>`;
-    return `<div style="width:${COL_W}px;flex-shrink:0;display:flex;flex-direction:column;align-items:center;height:${COL_H}px;justify-content:flex-end;gap:1px;">${valHtml}${barHtml}${dayHtml}${subHtml}</div>`;
+    return `<div class="single-bar-col" style="width:${COL_W}px;">${valHtml}${barHtml}${dayHtml}${subHtml}</div>`;
   }).join("");
 
-  return `<div class="chart-scroll" data-scroll-end style="-webkit-overflow-scrolling:touch;">
-    <div style="display:flex;align-items:flex-end;gap:6px;padding:0 8px 4px;width:${totalWidth(buckets)}px;">
+  return `<div class="chart-scroll chart-animate" data-scroll-end style="-webkit-overflow-scrolling:touch;">
+    <div class="chart-track" style="width:${totalWidth(buckets)}px;">
       ${cols}
     </div>
   </div>`;
@@ -266,25 +288,52 @@ export function barsChart(
  * Use this for Bank/Shares/Expenses/Summary dashboards.
  * Swipe ← on chart to see older periods; today is always rightmost.
  */
+type PeriodRangeConfig = {
+  ranges?: ChartRange[];
+  activeRange?: ChartRange;
+  rangeAttr?: "data-home-range" | "data-bank-range";
+};
+
+function periodRangeControls({
+  ranges = ["week", "month", "year", "custom"],
+  activeRange = appState.homeRange,
+  rangeAttr = "data-home-range",
+}: PeriodRangeConfig = {}): string {
+  const tabs = ranges.map((r) =>
+    `<button class="${activeRange === r ? "active" : ""}" ${rangeAttr}="${r}">${r[0].toUpperCase()}${r.slice(1)}</button>`
+  ).join("");
+  const customRange = activeRange === "custom"
+    ? `<div class="custom-range"><label>From<input type="date" value="${appState.customStart}" data-custom-start></label><label>To<input type="date" value="${appState.customEnd}" data-custom-end></label></div>`
+    : "";
+  return `<div class="segmented graph-tabs period-tabs" style="margin-bottom:8px;">${tabs}</div>${customRange}`;
+}
+
 export function periodBarsChart(
   title: string,
   buckets: BarChartBucket[],
   legend: Array<{ label: string; color: string }>,
-  ranges: ChartRange[] = ["week", "month", "year", "custom"],
+  config: PeriodRangeConfig = {},
 ): string {
-  const tabs = ranges.map((r) =>
-    `<button class="${appState.homeRange === r ? "active" : ""}" data-home-range="${r}">${r[0].toUpperCase()}${r.slice(1)}</button>`
-  ).join("");
-  const customRange = appState.homeRange === "custom"
-    ? `<div class="custom-range"><label>From<input type="date" value="${appState.customStart}" data-custom-start></label><label>To<input type="date" value="${appState.customEnd}" data-custom-end></label></div>`
-    : "";
   const legendHtml = legend.map((l) => `<span><i style="display:inline-block;width:10px;height:10px;border-radius:3px;background:${l.color};margin-right:5px;vertical-align:middle;"></i>${l.label}</span>`).join("");
   return `<section class="card">
     <div class="section-title"><h3>${title}</h3></div>
-    <div class="segmented graph-tabs" style="margin-bottom:8px;">${tabs}</div>
-    ${customRange}
+    ${periodRangeControls(config)}
     ${renderBars(buckets)}
     ${legendHtml ? `<div class="chart-legend" style="margin-top:10px;display:flex;flex-wrap:wrap;gap:10px;">${legendHtml}</div>` : ""}
+  </section>`;
+}
+
+/** Income / expense / net grouped bars — for Bank Services and Personal Expenses dashboards. */
+export function periodGroupedBarsChart(
+  title: string,
+  buckets: ChartBucket[],
+  config: PeriodRangeConfig = {},
+): string {
+  return `<section class="card">
+    <div class="section-title"><h3>${title}</h3></div>
+    ${periodRangeControls(config)}
+    ${renderGroupedBars(buckets)}
+    ${groupedBarsLegend()}
   </section>`;
 }
 
@@ -293,7 +342,7 @@ export function periodBarsChart(
 // ─────────────────────────────────────────────────────────────────────────────
 
 export function periodControls(ranges: ChartRange[], options: { wrap?: boolean } = { wrap: true }): string {
-  const body = `<div class="segmented graph-tabs">${ranges.map((r) => `<button class="${appState.homeRange === r ? "active" : ""}" data-home-range="${r}">${r[0].toUpperCase()}${r.slice(1)}</button>`).join("")}</div>
+  const body = `<div class="segmented graph-tabs period-tabs">${ranges.map((r) => `<button class="${appState.homeRange === r ? "active" : ""}" data-home-range="${r}">${r[0].toUpperCase()}${r.slice(1)}</button>`).join("")}</div>
     ${appState.homeRange === "custom" ? `<div class="custom-range"><label>From<input type="date" value="${appState.customStart}" data-custom-start></label><label>To<input type="date" value="${appState.customEnd}" data-custom-end></label></div>` : ""}`;
   return options.wrap === false ? `<div class="period-controls compact-card">${body}</div>` : `<section class="card compact-card">${body}</section>`;
 }

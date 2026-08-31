@@ -57,7 +57,7 @@ export function summaryScreen(): string {
       </table>
     </section>
 
-    ${bottomNav("home", "home")}
+    ${bottomNav("home")}
   `;
 }
 

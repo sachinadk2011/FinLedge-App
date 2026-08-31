@@ -4,16 +4,16 @@ import {
   formCard,
   getPeriodBuckets,
   historyRows,
-  periodBarsChart,
+  periodGroupedBarsChart,
   searchInput,
   sectionTitle,
   statGrid,
-  type BarChartBucket,
 } from "../components/shell.js";
 import { appState } from "../app-state.js";
 import { transferRows } from "../data/demo-data.js";
 import { currentPersonalFinanceRows } from "../data/mobile-data.js";
 import { money } from "../utils/format.js";
+import type { ChartBucket } from "../types.js";
 
 import type { PersonalFinanceRecord } from "../../services/personal-finance-sync-row-computation.js";
 
@@ -49,17 +49,13 @@ export function expensesDashboardScreen(): string {
   const summary = summarizePersonalFinanceRecords(rows);
   const tab = appState.expensesDashTab;
 
-  // Filter rows by selected tab
   const tabRows = tab === "bank"
     ? rows.filter((r) => r.flow_type === "bank")
     : tab === "cash"
       ? rows.filter((r) => r.flow_type === "cash")
       : rows;
 
-  // Monthly trend bars: past 5 months income/expense net
-  const trendBuckets = buildExpensesTrendBuckets(rows);
-
-  // Transfer notice (latest transfer)
+  const trendBuckets = buildExpensesTrendBuckets(tabRows);
   const transfer = transferRows[0];
 
   return `
@@ -67,14 +63,12 @@ export function expensesDashboardScreen(): string {
     <h1 class="pagehead">Expenses dashboard</h1>
     <p class="sub">Combines manual Personal Expenses with live Bank Flow (Bank Services + Share activity).</p>
 
-    <!-- Combined / Bank flow / Cash flow tab -->
     <div class="segmented alt" style="margin-bottom:10px;">
       <button class="${tab === "combined" ? "active" : ""}" data-expenses-tab="combined">Combined</button>
       <button class="${tab === "bank" ? "active" : ""}" data-expenses-tab="bank">Bank flow</button>
       <button class="${tab === "cash" ? "active" : ""}" data-expenses-tab="cash">Cash flow</button>
     </div>
 
-    <!-- Stats card with transfer notice + grid -->
     <section class="card">
       <div class="transfer-chip">
         <div class="tc-icon">⇄</div>
@@ -111,16 +105,8 @@ export function expensesDashboardScreen(): string {
             ])}
     </section>
 
-    ${periodBarsChart(
-      "Monthly trend",
-      trendBuckets,
-      [
-        { label: "Net ≥ 0", color: "var(--brand-teal)" },
-        { label: "Net < 0", color: "var(--accent-amber)" },
-      ],
-    )}
+    ${periodGroupedBarsChart("Money flow trend", trendBuckets)}
 
-    <!-- All transactions -->
     <section class="card">
       ${sectionTitle("All transactions", "Filter")}
       ${searchInput("expenses", "Search by category or description")}
@@ -131,19 +117,27 @@ export function expensesDashboardScreen(): string {
   `;
 }
 
-/** 12-month net trend. Teal = net positive, red = net negative. Current month last (rightmost). */
-function buildExpensesTrendBuckets(rows: PersonalFinanceRecord[]): BarChartBucket[] {
-  return getPeriodBuckets().map<BarChartBucket>((b) => {
-    let income = 0, expense = 0;
-    for (const r of rows) {
-      const matches = b.isDay ? r.date === b.key : String(r.date).startsWith(b.key);
+function buildExpensesTrendBuckets(rows: PersonalFinanceRecord[]): ChartBucket[] {
+  return getPeriodBuckets().map((b) => {
+    let income = 0;
+    let expense = 0;
+    for (const row of rows) {
+      const matches = b.isDay ? row.date === b.key : String(row.date).startsWith(b.key);
       if (!matches) continue;
-      if (r.direction === "income") income += Number(r.amount ?? 0);
-      else expense += Number(r.amount ?? 0);
+      const amount = Number(row.amount ?? 0);
+      if (row.direction === "income") {
+        income += amount;
+      } else {
+        expense += amount;
+      }
     }
-    const net = income - expense;
-    const color = net >= 0 ? "var(--brand-teal)" : "var(--accent-amber)";
-    return { label: b.label, sublabel: b.sublabel, value: net, color };
+    return {
+      label: b.label,
+      sublabel: b.sublabel,
+      key: b.key,
+      income,
+      expense,
+      net: income - expense,
+    };
   });
 }
-

@@ -14,6 +14,7 @@ export const appState = {
   lastHomeBackPress: 0,
   homeMode: "expense" as "expense" | "income",
   homeRange: "week" as ChartRange,
+  bankRange: "month" as ChartRange,
   selectedHomeCategories: new Set<string>(),
   categorySelectionTouched: false,
   customStart: toDateKey(new Date(today().getFullYear(), today().getMonth(), 1)),

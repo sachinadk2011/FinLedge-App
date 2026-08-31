@@ -16,15 +16,15 @@ const C_EXPENSE = "var(--accent-red)";
 const C_NET_POS = "var(--brand-teal)";
 const C_NET_NEG = "var(--accent-amber)";
 
-// Chart dimensions
-const COL_W   = 60;  // px — wider to fit 3 grouped bars
-const COL_H   = 148;
-const LBL_H   = 14;
-const SUB_H   = 12;
-const VAL_H   = 13;
-const BAR_W   = 12;  // each of 3 mini-bars width
-const BAR_GAP = 2;
-const BAR_MAX = COL_H - LBL_H - SUB_H - VAL_H - 8; // ≈ 101px usable bar height
+// Chart dimensions — extra vertical room so value labels don't overlap bars
+const COL_W    = 64;
+const COL_H    = 178;
+const LBL_H    = 14;
+const SUB_H    = 12;
+const VAL_ZONE = 34;
+const BAR_W    = 14;
+const BAR_GAP  = 6;
+const BAR_MAX  = COL_H - LBL_H - SUB_H - VAL_ZONE - 14;
 
 /**
  * Home chart — 3 grouped bars per period (income green, expense red, net teal/amber).
@@ -35,55 +35,70 @@ const BAR_MAX = COL_H - LBL_H - SUB_H - VAL_H - 8; // ≈ 101px usable bar heigh
 export function homeChart(rows: PersonalFinanceRecord[]): string {
   const buckets = chartBuckets(rows);
   if (typeof buckets === "string") return `<p class="sub range-warning">${buckets}</p>`;
+  return `${renderGroupedBars(buckets)}${groupedBarsLegend()}`;
+}
+
+/** Three-bar chart (income / expense / net) — shared by Home, Bank, and Expenses dashboards. */
+export function renderGroupedBars(buckets: (ChartBucket & { sublabel?: string })[]): string {
+  if (!buckets.length) return "<p class='sub'>No data for this period.</p>";
 
   const maxVal = Math.max(
     ...buckets.flatMap((b) => [b.income, b.expense, Math.abs(b.net)]),
     1,
   );
   const totalW = buckets.length * (COL_W + 4) + 16;
-
   const cols = buckets.map((b) => groupedBarCol(b, maxVal)).join("");
 
   return `
-    <div class="chart-scroll" data-scroll-end style="-webkit-overflow-scrolling:touch;">
-      <div style="display:flex;align-items:flex-end;gap:4px;padding:0 8px 4px;width:${totalW}px;">
+    <div class="chart-scroll chart-animate" data-scroll-end style="-webkit-overflow-scrolling:touch;">
+      <div class="chart-track grouped-chart-track" style="width:${totalW}px;">
         ${cols}
       </div>
-    </div>
-    <div class="chart-legend" style="margin-top:10px;display:flex;flex-wrap:wrap;gap:10px;">
-      <span><i style="display:inline-block;width:10px;height:10px;border-radius:3px;background:${C_INCOME};margin-right:4px;vertical-align:middle;"></i>Income</span>
-      <span><i style="display:inline-block;width:10px;height:10px;border-radius:3px;background:${C_EXPENSE};margin-right:4px;vertical-align:middle;"></i>Expense</span>
-      <span><i style="display:inline-block;width:10px;height:10px;border-radius:3px;background:${C_NET_POS};margin-right:4px;vertical-align:middle;"></i>Net ≥0</span>
-      <span><i style="display:inline-block;width:10px;height:10px;border-radius:3px;background:${C_NET_NEG};margin-right:4px;vertical-align:middle;"></i>Net &lt;0</span>
     </div>
   `;
 }
 
-function groupedBarCol(b: ChartBucket, maxVal: number): string {
-  const incBar  = mkBar(b.income,        maxVal, C_INCOME,  b.income  > 0);
-  const expBar  = mkBar(b.expense,       maxVal, C_EXPENSE, b.expense > 0);
-  const netColor = b.net >= 0 ? C_NET_POS : C_NET_NEG;
-  const netBar  = mkBar(Math.abs(b.net), maxVal, netColor,  b.net    !== 0, compactMoney(b.net));
+export function groupedBarsLegend(): string {
+  return `<div class="chart-legend" style="margin-top:10px;display:flex;flex-wrap:wrap;gap:10px;">
+      <span><i style="display:inline-block;width:10px;height:10px;border-radius:3px;background:${C_INCOME};margin-right:4px;vertical-align:middle;"></i>Income</span>
+      <span><i style="display:inline-block;width:10px;height:10px;border-radius:3px;background:${C_EXPENSE};margin-right:4px;vertical-align:middle;"></i>Expense</span>
+      <span><i style="display:inline-block;width:10px;height:10px;border-radius:3px;background:${C_NET_POS};margin-right:4px;vertical-align:middle;"></i>Net ≥0</span>
+      <span><i style="display:inline-block;width:10px;height:10px;border-radius:3px;background:${C_NET_NEG};margin-right:4px;vertical-align:middle;"></i>Net &lt;0</span>
+    </div>`;
+}
 
-  return `<div style="width:${COL_W}px;flex-shrink:0;display:flex;flex-direction:column;align-items:center;height:${COL_H}px;justify-content:flex-end;gap:1px;">
-    <div style="display:flex;align-items:flex-end;gap:${BAR_GAP}px;margin-bottom:2px;">${incBar}${expBar}${netBar}</div>
-    <span style="height:${LBL_H}px;font-size:9px;color:var(--text-2);font-weight:500;">${b.label}</span>
-    <span style="height:${SUB_H}px;font-size:8px;color:var(--text-3);">${b.sublabel ?? ""}</span>
+function groupedBarCol(b: ChartBucket, maxVal: number): string {
+  const netColor = b.net >= 0 ? C_NET_POS : C_NET_NEG;
+  const specs = [
+    { value: b.income, color: C_INCOME, show: b.income > 0, label: compactMoney(b.income) },
+    { value: b.expense, color: C_EXPENSE, show: b.expense > 0, label: compactMoney(b.expense) },
+    { value: Math.abs(b.net), color: netColor, show: b.net !== 0, label: compactMoney(b.net) },
+  ];
+
+  const valueLabels = specs.map((spec) => valueLabelHtml(spec.label, spec.color, spec.show)).join("");
+  const bars = specs.map((spec) => barBodyHtml(spec.value, maxVal, spec.color, spec.show)).join("");
+
+  return `<div class="grouped-bar-col" style="width:${COL_W}px;">
+    <div class="grouped-bar-values">${valueLabels}</div>
+    <div class="grouped-bar-sticks">${bars}</div>
+    <span class="grouped-bar-x">${b.label}</span>
+    <span class="grouped-bar-sub">${b.sublabel ?? ""}</span>
   </div>`;
 }
 
-/** Renders a single mini-bar. If show=false (value is 0), renders empty spacer. */
-function mkBar(value: number, maxVal: number, color: string, show: boolean, valueLabel?: string): string {
+function valueLabelHtml(label: string, color: string, show: boolean): string {
+  if (!show) {
+    return `<span class="grouped-bar-val grouped-bar-val-empty"></span>`;
+  }
+  return `<span class="grouped-bar-val" style="color:${color};" title="${label}">${label}</span>`;
+}
+
+function barBodyHtml(value: number, maxVal: number, color: string, show: boolean): string {
   if (!show || Math.abs(value) < 0.01) {
-    // Empty spacer so columns stay aligned
-    return `<div style="width:${BAR_W}px;display:flex;flex-direction:column;align-items:center;"></div>`;
+    return `<div class="grouped-bar-body grouped-bar-body-empty"></div>`;
   }
   const barPx = Math.max(6, (Math.abs(value) / maxVal) * BAR_MAX);
-  const lbl = valueLabel ?? compactMoney(value);
-  return `<div style="width:${BAR_W}px;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:1px;">
-    <span style="font-size:8px;font-weight:700;color:${color};font-variant-numeric:tabular-nums;white-space:nowrap;transform:rotate(-55deg);transform-origin:center bottom;display:block;margin-bottom:2px;">${lbl}</span>
-    <div style="height:${barPx}px;width:${BAR_W}px;background:${color};border-radius:3px 3px 1px 1px;"></div>
-  </div>`;
+  return `<div class="grouped-bar-body" style="height:${barPx}px;background:${color};"></div>`;
 }
 
 export function categoryBars(rows: PersonalFinanceRecord[]): string {

@@ -118,6 +118,12 @@ function bindEvents(): void {
       render();
     });
   });
+  document.querySelectorAll<HTMLButtonElement>("[data-bank-range]").forEach((node) => {
+    node.addEventListener("click", () => {
+      appState.bankRange = node.dataset.bankRange as ChartRange;
+      render();
+    });
+  });
   document.querySelectorAll<HTMLInputElement>("[data-category-check]").forEach((node) => {
     node.addEventListener("change", updateCategorySelection);
   });
