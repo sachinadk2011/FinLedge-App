@@ -31,6 +31,28 @@
   bootstrap/render-loop/event-binding only.
   Browser/ADB-based on-device 360px/430px visual verification is still
   needed in an environment with a connected browser or Android device bridge.
+  Session 2026-08-31 progress (UI gap closure):
+  - shell.ts: Fixed periodControls (removed stale h3 title); rewrote
+    historyRows with .meta wrapper, · separator, count label, search filter,
+    placeholder edit/delete buttons; added sectionTitle(), searchInput(),
+    statGrid(), barsChart(), categoryBarsSection() helpers.
+  - bank-dash: 3-column stat grid; "Charges by category" catbar section;
+    "Bank services trend" 5-month bar chart; search-filtered history rows.
+  - shares-dash: Portfolio (remaining) holdings table with search; grouped
+    stat cards (IPO & secondary, SIP position, Grand total purple card);
+    "Value trend" bar chart; filtered transaction history.
+  - expenses-add: transfer-chip navigation row (replaces plain button).
+  - expenses-dash: Combined/Bank/Cash segmented tab (teal active); transfer-
+    chip inside stats card; "Monthly trend" bar chart; filtered history.
+  - summary: 4-stat grid; "Net worth trend" bar chart; "Where it comes from"
+    mini table.
+  - settings: "Import from Keep Notes" green CTA card.
+  - styles.css: Added .transfer-chip, .bars .col/.v/.stick/.day, table.mini,
+    .badge-new, .stat-card-purple, .search-input, .segmented.alt, .stat-box-full.
+  - app-state.ts: Added dashSearchQuery (per-module) and expensesDashTab state.
+  - main.ts: Wired data-search-module inputs and data-expenses-tab buttons.
+  - Build verified: npm run mobile:build passes (tsc + vite) with 0 errors.
+
 
 - [ ] 5. Keep Notes bulk import
   Notes: (seed) Implement the Keep Notes parser and review/edit screen per

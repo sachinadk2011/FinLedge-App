@@ -981,6 +981,157 @@ button {
   z-index: 30;
 }
 
+.transfer-chip {
+  align-items: center;
+  background: var(--bg-surface-2);
+  border: 1px dashed var(--accent-amber);
+  border-radius: var(--radius-md);
+  display: flex;
+  gap: 10px;
+  margin-bottom: 14px;
+  padding: 12px 14px;
+}
+
+.transfer-chip .tc-icon {
+  align-items: center;
+  background: rgba(245, 165, 36, .15);
+  border-radius: 8px;
+  color: var(--accent-amber);
+  display: flex;
+  flex: 0 0 30px;
+  font-size: 14px;
+  height: 30px;
+  justify-content: center;
+}
+
+.transfer-chip .tc-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.transfer-chip .tc-body b {
+  color: var(--text-1);
+  display: block;
+  font-size: 12.5px;
+}
+
+.transfer-chip .tc-body span {
+  color: var(--text-3);
+  display: block;
+  font-size: 11px;
+}
+
+/* Single-value bar chart column (used in module dashboards) */
+.bars .col {
+  align-items: center;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 6px;
+  height: 100%;
+  justify-content: flex-end;
+}
+
+.bars .col .v {
+  color: var(--text-2);
+  font-size: 9.5px;
+  font-weight: 600;
+}
+
+.bars .col .stick {
+  border-radius: 5px 5px 2px 2px;
+  min-height: 10px;
+  width: 16px;
+}
+
+.bars .col .day {
+  color: var(--text-3);
+  font-size: 9.5px;
+  margin-top: 2px;
+}
+
+/* Mini table (portfolio holdings, summary breakdown) */
+table.mini {
+  border-collapse: collapse;
+  font-size: 12px;
+  width: 100%;
+}
+
+table.mini th {
+  color: var(--text-3);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: .04em;
+  padding-bottom: 8px;
+  text-align: left;
+  text-transform: uppercase;
+}
+
+table.mini td {
+  border-top: 1px solid var(--border);
+  color: var(--text-1);
+  font-variant-numeric: tabular-nums;
+  padding: 9px 0;
+}
+
+table.mini td:last-child {
+  font-weight: 700;
+  text-align: right;
+}
+
+/* Badge pill (e.g. NEW label on settings rows) */
+.badge-new {
+  background: var(--accent-green-dim);
+  border-radius: 999px;
+  color: var(--accent-green);
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: .03em;
+  margin-left: 8px;
+  padding: 2px 7px;
+}
+
+/* Grouped stat card with accent background (grand total, summary cards) */
+.stat-card-purple {
+  background: linear-gradient(160deg, #211a33, #151222 70%);
+  border-color: #332a52;
+}
+
+/* Search input inside a card (history filter) */
+.search-input {
+  background: var(--bg-surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-1);
+  display: block;
+  font-family: inherit;
+  font-size: 13px;
+  margin-bottom: 10px;
+  min-height: 40px;
+  padding: 10px 12px;
+  width: 100%;
+}
+
+.search-input::placeholder {
+  color: var(--text-3);
+}
+
+/* Expenses dashboard Combined/Bank/Cash segmented (teal active) */
+.segmented.alt button.active {
+  background: var(--brand-teal);
+  color: #04140a;
+}
+
+/* Stat box spanning full width (net savings hero value) */
+.stat-box-full {
+  grid-column: 1 / -1;
+  text-align: center;
+}
+
+.stat-box-full .value {
+  font-size: 20px;
+}
+
 @media (max-width: 374px) {
   .app-shell {
     padding-left: 12px;
@@ -991,8 +1142,10 @@ button {
     font-size: 20px;
   }
 
-  .btn-row {
-    grid-template-columns: 1fr;
+  .btn-row .btn-secondary {
+    font-size: 11px;
+    padding: 0 4px;
+    min-height: 36px;
   }
 
   .split-3,

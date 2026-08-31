@@ -85,6 +85,12 @@ function render(): void {
     </div>
   `;
   bindEvents();
+  // Use rAF so the active screen's layout is complete before scrolling charts to show today
+  requestAnimationFrame(() => {
+    document.querySelectorAll<HTMLElement>("[data-scroll-end]").forEach((el) => {
+      el.scrollLeft = el.scrollWidth;
+    });
+  });
 }
 
 function bindEvents(): void {
@@ -133,6 +139,33 @@ function bindEvents(): void {
   document.querySelector("[data-dismiss-profile]")?.addEventListener("click", () => {
     dismissProfilePrompt();
     render();
+  });
+
+  // Search inputs — update per-module query and re-render
+  document.querySelectorAll<HTMLInputElement>("[data-search-module]").forEach((node) => {
+    node.addEventListener("input", () => {
+      const mod = node.dataset.searchModule ?? "";
+      if (mod) {
+        appState.dashSearchQuery[mod] = node.value.toLowerCase();
+        render();
+      }
+    });
+  });
+
+  // Expenses dashboard tab: Combined / Bank flow / Cash flow
+  document.querySelectorAll<HTMLButtonElement>("[data-expenses-tab]").forEach((node) => {
+    node.addEventListener("click", () => {
+      appState.expensesDashTab = (node.dataset.expensesTab as typeof appState.expensesDashTab) ?? "combined";
+      render();
+    });
+  });
+
+  // Shares add-entry: re-render when entry type changes (conditional fields)
+  document.querySelectorAll<HTMLSelectElement>("[data-shares-entry-type]").forEach((sel) => {
+    sel.addEventListener("change", () => {
+      appState.sharesEntryType = sel.value;
+      render();
+    });
   });
 }
 

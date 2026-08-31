@@ -28,6 +28,7 @@ export type Totals = {
 
 export type ChartBucket = {
   label: string;
+  sublabel?: string;
   key: string;
   income: number;
   expense: number;

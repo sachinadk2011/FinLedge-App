@@ -30,11 +30,11 @@ export function homeScreen(): string {
       <div class="metric-row"><div><div class="metric-label">${currentMonthLabel} net balance</div><div class="money big ${monthly.net >= 0 ? "pos" : "neg"}">${money(monthly.net, { sign: true })}</div></div></div>
       <div class="split split-3"><div><span>Total income</span><b class="money pos">${money(monthly.income)}</b></div><div><span>Total expense</span><b class="money neg">${money(monthly.expense)}</b></div><div><span>Selected ${appState.homeMode}</span><b class="money ${appState.homeMode === "income" ? "pos" : "neg"}">${money(selectedTotal)}</b></div></div>
     </section>
-    <section class="today-strip">
-      <div><span>Today income</span><b class="money pos">${money(daily.income)}</b></div>
-      <div><span>Today expense</span><b class="money neg">${money(daily.expense)}</b></div>
-      <div><span>Today net</span><b class="money ${daily.net >= 0 ? "pos" : "neg"}">${money(daily.net, { sign: true })}</b></div>
-    </section>
+    <div class="stat-grid" style="margin:0 0 12px;">
+      <div class="stat-box"><div class="label">Today income</div><div class="value money pos">${money(daily.income)}</div></div>
+      <div class="stat-box"><div class="label">Today expense</div><div class="value money neg">${money(daily.expense)}</div></div>
+      <div class="stat-box stat-box-full"><div class="label">Today net</div><div class="value money ${daily.net >= 0 ? "pos" : "neg"}">${money(daily.net, { sign: true })}</div></div>
+    </div>
     <button class="btn-primary" data-nav="expenses-add">Quick add</button>
     <section class="card">
       <div class="section-title"><h3>${currentMonthLabel} categories</h3><button data-nav="expenses-dash">View dashboard</button></div>
