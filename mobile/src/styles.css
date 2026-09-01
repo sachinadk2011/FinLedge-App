@@ -405,6 +405,7 @@ button {
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   color: var(--text-1);
+  font-size: 16px; /* >=16px so iOS does not auto-zoom on focus */
   min-height: 44px;
   padding: 11px 12px;
   width: 100%;
@@ -1284,7 +1285,7 @@ table.mini td:last-child {
   color: var(--text-1);
   display: block;
   font-family: inherit;
-  font-size: 13px;
+  font-size: 16px; /* >=16px so iOS does not auto-zoom on focus */
   margin-bottom: 10px;
   min-height: 40px;
   padding: 10px 12px;

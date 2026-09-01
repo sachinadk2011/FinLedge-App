@@ -94,6 +94,27 @@ function render(): void {
 }
 
 function bindEvents(): void {
+  // Keep the focused input visible above the on-screen keyboard: whenever an
+  // input/select/textArea gains focus, scroll it into a comfortable position.
+  document.addEventListener("focusin", (event) => {
+    const el = event.target as HTMLElement | null;
+    if (el && (el.tagName === "INPUT" || el.tagName === "SELECT" || el.tagName === "TEXTAREA")) {
+      window.setTimeout(() => scrollFieldIntoView(el), 120);
+    }
+  });
+
+  // The on-screen keyboard can keep resizing the visual viewport after focus;
+  // re-keep the active field visible while it settles.
+  const vv = (window as Window & { visualViewport?: VisualViewport }).visualViewport;
+  vv?.addEventListener("resize", () => {
+    const active = document.activeElement as HTMLElement | null;
+    if (!active) return;
+    const tag = active.tagName;
+    if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") {
+      scrollFieldIntoView(active);
+    }
+  });
+
   document.querySelector("[data-open-drawer]")?.addEventListener("click", () => {
     document.querySelector(".drawer")?.classList.add("open");
     document.querySelector(".drawer-overlay")?.classList.add("open");
@@ -147,14 +168,14 @@ function bindEvents(): void {
     render();
   });
 
-  // Search inputs — update per-module query and re-render
+  // Search inputs — update the query immediately (no re-render), then re-render
+  // after a short debounce to keep typing smooth and preserve focus/caret.
   document.querySelectorAll<HTMLInputElement>("[data-search-module]").forEach((node) => {
     node.addEventListener("input", () => {
       const mod = node.dataset.searchModule ?? "";
-      if (mod) {
-        appState.dashSearchQuery[mod] = node.value.toLowerCase();
-        render();
-      }
+      if (!mod) return;
+      appState.dashSearchQuery[mod] = node.value.toLowerCase();
+      scheduleDebouncedSearch(node, mod);
     });
   });
 
@@ -170,6 +191,22 @@ function bindEvents(): void {
   document.querySelectorAll<HTMLSelectElement>("[data-shares-entry-type]").forEach((sel) => {
     sel.addEventListener("change", () => {
       appState.sharesEntryType = sel.value;
+      render();
+    });
+  });
+
+  // Shares add-entry: re-render when dividend type changes (cash vs bonus share)
+  document.querySelectorAll<HTMLSelectElement>("[data-shares-dividend-type]").forEach((sel) => {
+    sel.addEventListener("change", () => {
+      appState.sharesDividendType = sel.value;
+      render();
+    });
+  });
+
+  // Shares add-entry: re-render when SIP type changes (installment vs redeem label)
+  document.querySelectorAll<HTMLSelectElement>("[data-shares-sip-type]").forEach((sel) => {
+    sel.addEventListener("change", () => {
+      appState.sharesSipType = sel.value;
       render();
     });
   });
@@ -202,6 +239,57 @@ function updateCategorySelection(event: Event): void {
 function closeDrawer(): void {
   document.querySelector(".drawer")?.classList.remove("open");
   document.querySelector(".drawer-overlay")?.classList.remove("open");
+}
+
+let searchDebounceTimer: number | undefined;
+let searchFocusModule = "";
+
+/**
+ * Debounces the search re-render so every keystroke doesn't rebuild the whole
+ * DOM (which would drop the input's focus and dismiss the on-screen keyboard).
+ * After rendering, refocus the search input, restore the caret, and scroll it
+ * into view so the soft keyboard never covers it.
+ */
+function scheduleDebouncedSearch(node: HTMLInputElement, mod: string): void {
+  searchFocusModule = mod;
+  if (searchDebounceTimer !== undefined) {
+    window.clearTimeout(searchDebounceTimer);
+  }
+  searchDebounceTimer = window.setTimeout(() => {
+    searchDebounceTimer = undefined;
+    render();
+    const target = document.querySelector<HTMLInputElement>(`[data-search-module="${mod}"]`);
+    if (target) {
+      target.focus();
+      try {
+        target.setSelectionRange(target.value.length, target.value.length);
+      } catch {
+        /* no-op: some browsers reject setSelectionRange on some inputs */
+      }
+      scrollFieldIntoView(target);
+    }
+  }, 250);
+}
+
+/**
+ * Scrolls a focused field into a comfortable position so the on-screen keyboard
+ * never covers it. Uses window.visualViewport when available (accounts for the
+ * keyboard resizing the layout) and falls back to a viewport-relative scroll.
+ */
+function scrollFieldIntoView(el: HTMLElement): void {
+  const vv = (window as Window & { visualViewport?: VisualViewport }).visualViewport;
+  // Visible height excludes the on-screen keyboard when visualViewport exists.
+  const visibleH = vv && vv.height > 0 ? vv.height : window.innerHeight;
+  const scroller = document.scrollingElement || document.documentElement;
+  const rect = el.getBoundingClientRect();
+
+  // If the field is below the keyboard (needs scrolling up), or clipped above the top.
+  if (rect.bottom > visibleH * 0.7 || rect.top < 0) {
+    // Scroll so the field sits near the top of the visible area (clear of the keyboard).
+    const offsetTop = vv ? (vv.offsetTop || 0) : 0;
+    const desiredTop = Math.max(12, Math.round(visibleH * 0.18)) + offsetTop;
+    scroller.scrollTop += rect.top - desiredTop;
+  }
 }
 
 function initBackButton(): void {

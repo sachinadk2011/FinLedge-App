@@ -25,6 +25,8 @@ export const appState = {
   expensesDashTab: "combined" as "combined" | "bank" | "cash",
   // Shares add-entry form: current entry type selection
   sharesEntryType: "ipo" as string,
+  sharesDividendType: "cash" as string,
+  sharesSipType: "installment" as string,
 };
 
 

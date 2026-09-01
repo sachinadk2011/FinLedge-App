@@ -364,7 +364,7 @@ export function historyRows(rows: Array<Record<string, unknown>>, wrap = true, m
         const direction = String(row.direction ?? inferDir);
         const amount = Number(row.amount ?? 0);
         const primary = String(row.description ?? row.category ?? "Entry");
-        const sub = [row.category, row.flow_type, row.date].filter(Boolean).map(String).join(" · ");
+        const sub = [row.category, row.date].filter(Boolean).map(String).join(" · ");
         return `<div class="history-row">
           <div class="meta"><b>${primary}</b><span>${sub}</span></div>
           <div class="money ${direction === "income" ? "pos" : "neg"}">${money(amount, { sign: true })}</div>
