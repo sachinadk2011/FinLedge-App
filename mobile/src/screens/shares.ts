@@ -1,18 +1,14 @@
 import { summarizeShareRecords } from "../../services/share-fifo-lot-matching.js";
-import {
-  bottomNav,
-  field,
-  getPeriodBuckets,
-  historyRows,
-  periodBarsChart,
-  searchInput,
-  sectionTitle,
-  statGrid,
-  type BarChartBucket,
-} from "../components/shell.js";
-
+import { periodBarsChart, type BarChartBucket } from "../components/charts.js";
+import { field, sectionTitle } from "../components/forms.js";
+import { historyRows } from "../components/history.js";
+import { searchInput, searchQuery } from "../components/search.js";
+import { statGrid } from "../components/stats.js";
+import { bottomNav } from "../components/shell.js";
 import { appState } from "../app-state.js";
 import { shareRecords } from "../data/demo-data.js";
+import { escapeAttr, escapeHtml } from "../utils/html.js";
+import { getPeriodBuckets, matchesPeriod } from "../utils/periods.js";
 import { money } from "../utils/format.js";
 
 /** Known share names (from existing records) for name autocomplete. */
@@ -22,15 +18,17 @@ function knownShareNames(): string[] {
   );
 }
 
-/** Overloaded share-name text field with a datalist of suggestions. */
+/** Share-name text field with a custom autocomplete panel (single dropdown, like a search box). */
 function shareNameFieldWithSuggestions(id: string, placeholder: string, names: string[]): string {
   return `
-    <div class="field">
+    <div class="field share-name-field" data-suggest-root="${id}">
       <label>Share name</label>
-      <input type="text" list="${id}" placeholder="${placeholder}" autocomplete="off">
-      <datalist id="${id}">
-        ${names.map((n) => `<option value="${n}"></option>`).join("")}
-      </datalist>
+      <div class="share-name-wrap">
+        <input type="text" data-suggest-input="${id}" data-suggest-source="${escapeAttr(names.join("\n"))}" placeholder="${placeholder}" autocomplete="off" autocapitalize="none" spellcheck="false">
+        <div class="share-suggest" data-suggest-list="${id}" hidden>
+          ${names.map((n) => `<button type="button" class="share-suggest-item" data-suggest-value="${escapeAttr(n)}">${escapeHtml(n)}</button>`).join("")}
+        </div>
+      </div>
     </div>`;
 }
 
@@ -55,14 +53,7 @@ export function sharesAddScreen(): string {
   const isSecondary = type === "buy" || type === "sell";
   const dividendType = appState.sharesDividendType;
 
-  const shareNameField = `
-    <div class="field">
-      <label>Share name</label>
-      <input type="text" list="mobile-share-name-suggestions" placeholder="Share name" autocomplete="off">
-      <datalist id="mobile-share-name-suggestions">
-        ${knownShareNames().map((n) => `<option value="${n}"></option>`).join("")}
-      </datalist>
-    </div>`;
+  const shareNameField = shareNameFieldWithSuggestions("mobile-share-name-suggestions", "Share name", knownShareNames());
 
   return `
     <p class="eyebrow">Share Portfolio</p>
@@ -198,9 +189,12 @@ export function sharesDashboardScreen(): string {
     </section>
 
     ${periodBarsChart(
-      "Portfolio value trend",
+      "Portfolio net flow trend",
       trendBuckets,
-      [{ label: "Share movement", color: "var(--accent-purple)" }],
+      [
+        { label: "Money in", color: "var(--accent-green)" },
+        { label: "Money out", color: "var(--accent-red)" },
+      ],
     )}
 
     <section class="card">
@@ -237,7 +231,7 @@ function buildHoldingsTable(): string {
     const qty  = Number(row.allotted ?? 0);
     holdings.set(name, (holdings.get(name) ?? 0) + (row.buy_sell === "sell" ? -qty : qty));
   }
-  const query = (appState.dashSearchQuery["shares-portfolio"] ?? "").toLowerCase();
+  const query = searchQuery("shares-portfolio");
   const filtered = [...holdings.entries()]
     .filter(([, qty]) => qty > 0)
     .filter(([name]) => !query || name.toLowerCase().includes(query))
@@ -246,17 +240,33 @@ function buildHoldingsTable(): string {
     return `<p class="sub">${query ? "No shares match your search." : "No remaining holdings."}</p>`;
   return `<table class="mini">
     <tr><th>Share</th><th style="text-align:right;">Qty remaining</th></tr>
-    ${filtered.map(([name, qty]) => `<tr><td>${name}</td><td>${qty}</td></tr>`).join("")}
+    ${filtered.map(([name, qty]) => `<tr><td>${escapeHtml(name)}</td><td>${qty}</td></tr>`).join("")}
   </table>`;
 }
 
-/** Period-aware value trend — all bars accent-purple (design.md §5: investment/share accent). */
+/**
+ * Period-aware net cash-flow trend for the share portfolio.
+ * Money in (sell / SIP redeem / cash dividend) is positive; money out
+ * (IPO / buy / SIP installment) is negative — bars + labels are colored
+ * green (+) / red (−) via signColor.
+ */
 function buildShareTrendBuckets(): BarChartBucket[] {
   return getPeriodBuckets().map<BarChartBucket>((b) => {
     const value = shareRecords
-      .filter((r) => b.isDay ? r.date === b.key : String(r.date).startsWith(b.key))
-      .reduce((sum, r) => sum + Math.abs(Number(r.total_amount ?? 0)), 0);
-    return { label: b.label, sublabel: b.sublabel, value, color: "var(--accent-purple)" };
+      .filter((r) => matchesPeriod(b, String(r.date ?? "")))
+      .reduce((sum, r) => sum + Math.abs(Number(r.total_amount ?? 0)) * shareFlowSign(r), 0);
+    return { label: b.label, sublabel: b.sublabel, value, color: "var(--accent-purple)", signColor: true };
   });
+}
+
+/** +1 when money comes out of the portfolio, −1 when money goes in, 0 for non-cash rows. */
+function shareFlowSign(r: { category?: string | null; buy_sell?: string | null }): number {
+  const cat = String(r.category ?? "").toLowerCase();
+  const bs  = String(r.buy_sell ?? "").toLowerCase();
+  if (cat === "sip") return bs === "redeem" || bs === "redeemed" ? 1 : -1;
+  if (cat === "sell") return 1;
+  if (cat === "dividend") return bs === "cash" ? 1 : 0;
+  if (cat === "ipo" || cat === "buy") return -1;
+  return 0;
 }
 

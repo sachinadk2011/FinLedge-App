@@ -53,6 +53,89 @@
   - main.ts: Wired data-search-module inputs and data-expenses-tab buttons.
   - Build verified: npm run mobile:build passes (tsc + vite) with 0 errors.
 
+  Session 2026-09-01 progress (module parity + list/search UX):
+  - shell.ts: historyRows sub-line is now `category · date` only (module name
+    removed for the mobile transaction list).
+  - shares-dash: Removed the Portfolio (remaining) card from the dashboard
+    (stays on the Add screen only); added a "Total investment" stat
+    (summary.overall_investment = IPO + secondary buy, matching desktop).
+  - shares history format: `SHARE · type · allotted N` (allotted only when > 0),
+    dividend → "dividend (cash)/(bonus)", sip → "sip (installment)/(redeem)".
+  - shares-add: field order Date → Share name → Entry type, then per-type
+    conditional fields (IPO: per-unit price + allotted; SIP: type + installment
+    amount, no total-SIP-shares field; secondary buy/sell: total amount +
+    quantity with auto per-unit; dividend: cash/bonus type → amount or shares).
+    Added share-name autocomplete via knownShareNames()/ipoOnlyNames()/
+    sipOnlyNames(); Add screen keeps the Portfolio (remaining) card.
+  - app-state.ts: Added sharesDividendType ("cash") and sharesSipType
+    ("installment"); main.ts wired their change events.
+  - main.ts: Debounced search re-render (250ms) that stores the query
+    immediately, refocuses the input, restores the caret, and scrolls into
+    view; global focusin + visualViewport.resize scroll-into-view so update
+    sections / search inputs stay above the on-screen keyboard.
+  - styles.css: 16px font-size on .field inputs and .search-input to stop iOS
+    auto-zoom on focus. Desktop verified already conformant (no changes).
+
+  Session 2026-09-02 progress (UI polish):
+  - share suggestions: Replaced the native <datalist> share-name autocomplete
+    with a custom single-panel dropdown (new mobile/src/components/
+    share-suggest.ts + .share-suggest CSS) that filters on keystroke without
+    re-rendering, highlights the typed query, and supports tap/Enter/
+    Arrow-Up/Down/Escape. Applied to the Add screen and both Update IPO
+    allotment / Update SIP shares fields. This fixes the boxed/line-based
+    suggestion rendering and search-in-update-module bugs.
+  - shares trend chart: renderBars now colors the bar + its value label by
+    sign (green positive / red negative) via a new BarChartBucket.signColor
+    flag. The share trend is now a signed net cash-flow ("Portfolio net flow
+    trend"): money in (sell / SIP redeem / cash dividend) +, money out
+    (IPO / buy / SIP installment) −, with a matching Money in / Money out
+    legend.
+  - stat grid: statGrid auto-spans the last box across the full row when it
+    would sit alone (odd count on 2 cols, count % cols === 1 on 3 cols) — so
+    Expenses dashboard Bank net and Cash net no longer float in the left
+    column of an empty cell.
+  - settings: Grouped menu (Account / Data & storage / About) with small-caps
+    group titles; larger rounded icon chips, roomier rows, press states, and
+    chevron chips; redesigned "Import from Keep Notes" CTA card; polished
+    sub-screen panels, Version row chips, and Import/Export status pills
+    (.settings-tag). Dropped the now-unused .settings-row-left/.chevron rules.
+  - CODEBASE.md: mobile components list updated with share-suggest.ts.
+  - Build verified: npm run build:services, build:web, and all 7 parity/
+    schema/repository tests pass.
+
+  Session 2026-09-02 refactor (AGENTS.md §10 structure pass):
+  - components/: shell.ts slimmed to app chrome only (screen wrapper, topbar,
+    drawer, bottom nav). Split every remaining helper into focused reusable
+    modules: charts.ts (single/grouped bar charts, category bars, period +
+    range controls), forms.ts (formCard/field/selectOptions/sectionTitle/
+    addFormScreen), stats.ts (statGrid/statBox), history.ts (search-aware
+    transaction rows), search.ts (one common search — searchInput/searchQuery/
+    filterRows/bindSearchInputs with debounce + caret restore). home-chart.ts
+    and share-suggest.ts kept for the Home chips and autocomplete panel.
+    home-chart.ts now uses shared period buckets from utils/periods.ts.
+  - utils/: added html.ts (single escapeHtml/escapeAttr source of truth),
+    periods.ts (PeriodBucket + getPeriodBuckets + matchesPeriod, shared by
+    shares/bank/expenses trend builders), viewport.ts (scrollFieldIntoView +
+    bindKeyboardScrollProtection). main.ts now imports these instead of
+    duplicating scroll/keyboard/debounce helpers; removed local
+    scheduleDebouncedSearch/scrollFieldIntoView.
+  - screens/settings/: all 9 settings files moved into a folder — index.ts
+    (menu), layout.ts (shared sub-screen shell), + profile/import-export/
+    investment/backup-sync/privacy/about/how-to-use/version. Old flat
+    settings*.ts files deleted; main.ts imports updated.
+  - app-state.ts: dashSearchQuery initialized to {} (per-module keys created
+    on first use) so future modules reuse the same search without edits.
+  - Security: all user-supplied data interpolated into HTML is escaped via
+    utils/html.ts (profile name in topbar + settings-profile input value,
+    share names in holdings table + share-suggest items/attributes, category
+    picker labels, history row descriptions/categories, chart/category bar
+    labels). toast uses textContent. share-suggest.ts imports the shared
+    escape helpers instead of its local copies.
+  - CODEBASE.md: Mobile Repo Structure tree updated for components/settings/
+    utils split.
+  - Build verified: npm run build:services, build:web, and all 7 parity/
+    schema/repository tests pass.
+
 
 - [ ] 5. Keep Notes bulk import
   Notes: (seed) Implement the Keep Notes parser and review/edit screen per

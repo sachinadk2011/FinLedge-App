@@ -1,13 +1,10 @@
 import { summarizeBankRecords } from "../../services/bank-category-totals.js";
 import { summarizeShareRecords } from "../../services/share-fifo-lot-matching.js";
 import { summarizePersonalFinanceRecords } from "../../services/personal-finance-sync-row-computation.js";
-import {
-  bottomNav,
-  getPeriodBuckets,
-  periodBarsChart,
-  statGrid,
-  type BarChartBucket,
-} from "../components/shell.js";
+import { periodBarsChart, type BarChartBucket } from "../components/charts.js";
+import { statGrid } from "../components/stats.js";
+import { bottomNav } from "../components/shell.js";
+import { getPeriodBuckets } from "../utils/periods.js";
 import { bankRecords, shareRecords } from "../data/demo-data.js";
 import { currentPersonalFinanceRows } from "../data/mobile-data.js";
 import { money } from "../utils/format.js";

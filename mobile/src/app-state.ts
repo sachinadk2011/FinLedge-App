@@ -19,8 +19,8 @@ export const appState = {
   categorySelectionTouched: false,
   customStart: toDateKey(new Date(today().getFullYear(), today().getMonth(), 1)),
   customEnd: toDateKey(today()),
-  // Per-module dashboard search query (lowercased)
-  dashSearchQuery: { bank: "", shares: "", expenses: "" } as Record<string, string>,
+  // Per-module dashboard search query, keyed by module id
+  dashSearchQuery: {} as Record<string, string>,
   // Personal Expenses dashboard tab: "combined" | "bank" | "cash"
   expensesDashTab: "combined" as "combined" | "bank" | "cash",
   // Shares add-entry form: current entry type selection

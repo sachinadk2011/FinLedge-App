@@ -1,18 +1,15 @@
 import { summarizePersonalFinanceRecords } from "../../services/personal-finance-sync-row-computation.js";
-import {
-  bottomNav,
-  formCard,
-  getPeriodBuckets,
-  historyRows,
-  periodGroupedBarsChart,
-  searchInput,
-  sectionTitle,
-  statGrid,
-} from "../components/shell.js";
+import { periodGroupedBarsChart } from "../components/charts.js";
+import { formCard, sectionTitle } from "../components/forms.js";
+import { historyRows } from "../components/history.js";
+import { searchInput } from "../components/search.js";
+import { statGrid } from "../components/stats.js";
+import { bottomNav } from "../components/shell.js";
 import { appState } from "../app-state.js";
 import { transferRows } from "../data/demo-data.js";
 import { currentPersonalFinanceRows } from "../data/mobile-data.js";
 import { money } from "../utils/format.js";
+import { getPeriodBuckets, matchesPeriod } from "../utils/periods.js";
 import type { ChartBucket } from "../types.js";
 
 import type { PersonalFinanceRecord } from "../../services/personal-finance-sync-row-computation.js";
@@ -122,8 +119,7 @@ function buildExpensesTrendBuckets(rows: PersonalFinanceRecord[]): ChartBucket[]
     let income = 0;
     let expense = 0;
     for (const row of rows) {
-      const matches = b.isDay ? row.date === b.key : String(row.date).startsWith(b.key);
-      if (!matches) continue;
+      if (!matchesPeriod(b, String(row.date ?? ""))) continue;
       const amount = Number(row.amount ?? 0);
       if (row.direction === "income") {
         income += amount;

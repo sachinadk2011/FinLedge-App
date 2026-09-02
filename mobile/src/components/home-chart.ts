@@ -2,6 +2,7 @@ import { appState } from "../app-state.js";
 import type { ChartBucket } from "../types.js";
 import { addDays, daysBetween, monthKey, parseDateKey, toDateKey, today } from "../utils/date.js";
 import { compactMoney } from "../utils/format.js";
+import { escapeHtml } from "../utils/html.js";
 import type { PersonalFinanceRecord } from "../../services/personal-finance-sync-row-computation.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -106,7 +107,7 @@ export function categoryBars(rows: PersonalFinanceRecord[]): string {
   const tone  = appState.homeMode === "income" ? "pos" : "neg";
   const color = appState.homeMode === "income" ? C_INCOME : C_EXPENSE;
   return sorted.map(([cat, amount]) =>
-    `<div class="history-row"><b>${cat}</b><span class="money ${tone}">${compactMoney(amount)}</span></div>
+    `<div class="history-row"><b>${escapeHtml(cat)}</b><span class="money ${tone}">${compactMoney(amount)}</span></div>
      <div class="category-meter"><i style="width:${Math.max(8, (amount / max) * 100)}%;background:${color};"></i></div>`
   ).join("");
 }

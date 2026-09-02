@@ -211,8 +211,14 @@ tracker financial/mobile/
 │  ├─ types.ts                    — shared mobile UI TypeScript types
 │  ├─ styles.css                  — mobile design tokens and responsive layout
 │  ├─ components/
-│  │  ├─ shell.ts                 — topbar, drawer, forms, tables, dashboard shell helpers
-│  │  └─ home-chart.ts            — Home category breakdown and grouped income/expense/net chart
+│  │  ├─ shell.ts                 — app chrome only: screen wrapper, topbar, drawer, bottom nav
+│  │  ├─ home-chart.ts            — Home category breakdown and grouped income/expense/net chart
+│  │  ├─ charts.ts                — shared single/grouped bar charts, category bars, range controls
+│  │  ├─ forms.ts                 — shared form card, field, select options, section title helpers
+│  │  ├─ stats.ts                 — shared stat grid / stat box helpers
+│  │  ├─ history.ts               — shared scrollable transaction-style rows list (search-aware)
+│  │  ├─ search.ts                — one reusable module search (input, query, filter, binder)
+│  │  └─ share-suggest.ts         — share-name autocomplete panel (single dropdown, tap/keyboard)
 │  ├─ constants/
 │  │  └─ options.ts               — mobile category/dropdown options aligned with desktop constants
 │  ├─ screens/
@@ -221,19 +227,24 @@ tracker financial/mobile/
 │  │  ├─ shares.ts                — Share Portfolio add-entry and dashboard screens
 │  │  ├─ expenses.ts              — Personal Expenses add-entry and dashboard screens
 │  │  ├─ transfer.ts              — Cash ⇄ Bank transfer sub-flow screen
-│  │  ├─ settings.ts              — mobile Settings menu
-│  │  ├─ settings-profile.ts      — Profile Settings sub-screen
-│  │  ├─ settings-import-export.ts — Import/Export Settings sub-screen
-│  │  ├─ settings-investment.ts   — Investment Settings sub-screen
-│  │  ├─ settings-backup-sync.ts  — Backup & sync Settings sub-screen
-│  │  ├─ settings-privacy.ts      — Privacy Settings sub-screen
-│  │  ├─ settings-about.ts        — About Settings sub-screen
-│  │  ├─ settings-how-to-use.ts   — How To Use Settings sub-screen
-│  │  ├─ settings-version.ts      — Version Settings sub-screen
-│  │  └─ summary.ts               — read-only Financial Summary screen
+│  │  ├─ summary.ts               — read-only Financial Summary screen
+│  │  └─ settings/                — Settings menu and sub-screens
+│  │     ├─ index.ts              — mobile Settings menu (grouped Account/Data/About)
+│  │     ├─ layout.ts             — shared sub-screen shell (eyebrow, title, back button)
+│  │     ├─ profile.ts            — Profile Settings sub-screen
+│  │     ├─ import-export.ts      — Import/Export Settings sub-screen
+│  │     ├─ investment.ts         — Investment Settings sub-screen
+│  │     ├─ backup-sync.ts        — Backup & sync Settings sub-screen
+│  │     ├─ privacy.ts            — Privacy Settings sub-screen
+│  │     ├─ about.ts              — About Settings sub-screen
+│  │     ├─ how-to-use.ts         — How To Use Settings sub-screen
+│  │     └─ version.ts            — Version Settings sub-screen
 │  ├─ utils/
 │  │  ├─ date.ts                  — mobile date range helpers
-│  │  └─ format.ts                — mobile money formatting helpers
+│  │  ├─ format.ts                — mobile money formatting helpers
+│  │  ├─ html.ts                  — escapeHtml / escapeAttr for safe HTML interpolation
+│  │  ├─ periods.ts               — shared period buckets and range matching for charts
+│  │  └─ viewport.ts              — keyboard-aware field scrolling helpers
 │  └─ data/
 │     ├─ demo-data.ts             — temporary UI scaffold data
 │     ├─ mobile-data.ts           — mobile UI aggregation helpers over local records

@@ -1,17 +1,13 @@
 import { isIncomeCategory, summarizeBankRecords, type BankRecord } from "../../services/bank-category-totals.js";
-import {
-  addFormScreen,
-  bottomNav,
-  categoryBarsSection,
-  getPeriodBuckets,
-  historyRows,
-  periodGroupedBarsChart,
-  searchInput,
-  sectionTitle,
-  statGrid,
-} from "../components/shell.js";
+import { categoryBarsSection, periodGroupedBarsChart } from "../components/charts.js";
+import { addFormScreen, sectionTitle } from "../components/forms.js";
+import { historyRows } from "../components/history.js";
+import { searchInput } from "../components/search.js";
+import { statGrid } from "../components/stats.js";
+import { bottomNav } from "../components/shell.js";
 import { appState } from "../app-state.js";
 import { bankRecords } from "../data/demo-data.js";
+import { getPeriodBuckets, matchesPeriod } from "../utils/periods.js";
 import type { ChartBucket } from "../types.js";
 
 export function bankAddScreen(): string {
@@ -85,8 +81,7 @@ function buildBankTrendBuckets(records: BankRecord[]): ChartBucket[] {
     let income = 0;
     let expense = 0;
     for (const record of records) {
-      const matches = b.isDay ? record.date === b.key : String(record.date).startsWith(b.key);
-      if (!matches) continue;
+      if (!matchesPeriod(b, String(record.date ?? ""))) continue;
       const amount = Number(record.amount ?? 0);
       const category = String(record.category ?? "");
       if (isIncomeCategory(category)) {

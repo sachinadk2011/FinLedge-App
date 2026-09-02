@@ -1,6 +1,8 @@
 import { appState, shouldShowProfilePrompt } from "../app-state.js";
 import { categoryBars, homeChart } from "../components/home-chart.js";
-import { historyRows, periodControls } from "../components/shell.js";
+import { periodControls } from "../components/charts.js";
+import { historyRows } from "../components/history.js";
+import { escapeAttr, escapeHtml } from "../utils/html.js";
 import {
   currentMonthTotals,
   manualRowsForCurrentMonth,
@@ -110,7 +112,7 @@ function categoryPicker(): string {
     <details class="category-dropdown">
       <summary><span>Categories shown</span><b>${selected.size === available.length ? "All with entries" : `${selected.size} selected`}</b></summary>
       <label><input type="checkbox" value="__all__" data-category-check ${selected.size === available.length ? "checked" : ""}> All categories with entries</label>
-      ${available.map((category) => `<label><input type="checkbox" value="${category}" data-category-check ${selected.has(category) ? "checked" : ""}> ${category}</label>`).join("")}
+      ${available.map((category) => `<label><input type="checkbox" value="${escapeAttr(category)}" data-category-check ${selected.has(category) ? "checked" : ""}> ${escapeHtml(category)}</label>`).join("")}
     </details>
   `;
 }
