@@ -16,7 +16,9 @@ export type ScreenId =
   | "settings-privacy"
   | "settings-about"
   | "settings-how-to-use"
-  | "settings-version";
+  | "settings-version"
+  | "import-paste"
+  | "import-review";
 
 export type ChartRange = "week" | "month" | "year" | "custom";
 

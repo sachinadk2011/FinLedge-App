@@ -28,6 +28,12 @@ import { summaryScreen } from "./screens/summary.js";
 import { transferScreen } from "./screens/transfer.js";
 import { bindKeyboardScrollProtection } from "./utils/viewport.js";
 import type { ChartRange, ScreenId } from "./types.js";
+import { importPasteScreen } from "./screens/keep-notes/paste.js";
+import { importReviewScreen } from "./screens/keep-notes/review.js";
+import { parseKeepNotes, type StagedEntry } from "../services/keep-notes-parser.js";
+import { openMobileDatabase } from "./data/sqlite.js";
+import { commitKeepNotes } from "../services/keep-notes-commit.js";
+import { today, toDateKey } from "./utils/date.js";
 
 function navigate(nextScreen: ScreenId, options: { replace?: boolean } = {}): void {
   if (nextScreen !== appState.activeScreen) {
@@ -63,6 +69,11 @@ function render(): void {
   const app = document.querySelector<HTMLDivElement>("#app");
   if (!app) return;
 
+  // Preserve scroll position across re-renders of the import review screen so
+  // edits/splits/deletes don't jump the viewport to another row.
+  const preserveScroll = appState.activeScreen === "import-review";
+  const prevY = preserveScroll ? (document.scrollingElement || document.documentElement).scrollTop : 0;
+
   app.innerHTML = `
     <div class="app-shell">
       ${topbar()}
@@ -85,6 +96,8 @@ function render(): void {
       ${screen("settings-about", settingsAboutScreen())}
       ${screen("settings-how-to-use", settingsHowToUseScreen())}
       ${screen("settings-version", settingsVersionScreen())}
+      ${screen("import-paste", importPasteScreen())}
+      ${screen("import-review", importReviewScreen())}
     </div>
   `;
   bindEvents();
@@ -94,6 +107,11 @@ function render(): void {
       el.scrollLeft = el.scrollWidth;
     });
   });
+  if (preserveScroll) {
+    requestAnimationFrame(() => {
+      (document.scrollingElement || document.documentElement).scrollTop = prevY;
+    });
+  }
 }
 
 function bindEvents(): void {
@@ -191,6 +209,216 @@ function bindEvents(): void {
       render();
     });
   });
+
+  bindImportEvents();
+  document.addEventListener("input", handleImportFieldEdit);
+}
+
+/** Keep Notes import flow event wiring (parse, search, add, commit, and per-row actions). */
+function bindImportEvents(): void {
+  document.querySelector("[data-import-parse]")?.addEventListener("click", () => {
+    const textarea = document.querySelector<HTMLTextAreaElement>("[data-import-note]");
+    const raw = textarea?.value.trim() ?? "";
+    if (!raw) {
+      toastNear("Paste some note text first.", textarea);
+      return;
+    }
+    appState.importPasteDraft = raw;
+    appState.importEntries = parseKeepNotes(raw).entries;
+    navigate("import-review");
+  });
+
+  document.querySelector("[data-import-add-row]")?.addEventListener("click", () => {
+    appState.importEntries.push(blankEntry());
+    appState.importReviewQuery = "";
+    render();
+  });
+
+  document.querySelector("[data-import-search]")?.addEventListener("input", (event) => {
+    appState.importReviewQuery = (event.target as HTMLInputElement).value;
+    render();
+    refocusImportSearch();
+  });
+
+  document.querySelector("[data-import-commit]")?.addEventListener("click", async (event) => {
+    const button = event.currentTarget as HTMLButtonElement;
+    if (button.dataset.disabled) return;
+    const unconfirmed = appState.importEntries.filter((e) => needsConfirm(e));
+    if (unconfirmed.length) {
+      showToast("Confirm flagged rows before committing.");
+      render();
+      return;
+    }
+    button.disabled = true;
+    button.textContent = "Committing…";
+    try {
+      const db = await openMobileDatabase();
+      const report = await commitKeepNotes(db, appState.importEntries);
+      appState.importEntries = [];
+      appState.importPasteDraft = "";
+      showToast(`Committed ${report.written} row${report.written === 1 ? "" : "s"}.`);
+      navigate("settings", { replace: true });
+    } catch (error) {
+      showToast("Commit failed. See console.");
+      console.error(error);
+      render();
+    }
+  });
+
+  // Row actions use delegation so rows keep working after filter re-renders.
+  document.querySelectorAll<HTMLElement>("[data-import-row]").forEach((panel) => {
+    const id = panel.dataset.importRow ?? "";
+    panel.querySelector("[data-import-confirm]")?.addEventListener("click", () => {
+      confirmRow(id);
+    });
+    panel.querySelector("[data-import-delete]")?.addEventListener("click", () => {
+      appState.importEntries = appState.importEntries.filter((e) => e.id !== id);
+      render();
+    });
+    panel.querySelector("[data-import-split]")?.addEventListener("click", () => {
+      splitRow(id);
+    });
+    panel.querySelector("[data-import-undo-split]")?.addEventListener("click", () => {
+      undoRowSplit(id);
+    });
+  });
+}
+
+/** Live-edit a staged row's fields without a full render (keeps focus/caret). */
+function handleImportFieldEdit(event: Event): void {
+  const field = event.target as HTMLElement;
+  const panel = field.closest<HTMLElement>("[data-import-row]");
+  if (!panel) return;
+  const id = panel.dataset.importRow ?? "";
+  const entry = appState.importEntries.find((e) => e.id === id);
+  if (!entry) return;
+
+  const attr =
+    field.dataset.importDate ? "date" :
+    field.dataset.importLabel ? "label" :
+    field.dataset.importModule ? "module" :
+    field.dataset.importFlow ? "flow" :
+    field.dataset.importDirection ? "direction" :
+    field.dataset.importCategory ? "category" :
+    field.dataset.importDescription ? "description" :
+    (field instanceof HTMLInputElement && field.type === "number") ? "amount" : "";
+  if (!attr) return;
+
+  const value = (field as HTMLInputElement | HTMLSelectElement).value;
+  if (attr === "amount") {
+    const n = Number(value);
+    entry.amount = Number.isFinite(n) ? n : 0;
+  } else if (attr === "module") {
+    entry.module = value as StagedEntry["module"];
+  } else if (attr === "direction") {
+    entry.direction = value as StagedEntry["direction"];
+  } else if (attr === "flow") {
+    entry.flow = value as StagedEntry["flow"];
+  } else if (attr === "category") {
+    entry.category = value;
+  } else if (attr === "date") {
+    entry.date = value;
+  } else if (attr === "label") {
+    entry.label = value;
+  } else if (attr === "description") {
+    entry.description = value;
+  }
+  entry.edited = true;
+  // Amount handled separately (number input).
+}
+
+function confirmRow(id: string): void {
+  const entry = appState.importEntries.find((e) => e.id === id);
+  if (!entry) return;
+  entry.flags = entry.flags.filter((f) => f.kind !== "ambiguous" && f.kind !== "checksum");
+  render();
+}
+
+function splitRow(id: string): void {
+  const entry = appState.importEntries.find((e) => e.id === id);
+  if (!entry) return;
+  const halves = Math.floor(entry.amount / 2);
+  const rem = entry.amount - halves;
+  const group = `split-${Date.now().toString(36)}`;
+  const clone: StagedEntry = {
+    ...entry,
+    id: `${entry.id}-s`,
+    amount: rem,
+    splitGroup: group,
+    flags: [],
+    edited: true,
+    description: `${entry.label || "Item"} (part)`,
+  };
+  entry.amount = halves;
+  entry.splitGroup = group;
+  entry.flags = [];
+  entry.description = `${entry.label || "Item"} (part)`;
+  appState.importEntries.splice(indexOfId(id) + 1, 0, clone);
+  render();
+}
+
+function undoRowSplit(id: string): void {
+  const clicked = appState.importEntries.find((e) => e.id === id);
+  if (!clicked || !clicked.splitGroup) return;
+  const group = clicked.splitGroup;
+  const peers = appState.importEntries.filter((e) => e.splitGroup === group);
+  if (peers.length < 2) return;
+  const base = peers.find((e) => !e.id.endsWith("-s")) ?? peers[0];
+  const originals = peers.map((e) => e.id);
+  const idx = appState.importEntries.findIndex((e) => e.id === originals[0]);
+  const merged: StagedEntry = {
+    ...base,
+    id: base.id.endsWith("-s") ? base.id.slice(0, -2) : base.id,
+    amount: peers.reduce((s, e) => s + e.amount, 0),
+    splitGroup: undefined,
+    flags: [],
+    edited: true,
+    description: base.label || "",
+  };
+  appState.importEntries = appState.importEntries.filter((e) => e.splitGroup !== group);
+  appState.importEntries.splice(Math.max(idx, 0), 0, merged);
+  render();
+}
+
+function blankEntry(): StagedEntry {
+  return {
+    id: `manual-${Date.now().toString(36)}`,
+    date: toDateKey(today()),
+    amount: 0,
+    label: "",
+    description: "",
+    module: "personal",
+    direction: "expense",
+    flow: "cash",
+    category: "Other",
+    flags: [],
+    edited: true,
+  };
+}
+
+function needsConfirm(entry: StagedEntry): boolean {
+  return entry.flags.some((f) => f.kind === "ambiguous" || f.kind === "checksum");
+}
+
+function indexOfId(id: string): number {
+  return appState.importEntries.findIndex((e) => e.id === id);
+}
+
+function refocusImportSearch(): void {
+  const search = document.querySelector<HTMLInputElement>("[data-import-search]");
+  if (!search) return;
+  search.focus();
+  try {
+    search.setSelectionRange(search.value.length, search.value.length);
+  } catch {
+    /* ignore */
+  }
+}
+
+function toastNear(message: string, anchor: Element | null): void {
+  showToast(message);
+  anchor?.classList.add("import-error-flash");
+  window.setTimeout(() => anchor?.classList.remove("import-error-flash"), 1200);
 }
 
 function updateCategorySelection(event: Event): void {

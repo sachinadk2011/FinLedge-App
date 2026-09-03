@@ -48,6 +48,7 @@ export const PERSONAL_FINANCE_EXPENSE_CATEGORIES = [
   "Investment",
   "SIP",
   "Share Market",
+  "Gift",
   "Other",
 ];
 

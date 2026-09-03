@@ -1,6 +1,7 @@
 import { App } from "@capacitor/app";
 import type { ChartRange, ScreenId } from "./types.js";
 import { toDateKey, today } from "./utils/date.js";
+import type { StagedEntry } from "../services/keep-notes-parser.js";
 
 export const deviceName = "mobile-local";
 export const appVersionLabel = "mobile-v1.0.0";
@@ -27,6 +28,10 @@ export const appState = {
   sharesEntryType: "ipo" as string,
   sharesDividendType: "cash" as string,
   sharesSipType: "installment" as string,
+  // Keep Notes bulk import staging
+  importPasteDraft: "",
+  importEntries: [] as StagedEntry[],
+  importReviewQuery: "",
 };
 
 

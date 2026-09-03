@@ -228,6 +228,9 @@ tracker financial/mobile/
 │  │  ├─ expenses.ts              — Personal Expenses add-entry and dashboard screens
 │  │  ├─ transfer.ts              — Cash ⇄ Bank transfer sub-flow screen
 │  │  ├─ summary.ts               — read-only Financial Summary screen
+│  │  ├─ keep-notes/
+│  │  │  ├─ paste.ts              — Notes import: paste raw note text (any unstructured format)
+│  │  │  └─ review.ts             — Keep Notes import: full-screen staged review (edit/split/delete/add/confirm/commit)
 │  │  └─ settings/                — Settings menu and sub-screens
 │  │     ├─ index.ts              — mobile Settings menu (grouped Account/Data/About)
 │  │     ├─ layout.ts             — shared sub-screen shell (eyebrow, title, back button)
@@ -254,8 +257,15 @@ tracker financial/mobile/
 ├─ services/                      — ported business logic (TypeScript, on-device)
 │  ├─ bank-category-totals.ts     — Bank Services category totals
 │  ├─ share-fifo-lot-matching.ts  — Share Portfolio FIFO lot-matching
-│  └─ personal-finance-sync-row-computation.ts — PF sync-row computation
+│  ├─ personal-finance-sync-row-computation.ts — PF sync-row computation
+│  ├─ keep-notes-parser.ts        — loose note text → staging list parser (amount-first, label-first +chains, date headers, checksums)
+│  └─ keep-notes-commit.ts        — Keep Notes staged-entry commit via the repository layer
 ├─ tests/                         — TypeScript parity, schema, and repository tests
+│  ├─ bank-category-totals.test.ts
+│  ├─ share-fifo-lot-matching.test.ts
+│  ├─ personal-finance-sync-row-computation.test.ts
+│  ├─ sqlite-schema.test.ts
+│  └─ keep-notes-parser.test.ts
 └─ scripts/
    └─ verify-placeholder-build.mjs — validates the placeholder build
 ```

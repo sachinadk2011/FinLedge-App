@@ -20,7 +20,7 @@
   personal_finance_cash_flow, transfers) plus the new Updated Device column
   on both platforms, with a migration path and default for existing rows.
 
-- [ ] 4. UI build (responsive across phone sizes)
+- [x] 4. UI build (responsive across phone sizes)
   Notes: (seed) Build the mobile UI from docs/design.md and docs/appflow.md.
   Responsive relative/flex layouts tested from 360px–430px; module screens
   are Add-entry ⇄ Dashboard pairs (never combined). Fixed drawer brand asset
@@ -137,10 +137,90 @@
     schema/repository tests pass.
 
 
-- [ ] 5. Keep Notes bulk import
+- [x] 5. Keep Notes bulk import
   Notes: (seed) Implement the Keep Notes parser and review/edit screen per
   docs/keepNotesImport.md: paste → parse preview/review → confirm → commit,
   writing via the same service layer as manual entries.
+  Session 2026-09-03 progress (bulk import flow):
+  - services/keep-notes-parser.ts: pure parser producing a staging list
+    (StagedEntry[]). Handles amount-then-label (dash/space/none), relative
+    date headers, running-total `=` checksums (flag on mismatch), `+`-joined
+    multi-item splits (with lump fallback), plus-prefixed ambiguous lines,
+    reversed label-then-amount with parentheticals, label-then-sum, arithmetic/
+    balance info lines, `k` scaling, and the "planned/needed" qualifier flag.
+  - services/keep-notes-commit.ts: writes confirmed staged entries THROUGH the
+    same repository layer as manual entries (insertPersonalFinanceRecord /
+    insertBankTransaction / insertShareTransaction), so timestamps + updated_device
+    are stamped automatically. Flagged rows must be confirmed before commit.
+  - screens/keep-notes/paste.ts: full paste screen (textarea + placeholder with
+    sample syntax). screens/keep-notes/review.ts: FULL-SCREEN (non-modal) staged
+    review with search, editable per-row fields (date/label/amount/module/flow/
+    type/category/description), add-row, split, delete, confirm-flag chips, and a
+    summary + commit button that is disabled until all flagged rows are resolved.
+  - app-state.ts: added importPasteDraft / importEntries / importReviewQuery.
+    types.ts: added import-paste + import-review ScreenId. main.ts: wired the
+    parse → review → commit flow (event delegation for live row edits), plus a
+    boot-time SQLite open for the commit path.
+  - settings/import-export.ts: "Import from Keep Notes" row now navigates to the
+    import flow. Settings drawer highlights the import screens.
+  - styles.css: added .btn-soft (natural pill actions), import paste textarea and
+    review layout styles, flag chips, full-width row grid.
+  - tests: new tests/keep-notes-parser.test.ts (12 cases) covering the parser
+    spec — all pass. Build verified: build:services + build:web. All tests green.
+
+  LATER SESSION (2026-09-03) — loosen the parser for fully-unstructured notes
+  (any note/jot-down app, not only Keep Notes) + rename the import entry points:
+  - New parser rule: leading-label + amount(chains) on the SAME line, e.g.
+    `travel 25 + 25 +20+20`, `gift 100 dd lai`, `aama le 505 earn`,
+    `name 250 + 100`, `fruit  125`. Sums each `+` chain into one entry
+    (`travel 25 + 25 +20+20` → 90), description = the leading label only
+    ("travel").
+  - classifyLabel loose-word mappings (checked BEFORE exact-option match so
+    "travel" → Transportation, not the "Travel" option): travel/transport/ride →
+    Transportation; salary → Salary income; earn/income/bonus → Other Income
+    income; gift → Gift income; dahi/curd/fruit/milk/vegetable/rice/snack/cola →
+    Food expense. Names without an income word still default to Other expense
+    (editable in review).
+  - UI: "Import from notes" (was "Import from Keep Notes"); removed the
+    "Phase 5" pill; the Settings "Start import" CTA now navigates directly to
+    the import-paste screen instead of the Import/Export sub-menu.
+  - tests: added a 10-line unstructured-format test. 20/20 pass, builds green.
+
+  LATER SESSION (2026-09-03, +2) — gift income/expense + wider Nepali food words:
+  - Gift category: added "Gift" to PERSONAL_FINANCE_EXPENSE_CATEGORIES so it's a
+    valid expense option. classifyLabel now treats a gift line as income by
+    default (the app models Gift as income), but as an EXPENSE when a recipient
+    is present (dative "lai"/"tina"/"tendsi"/"timarau" or "to <name>").
+    e.g. "gift 100" → income/Gift; "gift 100 dd lai" → expense/Gift.
+  - Food detection expanded with common English + Nepali terms
+    (dahi=dudh/rice/bhat/dal/momo/roti/vegetable/tarkari/masu/chicken/egg/fruit…).
+    A mixed label like "fruit dai" still maps to Food (description keeps "fruit dai").
+    Unmatched names (janai, karuna, …) default to Other expense (editable).
+  - tests: +2 (gift direction, Nepali food words). 22/22 pass, builds green.
+  - NOTE: category lists now differ from desktop's by one entry (mobile adds "Gift"
+    to personal expense categories). Desktop untouched per AGENTS.md §7.
+
+  LATER SESSION (2026-09-03, +3) — import UX cleanup (feedback round):
+  - Paste + review screens: replaced duplicate action bars (explicit "Back" +
+    bottomNav Back + Home) with ONE 3-button row: [Back] [Home] [primary]. No
+    repeated back buttons. "Back" uses true history go-back (data-back) so it
+    returns to the settings section the user came from, not a hardcoded sub-menu.
+  - Removed sample-data placeholder + the "date headers like 8/17…" hint from the
+    paste screen; textarea now says "Paste your expenses or income note here…".
+  - Split now tags both halves with a shared splitGroup id; added an "Undo split"
+    button (visible on split halves) that merges the two halves back into one row.
+  - Render now preserves scroll position on the import-review screen so edits /
+    splits / deletes don't jump the viewport to another row.
+  - StagedEntry gained optional splitGroup field. Tests still 22/22, builds green.
+
+  LATER SESSION (2026-09-03, +4) — button layout + commit exit (feedback round 2):
+  - Import paste + review screens: primary action ("Parse & review" / "Commit N rows")
+    is now a full-width, centered button on its own row (.btn-stack/.btn-block),
+    with [Back] [Home] stacked BELOW it. No more confusing 3-across row.
+  - After a successful commit the user now lands on the main Settings screen
+    (navigate("settings", { replace: true })) and importEntries is cleared, so
+    there is no way to re-enter the already-committed review section (the review
+    screen is also removed from the back-stack via history replace).
 
 - [ ] 6. Excel-export round-trip verification
   Notes: (seed) Implement lossless SQLite ⇄ Excel export per docs/schema.md

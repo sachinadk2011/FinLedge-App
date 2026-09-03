@@ -27,7 +27,7 @@ export function drawer(): string {
     ["shares-add", "Share Portfolio", "📈", ["shares-add", "shares-dash"]],
     ["expenses-add", "Personal Expenses", "💳", ["expenses-add", "expenses-dash", "transfer"]],
     ["summary", "Financial Summary", "📊", ["summary"]],
-    ["settings", "Settings", "⚙", ["settings", "settings-profile", "settings-import-export", "settings-investment", "settings-backup-sync", "settings-privacy", "settings-about", "settings-how-to-use", "settings-version"]],
+    ["settings", "Settings", "⚙", ["settings", "settings-profile", "settings-import-export", "settings-investment", "settings-backup-sync", "settings-privacy", "settings-about", "settings-how-to-use", "settings-version", "import-paste", "import-review"]],
   ];
   return `
     <div class="drawer-overlay" data-close-drawer></div>

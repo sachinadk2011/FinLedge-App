@@ -12,7 +12,7 @@ const settingsGroups: SettingsGroup[] = [
   {
     title: "Data & storage",
     rows: [
-      ["settings-import-export", "Import / Export", "Keep Notes paste, Excel import, Excel export", "📥"],
+      ["settings-import-export", "Import / Export", "Notes paste, Excel import, Excel export", "📥"],
       ["settings-backup-sync", "Backup & sync", "Local backup status and future sync", "☁"],
       ["settings-privacy", "Privacy", "On-device SQLite storage and data controls", "🔒"],
     ],
@@ -48,10 +48,10 @@ export function settingsScreen(): string {
     <section class="card settings-cta">
       <span class="settings-cta-icon">📝</span>
       <div>
-        <h3>Import from Keep Notes</h3>
+        <h3>Import from notes</h3>
         <p class="settings-cta-text">Paste unstructured notes and map them to categories — with smart defaults you can override per line.</p>
       </div>
-      <button class="btn-primary" data-nav="settings-import-export">Start import</button>
+      <button class="btn-primary" data-nav="import-paste">Start import</button>
     </section>
   `;
 }

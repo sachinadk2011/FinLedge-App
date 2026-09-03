@@ -5,10 +5,9 @@ export function settingsImportExportScreen(): string {
   return settingsSubScreen(
     "Import / Export",
     `<section class="card settings-menu">
-      <button class="settings-row settings-nav-row">
+      <button class="settings-row settings-nav-row" data-nav="import-paste">
         <span class="settings-icon">📋</span>
-        <span class="settings-row-main"><b>Import by pasting</b><span>Keep Notes paste flow: paste, review, confirm, commit.</span></span>
-        <span class="settings-tag">Phase 5</span>
+        <span class="settings-row-main"><b>Import from notes</b><span>Paste notes, review, and commit.</span></span>
       </button>
       <button class="settings-row settings-nav-row">
         <span class="settings-icon">📄</span>

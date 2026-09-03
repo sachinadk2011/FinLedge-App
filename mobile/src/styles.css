@@ -386,6 +386,177 @@ button {
   grid-template-columns: repeat(2, 1fr);
 }
 
+/* Primary action on its own full-width row, with secondary nav stacked below. */
+.btn-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+}
+
+.btn-block {
+  width: 100%;
+}
+
+/* ── Soft, natural text action buttons (no harsh rectangle outlines) ── */
+.btn-soft {
+  background: color-mix(in srgb, var(--accent-green) 14%, transparent);
+  border: 0;
+  border-radius: 100px;
+  color: var(--accent-green);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 700;
+  min-height: 36px;
+  padding: 0 14px;
+  transition: background-color 0.18s ease, color 0.18s ease, transform 0.08s ease;
+}
+
+.btn-soft:active {
+  transform: scale(0.97);
+}
+
+.btn-soft.btn-sm {
+  min-height: 30px;
+  padding: 0 10px;
+  font-size: 12px;
+}
+
+.btn-soft[hidden] {
+  display: none;
+}
+
+/* ── Keep Notes import: paste step ── */
+.import-note-area {
+  width: 100%;
+  min-height: 200px;
+  resize: vertical;
+  background: var(--bg-surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text-1);
+  font: inherit;
+  font-size: 15px;
+  line-height: 1.5;
+  padding: 12px;
+}
+
+.import-note-area:focus {
+  outline: none;
+  border-color: var(--accent-green);
+}
+
+.import-error-flash {
+  animation: importFlash 0.6s ease;
+}
+
+@keyframes importFlash {
+  0% { border-color: var(--accent-red); }
+  100% { border-color: var(--border); }
+}
+
+/* ── Keep Notes import: review step (full-screen, not a modal) ── */
+.import-toolbar {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.import-toolbar .search-input {
+  flex: 1;
+  margin: 0;
+}
+
+.import-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.import-row {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 14px;
+}
+
+.import-row.import-edited {
+  border-color: color-mix(in srgb, var(--accent-green) 45%, var(--border));
+}
+
+.import-row-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.import-row-title b {
+  display: block;
+  font-size: 15px;
+  color: var(--text-1);
+}
+
+.import-row-meta {
+  display: block;
+  font-size: 11px;
+  color: var(--text-3);
+  margin-top: 2px;
+}
+
+.import-amount {
+  white-space: nowrap;
+  font-weight: 800;
+}
+
+.import-flag {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 100px;
+  padding: 5px 10px;
+  margin-bottom: 6px;
+}
+
+.import-flag.ambiguous { background: color-mix(in srgb, var(--accent-amber) 20%, transparent); color: var(--accent-amber); }
+.import-flag.checksum { background: color-mix(in srgb, var(--accent-amber) 20%, transparent); color: var(--accent-amber); }
+.import-flag.planned { background: color-mix(in srgb, var(--accent-purple) 18%, transparent); color: var(--accent-purple); }
+.import-flag.lump { background: color-mix(in srgb, var(--accent-blue) 18%, transparent); color: var(--accent-blue); }
+.import-flag.info { background: color-mix(in srgb, var(--text-3) 18%, transparent); color: var(--text-3); }
+
+.import-row-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.import-row-fields .field { margin-bottom: 0; }
+.import-row-fields .field.full { grid-column: 1 / -1; }
+
+.import-row-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 12px;
+}
+
+.import-summary {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 14px;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.import-summary span {
+  font-size: 11px;
+  color: var(--text-3);
+  margin-right: 6px;
+}
+
 .field {
   margin-bottom: 13px;
 }
