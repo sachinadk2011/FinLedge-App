@@ -1,4 +1,4 @@
-import { escapeHtml } from "../utils/html.js";
+import { escapeAttr, escapeHtml } from "../utils/html.js";
 import { money } from "../utils/format.js";
 import { filterRows, searchQuery } from "./search.js";
 
@@ -7,6 +7,9 @@ const SEARCH_FIELDS = ["description", "category", "flow_type", "date"] as const;
 /**
  * Scrollable list of transaction-style rows with an optional search filter.
  * module is the search module key; "" means no search applied.
+ *
+ * Rows that carry `_table` + `_id` get a working delete button wired to the
+ * SQL store; all other rows render the disabled placeholder buttons only.
  */
 export function historyRows(rows: Array<Record<string, unknown>>, wrap = true, module = ""): string {
   const filtered = module ? filterRows(rows, module, SEARCH_FIELDS) : rows;
@@ -19,12 +22,19 @@ export function historyRows(rows: Array<Record<string, unknown>>, wrap = true, m
         const amount = Number(row.amount ?? 0);
         const primary = escapeHtml(String(row.description ?? row.category ?? "Entry"));
         const sub = [row.category, row.date].filter(Boolean).map((v) => escapeHtml(String(v))).join(" · ");
+        const table = row._table ? String(row._table) : "";
+        const rowId = row._id;
+        const deletable = Boolean(table && rowId != null && rowId !== "");
+        const editBtn = `<button style="width:26px;height:26px;border-radius:7px;background:var(--bg-surface-2);border:1px solid var(--border);color:var(--text-2);font-size:11px;" disabled title="Edit (coming soon)">✎</button>`;
+        const deleteBtn = deletable
+          ? `<button style="width:26px;height:26px;border-radius:7px;background:var(--bg-surface-2);border:1px solid var(--border);color:var(--text-2);font-size:11px;" data-delete data-table="${escapeAttr(table)}" data-id="${escapeAttr(String(rowId))}" title="Delete">🗑</button>`
+          : `<button style="width:26px;height:26px;border-radius:7px;background:var(--bg-surface-2);border:1px solid var(--border);color:var(--text-2);font-size:11px;" disabled title="Delete (coming soon)">🗑</button>`;
         return `<div class="history-row">
           <div class="meta"><b>${primary}</b><span>${sub}</span></div>
           <div class="money ${direction === "income" ? "pos" : "neg"}">${money(amount, { sign: true })}</div>
           <div style="display:flex;gap:4px;flex-shrink:0;">
-            <button style="width:26px;height:26px;border-radius:7px;background:var(--bg-surface-2);border:1px solid var(--border);color:var(--text-2);font-size:11px;" disabled title="Edit (coming soon)">✎</button>
-            <button style="width:26px;height:26px;border-radius:7px;background:var(--bg-surface-2);border:1px solid var(--border);color:var(--text-2);font-size:11px;" disabled title="Delete (coming soon)">🗑</button>
+            ${editBtn}
+            ${deleteBtn}
           </div>
         </div>`;
       }).join("")

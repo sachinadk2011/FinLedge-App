@@ -28,14 +28,15 @@ export function expensesAddScreen(): string {
 
     ${formCard(
       [
-        ["Date", "date"],
-        ["Flow", "select", "Bank Flow"],
-        ["Type", "select", "Expense"],
-        ["Category", "select", "Food"],
-        ["Amount", "number"],
-        ["Description (optional)", "text"],
+        ["Date", "date", "", "date"],
+        ["Flow", "select", "Bank Flow", "flow"],
+        ["Type", "select", "Expense", "type"],
+        ["Category", "select", "Food", "category"],
+        ["Amount", "number", "", "amount"],
+        ["Description (optional)", "text", "", "description"],
       ],
       "Add expense entry",
+      "expenses-add",
     )}
     ${bottomNav("home", "expenses-dash")}
   `;
@@ -51,6 +52,12 @@ export function expensesDashboardScreen(): string {
     : tab === "cash"
       ? rows.filter((r) => r.flow_type === "cash")
       : rows;
+
+  const displayRows = tabRows.map((row) => ({
+    ...row,
+    _table: row.source === "manual" ? (row.flow_type === "bank" ? "personal_finance_bank_flow" : "personal_finance_cash_flow") : undefined,
+    _id: row.source === "manual" ? row.id : undefined,
+  }));
 
   const trendBuckets = buildExpensesTrendBuckets(tabRows);
   const transfer = transferRows[0];
@@ -70,7 +77,7 @@ export function expensesDashboardScreen(): string {
       <div class="transfer-chip">
         <div class="tc-icon">⇄</div>
         <div class="tc-body"><b>Cash → Bank transfer</b><span>Shown here, excluded from income/expense totals</span></div>
-        <div class="money neu">${money(transfer?.amount ?? 0)}</div>
+        <div class="money neu">${money(Number(transfer?.amount ?? 0))}</div>
       </div>
       ${tab === "combined"
         ? `${statGrid([
@@ -107,7 +114,7 @@ export function expensesDashboardScreen(): string {
     <section class="card">
       ${sectionTitle("All transactions", "Filter")}
       ${searchInput("expenses", "Search by category or description")}
-      ${historyRows(tabRows, false, "expenses")}
+      ${historyRows(displayRows, false, "expenses")}
     </section>
 
     ${bottomNav("home", "expenses-add")}

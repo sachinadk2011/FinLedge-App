@@ -19,7 +19,14 @@ export function homeScreen(): string {
   const filteredRows = filteredHomeRows();
   const filteredAllRows = filteredHomeAllDirectionsRows();
   const selectedTotal = sumRows(filteredRows);
-  const recent = [...filteredRows].sort((a, b) => String(b.date).localeCompare(String(a.date))).slice(0, 4);
+  const recent = [...filteredRows]
+    .sort((a, b) => String(b.date).localeCompare(String(a.date)))
+    .slice(0, 4)
+    .map((row) => ({
+      ...row,
+      _table: row.flow_type === "bank" ? "personal_finance_bank_flow" : "personal_finance_cash_flow",
+      _id: row.id,
+    }));
   const currentMonthLabel = monthLabel(today());
 
   return `

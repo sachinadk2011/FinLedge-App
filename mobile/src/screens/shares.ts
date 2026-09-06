@@ -19,12 +19,13 @@ function knownShareNames(): string[] {
 }
 
 /** Share-name text field with a custom autocomplete panel (single dropdown, like a search box). */
-function shareNameFieldWithSuggestions(id: string, placeholder: string, names: string[]): string {
+function shareNameFieldWithSuggestions(id: string, placeholder: string, names: string[], name?: string): string {
+  const nameAttr = name ? ` name="${escapeAttr(name)}"` : "";
   return `
     <div class="field share-name-field" data-suggest-root="${id}">
       <label>Share name</label>
       <div class="share-name-wrap">
-        <input type="text" data-suggest-input="${id}" data-suggest-source="${escapeAttr(names.join("\n"))}" placeholder="${placeholder}" autocomplete="off" autocapitalize="none" spellcheck="false">
+        <input type="text"${nameAttr} data-suggest-input="${id}" data-suggest-source="${escapeAttr(names.join("\n"))}" placeholder="${placeholder}" autocomplete="off" autocapitalize="none" spellcheck="false">
         <div class="share-suggest" data-suggest-list="${id}" hidden>
           ${names.map((n) => `<button type="button" class="share-suggest-item" data-suggest-value="${escapeAttr(n)}">${escapeHtml(n)}</button>`).join("")}
         </div>
@@ -53,7 +54,7 @@ export function sharesAddScreen(): string {
   const isSecondary = type === "buy" || type === "sell";
   const dividendType = appState.sharesDividendType;
 
-  const shareNameField = shareNameFieldWithSuggestions("mobile-share-name-suggestions", "Share name", knownShareNames());
+  const shareNameField = shareNameFieldWithSuggestions("mobile-share-name-suggestions", "Share name", knownShareNames(), "share_name");
 
   return `
     <p class="eyebrow">Share Portfolio</p>
@@ -66,8 +67,8 @@ export function sharesAddScreen(): string {
       ${buildHoldingsTable()}
     </section>
 
-    <section class="card">
-      ${field("Date", "date")}
+    <section class="card" data-form="shares-add">
+      ${field("Date", "date", "", "date")}
       ${shareNameField}
       <div class="field">
         <label>Entry type</label>
@@ -88,12 +89,12 @@ export function sharesAddScreen(): string {
             <option value="redeem">Redeem</option>
           </select>
         </div>
-        ${field("SIP installment amount", "number")}
+        ${field("SIP installment amount", "number", "", "sip_amount")}
       ` : ""}
 
       ${isSecondary ? `
-        ${field("Total Amount", "number")}
-        ${field("Quantity", "number")}
+        ${field("Total Amount", "number", "", "total_amount")}
+        ${field("Quantity", "number", "", "quantity")}
         <p class="sub" style="margin:0;font-size:11px;color:var(--text-3);">Per unit price is calculated from total amount ÷ quantity.</p>
       ` : ""}
 
@@ -106,16 +107,16 @@ export function sharesAddScreen(): string {
           </select>
         </div>
         ${dividendType === "cash"
-          ? field("Amount", "number")
-          : field("Number of shares", "number")}
+          ? field("Amount", "number", "", "dividend_amount")
+          : field("Number of shares", "number", "", "dividend_shares")}
       ` : ""}
 
       ${!isSip && !isSecondary && !isDividend ? `
-        ${field("Per unit price", "number")}
-        ${field("Allotted", "number")}
+        ${field("Per unit price", "number", "", "per_unit_price")}
+        ${field("Allotted", "number", "", "allotted")}
       ` : ""}
 
-      <button class="btn-primary">Add share entry</button>
+      <button class="btn-primary" data-submit>Add share entry</button>
     </section>
     ${bottomNav("home", "shares-dash")}
   `;
@@ -147,6 +148,8 @@ export function sharesDashboardScreen(): string {
     direction: Number(row.profit_loss ?? 0) >= 0 ? "income" : "expense",
     flow_type: "shares",
     date: row.date,
+    _table: "share_transactions",
+    _id: row.id,
   }));
 
   return `

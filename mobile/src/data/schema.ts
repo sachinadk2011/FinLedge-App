@@ -1,5 +1,8 @@
-export const DATABASE_NAME = "finledge_mobile";
-export const DATABASE_VERSION = 1;
+import { databaseName, DATABASE_VERSION } from "../config.js";
+
+/** Mode-scoped SQLite database name (dev and prod use separate files). */
+export const DATABASE_NAME = databaseName;
+export { DATABASE_VERSION };
 
 export const TABLE_NAMES = [
   "bank_transactions",

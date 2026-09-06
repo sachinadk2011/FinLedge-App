@@ -138,6 +138,67 @@ export async function listRows<T>(db: SqlExecutor, table: string): Promise<T[]> 
   return getValues(result);
 }
 
+/**
+ * Delete a bank transaction, then recompute `cumulative_amount` for every
+ * remaining row in id order so the running total stays correct.
+ */
+export async function deleteBankTransaction(db: SqlExecutor, id: number): Promise<void> {
+  await db.run("DELETE FROM bank_transactions WHERE id = ?", [id]);
+  const rows = await db.query<{ id: number | string; amount: number }>(
+    "SELECT id, amount FROM bank_transactions ORDER BY id ASC",
+  );
+  let cumulative = 0;
+  for (const row of getValues(rows)) {
+    cumulative += Number(row.amount ?? 0);
+    await db.run("UPDATE bank_transactions SET cumulative_amount = ? WHERE id = ?", [cumulative, row.id]);
+  }
+}
+
+/**
+ * Delete a share transaction, then recompute every remaining row through the
+ * shared FIFO lot-matching service and persist the derived columns (per unit
+ * price, ASBA charge, total, profit/loss, cumulative profit). This keeps the
+ * mobile history identical to the desktop calculation.
+ */
+export async function deleteShareTransaction(db: SqlExecutor, id: number): Promise<void> {
+  await db.run("DELETE FROM share_transactions WHERE id = ?", [id]);
+  const rows = await db.query<ShareRecord>("SELECT * FROM share_transactions ORDER BY id ASC");
+  const recomputed = recomputeShareRecords(getValues(rows));
+  for (const record of recomputed) {
+    if (record.id == null) {
+      continue;
+    }
+    await db.run(
+      `UPDATE share_transactions
+        SET per_unit_price = ?, asba_charge = ?, allotted = ?, buy_sell = ?,
+            total_amount = ?, profit_loss = ?, cumulative_profit = ?
+        WHERE id = ?`,
+      [
+        String(record.per_unit_price),
+        record.asba_charge,
+        record.allotted,
+        record.buy_sell,
+        String(record.total_amount),
+        String(record.profit_loss),
+        record.cumulative_profit,
+        record.id,
+      ],
+    );
+  }
+}
+
+export async function deletePersonalFinanceRecord(
+  db: SqlExecutor,
+  id: number,
+  flowType: "bank" | "cash",
+): Promise<void> {
+  await db.run(`DELETE FROM ${personalFinanceTable(flowType)} WHERE id = ?`, [id]);
+}
+
+export async function deleteTransfer(db: SqlExecutor, id: number): Promise<void> {
+  await db.run("DELETE FROM transfers WHERE id = ?", [id]);
+}
+
 function personalFinanceTable(flowType: "bank" | "cash"): string {
   return flowType === "bank" ? "personal_finance_bank_flow" : "personal_finance_cash_flow";
 }

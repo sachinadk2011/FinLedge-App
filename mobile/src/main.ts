@@ -3,6 +3,7 @@ import "./styles.css";
 import { App } from "@capacitor/app";
 import {
   appState,
+  deviceName,
   dismissProfilePrompt,
   exitApp,
   saveProfileName,
@@ -34,6 +35,25 @@ import { parseKeepNotes, type StagedEntry } from "../services/keep-notes-parser.
 import { openMobileDatabase } from "./data/sqlite.js";
 import { commitKeepNotes } from "../services/keep-notes-commit.js";
 import { today, toDateKey } from "./utils/date.js";
+import {
+  dbAvailable,
+  hydrateDemoStore,
+  hydrateStore,
+  reloadStore,
+  storeReady,
+} from "./data/store.js";
+import { refreshStorageInfo, runStorageMaintenance } from "./data/storage.js";
+import {
+  deleteBankTransaction,
+  deletePersonalFinanceRecord,
+  deleteShareTransaction,
+  deleteTransfer,
+  insertBankTransaction,
+  insertPersonalFinanceRecord,
+  insertShareTransaction,
+  insertTransfer,
+  type SqlExecutor,
+} from "./data/repositories.js";
 
 function navigate(nextScreen: ScreenId, options: { replace?: boolean } = {}): void {
   if (nextScreen !== appState.activeScreen) {
@@ -212,6 +232,14 @@ function bindEvents(): void {
 
   bindImportEvents();
   document.addEventListener("input", handleImportFieldEdit);
+
+  // Add-entry forms, delete buttons, transfer direction chips, and backup-now.
+  bindFormSubmits();
+  bindRowDeletes();
+  bindTransferChips();
+  document.querySelector("[data-backup-now]")?.addEventListener("click", () => {
+    void runBackupNow();
+  });
 }
 
 /** Keep Notes import flow event wiring (parse, search, add, commit, and per-row actions). */
@@ -254,6 +282,7 @@ function bindImportEvents(): void {
     try {
       const db = await openMobileDatabase();
       const report = await commitKeepNotes(db, appState.importEntries);
+      await reloadStore();
       appState.importEntries = [];
       appState.importPasteDraft = "";
       showToast(`Committed ${report.written} row${report.written === 1 ? "" : "s"}.`);
@@ -450,6 +479,260 @@ function closeDrawer(): void {
   document.querySelector(".drawer-overlay")?.classList.remove("open");
 }
 
+/** Shown when a write is attempted without a working database (e.g. web preview). */
+let bootNotice: string | null = null;
+
+async function bootstrap(): Promise<void> {
+  try {
+    const db = await openMobileDatabase();
+    await hydrateStore({ seedIfEmpty: true });
+    try {
+      await runStorageMaintenance(db);
+    } catch (error) {
+      console.warn("[storage] maintenance failed", error);
+    }
+  } catch (error) {
+    console.warn("[boot] SQLite unavailable; using demo store", error);
+    bootNotice = "Persistence is unavailable here — showing demo data. Install on a device for real storage.";
+    try {
+      await hydrateDemoStore();
+    } catch (demoError) {
+      console.error("[boot] demo fallback failed", demoError);
+    }
+  }
+  initBackButton();
+  render();
+}
+
+/** Wire every add-entry form's "Save" button to insert into SQLite. */
+function bindFormSubmits(): void {
+  document.querySelectorAll<HTMLElement>("[data-form]").forEach((form) => {
+    form.querySelector<HTMLButtonElement>("[data-submit]")?.addEventListener("click", (event) => {
+      event.preventDefault();
+      void submitAddForm(form);
+    });
+  });
+}
+
+async function submitAddForm(form: HTMLElement): Promise<void> {
+  if (!storeReady || !dbAvailable) {
+    showToast(bootNotice ?? "Persistence is not ready yet.");
+    return;
+  }
+  const kind = form.dataset.form ?? "";
+  const pick = (name: string): string => {
+    const el = form.querySelector<HTMLInputElement | HTMLSelectElement>(`[name="${name}"]`);
+    return el ? String(el.value ?? "").trim() : "";
+  };
+  const toNumber = (name: string): number => {
+    const n = Number(pick(name));
+    return Number.isFinite(n) ? n : 0;
+  };
+
+  const button = form.querySelector<HTMLButtonElement>("[data-submit]");
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Saving…";
+  }
+
+  const db = await openMobileDatabase();
+  try {
+    let next: ScreenId = "home";
+    switch (kind) {
+      case "bank-add": {
+        await insertBankTransaction(db, {
+          date: pick("date"),
+          category: pick("category") || "Other Charges",
+          amount: toNumber("amount"),
+          description: pick("description") || null,
+          updated_device: deviceName,
+        });
+        next = "bank-dash";
+        break;
+      }
+      case "expenses-add": {
+        await insertPersonalFinanceRecord(db, {
+          date: pick("date"),
+          flow_type: pick("flow") === "Cash Flow" ? "cash" : "bank",
+          direction: pick("type") === "Income" ? "income" : "expense",
+          category: pick("category") || "Other",
+          amount: toNumber("amount"),
+          description: pick("description") || null,
+          source: "manual",
+          updated_device: deviceName,
+        });
+        next = "expenses-dash";
+        break;
+      }
+      case "shares-add": {
+        await submitShareEntry(db, form, pick, toNumber);
+        next = "shares-dash";
+        break;
+      }
+      case "transfer": {
+        const direction = form.querySelector<HTMLElement>(".chip.active[data-transfer-direction]")?.dataset.transferDirection;
+        if (direction !== "bank-to-cash" && direction !== "cash-to-bank") {
+          throw new Error("Choose a transfer direction.");
+        }
+        await insertTransfer(db, {
+          date: pick("date"),
+          from_flow: direction === "cash-to-bank" ? "cash" : "bank",
+          to_flow: direction === "cash-to-bank" ? "bank" : "cash",
+          amount: toNumber("amount"),
+          description: pick("note") || null,
+          updated_device: deviceName,
+        });
+        next = "expenses-dash";
+        break;
+      }
+      default:
+        throw new Error(`Unknown form: ${kind}`);
+    }
+    await reloadStore();
+    showToast("Saved");
+    navigate(next);
+  } catch (error) {
+    console.error("[submit] failed", error);
+    showToast(`Could not save: ${error instanceof Error ? error.message : "unknown error"}`);
+    render();
+  }
+}
+
+/** Map the shares add-entry form into a share_transactions row (mirrors desktop). */
+async function submitShareEntry(
+  db: SqlExecutor,
+  form: HTMLElement,
+  pick: (name: string) => string,
+  toNumber: (name: string) => number,
+): Promise<void> {
+  const type = form.querySelector<HTMLSelectElement>("[data-shares-entry-type]")?.value ?? "";
+  const shareName = pick("share_name").toUpperCase();
+  if (!shareName) {
+    throw new Error("Share name is required.");
+  }
+  const base = { date: pick("date"), share_name: shareName, updated_device: deviceName };
+  const mk = (input: Record<string, unknown>): Promise<void> =>
+    insertShareTransaction(db, { ...base, ...input } as Parameters<typeof insertShareTransaction>[1]);
+
+  switch (type) {
+    case "ipo":
+      await mk({ category: "ipo", buy_sell: "ipo", per_unit_price: toNumber("per_unit_price"), allotted: toNumber("allotted") });
+      return;
+    case "sip": {
+      const sipType = form.querySelector<HTMLSelectElement>("[data-shares-sip-type]")?.value ?? "installment";
+      const amount = toNumber("sip_amount");
+      await mk({ category: "sip", buy_sell: sipType === "redeem" ? "redeem" : "installment", per_unit_price: amount, total_amount: amount });
+      return;
+    }
+    case "buy":
+    case "sell": {
+      const total = toNumber("total_amount");
+      const quantity = toNumber("quantity");
+      await mk({ category: type, buy_sell: type, per_unit_price: quantity > 0 ? total / quantity : 0, allotted: quantity, total_amount: total });
+      return;
+    }
+    case "dividend": {
+      const dividendType = form.querySelector<HTMLSelectElement>("[data-shares-dividend-type]")?.value ?? "cash";
+      if (dividendType === "bonus") {
+        await mk({ category: "dividend", buy_sell: "bonus", per_unit_price: 0, allotted: toNumber("dividend_shares") });
+      } else {
+        await mk({ category: "dividend", buy_sell: "cash", per_unit_price: toNumber("dividend_amount") });
+      }
+      return;
+    }
+    default:
+      throw new Error(`Unknown entry type: ${type}`);
+  }
+}
+
+/** Wire the per-row delete buttons into the SQL store. */
+function bindRowDeletes(): void {
+  document.querySelectorAll<HTMLElement>("[data-delete]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      void deleteRow(btn);
+    });
+  });
+}
+
+async function deleteRow(btn: HTMLElement): Promise<void> {
+  if (!storeReady || !dbAvailable) {
+    showToast(bootNotice ?? "Persistence is not ready yet.");
+    return;
+  }
+  const table = btn.dataset.table;
+  const id = Number(btn.dataset.id);
+  if (!table || !Number.isFinite(id)) {
+    return;
+  }
+  if (!window.confirm("Delete this entry?")) {
+    return;
+  }
+  try {
+    const db = await openMobileDatabase();
+    switch (table) {
+      case "bank_transactions":
+        await deleteBankTransaction(db, id);
+        break;
+      case "share_transactions":
+        await deleteShareTransaction(db, id);
+        break;
+      case "personal_finance_bank_flow":
+        await deletePersonalFinanceRecord(db, id, "bank");
+        break;
+      case "personal_finance_cash_flow":
+        await deletePersonalFinanceRecord(db, id, "cash");
+        break;
+      case "transfers":
+        await deleteTransfer(db, id);
+        break;
+      default:
+        throw new Error(`Unknown table: ${table}`);
+    }
+    await reloadStore();
+    showToast("Deleted");
+    render();
+  } catch (error) {
+    console.error("[delete] failed", error);
+    showToast("Delete failed. See console.");
+  }
+}
+
+/** Transfer form: keep the chosen direction chip active. */
+function bindTransferChips(): void {
+  const form = document.querySelector<HTMLElement>("[data-form='transfer']");
+  if (!form) return;
+  form.querySelectorAll<HTMLButtonElement>("[data-transfer-direction]").forEach((chip) => {
+    chip.addEventListener("click", () => {
+      form.querySelectorAll(".chip").forEach((c) => c.classList.remove("active"));
+      chip.classList.add("active");
+    });
+  });
+}
+
+/** Settings > Backup & sync: write the aggregate save + daily incremental backup now. */
+async function runBackupNow(): Promise<void> {
+  if (!storeReady || !dbAvailable) {
+    showToast(bootNotice ?? "Persistence is not ready yet.");
+    return;
+  }
+  try {
+    const db = await openMobileDatabase();
+    const result = await runStorageMaintenance(db);
+    await refreshStorageInfo();
+    showToast(
+      result.backup.status === "done"
+        ? `Saved + backed up ${result.backup.newRows} new row(s) for ${result.backup.date}.`
+        : result.backup.status === "error"
+          ? `Backup failed: ${result.backup.error ?? "unknown error"}`
+          : `Already backed up for ${result.backup.date}.`,
+    );
+    render();
+  } catch (error) {
+    console.error("[backup] failed", error);
+    showToast("Backup failed. See console.");
+  }
+}
+
 function initBackButton(): void {
   App.addListener("backButton", () => {
     if (document.querySelector(".drawer.open")) {
@@ -462,5 +745,16 @@ function initBackButton(): void {
   });
 }
 
-render();
-initBackButton();
+// Run once per resume (best-effort daily incremental backup when the day changed).
+document.addEventListener("resume", () => {
+  void (async () => {
+    if (!storeReady || !dbAvailable) return;
+    try {
+      await runStorageMaintenance(await openMobileDatabase());
+    } catch (error) {
+      console.warn("[storage] resume maintenance failed", error);
+    }
+  })();
+});
+
+void bootstrap();

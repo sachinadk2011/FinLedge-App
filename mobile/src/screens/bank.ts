@@ -15,13 +15,14 @@ export function bankAddScreen(): string {
     "Bank Services",
     "Add bank entry",
     [
-      ["Date", "date"],
-      ["Category", "select", "Interest Earned"],
-      ["Amount", "number"],
-      ["Description (optional)", "text"],
+      ["Date", "date", "", "date"],
+      ["Category", "select", "Interest Earned", "category"],
+      ["Amount", "number", "", "amount"],
+      ["Description (optional)", "text", "", "description"],
     ],
     "Add bank entry",
     "bank-dash",
+    "bank-add",
   );
 }
 
@@ -41,6 +42,8 @@ export function bankDashboardScreen(): string {
     amount: Number(row.amount),
     direction: Number(row.amount) >= 0 ? "income" : "expense",
     flow_type: "bank",
+    _table: "bank_transactions",
+    _id: row.id,
   }));
 
   return `
