@@ -38,11 +38,13 @@ function Layout() {
         <div className="mx-auto flex max-w-6xl flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:gap-6 sm:px-6">
           <div className="brand-cluster">
             <Link className="group flex items-center gap-3 no-underline" to="/">
-              <span className="grid h-11 w-11 place-items-center rounded-2xl bg-gradient-to-br from-emerald-700 to-teal-400 text-sm font-extrabold tracking-tight text-white shadow-soft transition-transform duration-200 group-hover:scale-[1.03]">
-                FT
-              </span>
+              <img
+                src="./finledge-icon.png"
+                alt="FinLedge logo"
+                className="h-11 w-11 rounded-[13px] object-cover shadow-soft transition-transform duration-200 group-hover:scale-[1.03]"
+              />
               <span className="grid leading-tight">
-                <span className="text-base font-extrabold tracking-tight text-slate-900">Financial Tracker</span>
+                <span className="text-base font-extrabold tracking-tight text-slate-900">FinLedge</span>
                 <span className="text-sm font-semibold text-slate-500">{label}</span>
               </span>
             </Link>

@@ -22,8 +22,10 @@ HEADERS = [
     "Signed Amount",
     "Description",
     "Source",
-    "Timestamp",
+    "Created Timestamp",
+    "Last Updated Timestamp",
     "Source Ref",
+    "Updated Device",
 ]
 
 _file_lock = threading.Lock()
@@ -119,7 +121,9 @@ def append_personal_finance_record(
                 description_value,
                 source,
                 timestamp,
+                timestamp,
                 source_ref or "",
+                "desktop",
             ]
         )
         workbook.save(file_path)
@@ -135,7 +139,10 @@ def append_personal_finance_record(
             "description": description_value or None,
             "source": source,
             "timestamp": timestamp,
+            "created_timestamp": timestamp,
+            "last_updated_timestamp": timestamp,
             "source_ref": source_ref or "",
+            "updated_device": "desktop",
             "file": str(file_path),
         }
 
@@ -180,8 +187,11 @@ def _read_personal_finance_records_for_flow(flow_type: str) -> list[dict]:
                     "signed_amount": signed_amount,
                     "description": str(row[6] or "") if len(row) > 6 else "",
                     "source": source,
-                    "timestamp": str(row[8] or "") if len(row) > 8 else "",
-                    "source_ref": str(row[9] or "") if len(row) > 9 else "",
+                    "timestamp": str(row[9] or row[8] or "") if len(row) > 9 else str(row[8] or "") if len(row) > 8 else "",
+                    "created_timestamp": str(row[8] or "") if len(row) > 8 else "",
+                    "last_updated_timestamp": str(row[9] or row[8] or "") if len(row) > 9 else str(row[8] or "") if len(row) > 8 else "",
+                    "source_ref": str(row[10] or "") if len(row) > 10 else str(row[9] or "") if len(row) > 9 else "",
+                    "updated_device": str(row[11] or "legacy") if len(row) > 11 else "legacy",
                 }
             )
 
@@ -242,7 +252,7 @@ def _build_share_sync_records() -> list[dict]:
                 "signed_amount": _signed_amount(direction, amount),
                 "description": f"{event_labels.get((share_category, buy_sell), share_category.title())}: {str(source_record.get('share_name') or '').strip().upper()}",
                 "source": "share-sync",
-                "timestamp": str(source_record.get("timestamp") or ""),
+                "timestamp": str(source_record.get("last_updated_timestamp") or source_record.get("timestamp") or ""),
                 "source_ref": str(source_record.get("sync_ref") or f"share:{source_id}"),
             }
         )
@@ -466,8 +476,11 @@ def update_personal_finance_record(
         sheet.cell(row=excel_row, column=6).value = signed_amount
         sheet.cell(row=excel_row, column=7).value = description_value
         sheet.cell(row=excel_row, column=8).value = source
-        sheet.cell(row=excel_row, column=9).value = timestamp
-        sheet.cell(row=excel_row, column=10).value = ""
+        if not sheet.cell(row=excel_row, column=9).value:
+            sheet.cell(row=excel_row, column=9).value = timestamp
+        sheet.cell(row=excel_row, column=10).value = timestamp
+        sheet.cell(row=excel_row, column=11).value = ""
+        sheet.cell(row=excel_row, column=12).value = "desktop"
 
         workbook.save(file_path)
         workbook.close()
@@ -482,7 +495,10 @@ def update_personal_finance_record(
             "description": description_value or None,
             "source": source,
             "timestamp": timestamp,
+            "created_timestamp": str(sheet.cell(row=excel_row, column=9).value or timestamp),
+            "last_updated_timestamp": timestamp,
             "source_ref": "",
+            "updated_device": "desktop",
             "file": str(file_path),
         }
 
@@ -520,7 +536,7 @@ def upsert_share_sync_record(
         target_row = None
         for row_idx in range(2, sheet.max_row + 1):
             existing_source = str(sheet.cell(row=row_idx, column=8).value or "").strip()
-            existing_ref = str(sheet.cell(row=row_idx, column=10).value or "").strip()
+            existing_ref = str(sheet.cell(row=row_idx, column=11).value or "").strip()
             if existing_source == "share-sync" and existing_ref == source_ref:
                 target_row = row_idx
                 break
@@ -537,7 +553,9 @@ def upsert_share_sync_record(
                     description_value,
                     "share-sync",
                     timestamp,
+                    timestamp,
                     source_ref,
+                    "desktop",
                 ]
             )
             record_id = sheet.max_row - 1
@@ -550,8 +568,11 @@ def upsert_share_sync_record(
             sheet.cell(row=target_row, column=6).value = signed_amount
             sheet.cell(row=target_row, column=7).value = description_value
             sheet.cell(row=target_row, column=8).value = "share-sync"
-            sheet.cell(row=target_row, column=9).value = timestamp
-            sheet.cell(row=target_row, column=10).value = source_ref
+            if not sheet.cell(row=target_row, column=9).value:
+                sheet.cell(row=target_row, column=9).value = timestamp
+            sheet.cell(row=target_row, column=10).value = timestamp
+            sheet.cell(row=target_row, column=11).value = source_ref
+            sheet.cell(row=target_row, column=12).value = "desktop"
             record_id = target_row - 1
 
         workbook.save(file_path)
@@ -568,6 +589,9 @@ def upsert_share_sync_record(
             "source": "share-sync",
             "source_ref": source_ref,
             "timestamp": timestamp,
+            "created_timestamp": timestamp,
+            "last_updated_timestamp": timestamp,
+            "updated_device": "desktop",
             "file": str(file_path),
         }
 
@@ -586,7 +610,7 @@ def delete_share_sync_record(source_ref: str) -> dict:
 
         for row_idx in range(sheet.max_row, 1, -1):
             existing_source = str(sheet.cell(row=row_idx, column=8).value or "").strip()
-            existing_ref = str(sheet.cell(row=row_idx, column=10).value or "").strip()
+            existing_ref = str(sheet.cell(row=row_idx, column=11).value or "").strip()
             if existing_source == "share-sync" and existing_ref == source_ref:
                 sheet.delete_rows(row_idx, 1)
                 workbook.save(file_path)

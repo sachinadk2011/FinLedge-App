@@ -22,7 +22,9 @@ HEADERS = [
     "Total Amount",
     "Profit/Loss",
     "Cumulative Profit",
-    "Timestamp",
+    "Created Timestamp",
+    "Last Updated Timestamp",
+    "Updated Device",
 ]
 
 _file_lock = threading.Lock()
@@ -312,6 +314,8 @@ def append_share_record(
                 str(profit_loss_dec),
                 cumulative_profit,
                 timestamp,
+                timestamp,
+                "desktop",
             ]
         )
         workbook.save(FILE_PATH)
@@ -330,6 +334,9 @@ def append_share_record(
             "profit_loss": str(profit_loss_dec),
             "cumulative_profit": cumulative_profit,
             "timestamp": timestamp,
+            "created_timestamp": timestamp,
+            "last_updated_timestamp": timestamp,
+            "updated_device": "desktop",
             "file": str(FILE_PATH),
         }
 
@@ -359,7 +366,10 @@ def read_share_records() -> list[dict]:
                     "total_amount": _to_float(row[7]),
                     "profit_loss": _to_float(row[8]),
                     "cumulative_profit": _to_float(row[9]),
-                    "timestamp": str(row[10] or "") if len(row) > 10 else "",
+                    "timestamp": str(row[11] or row[10] or "") if len(row) > 11 else str(row[10] or "") if len(row) > 10 else "",
+                    "created_timestamp": str(row[10] or "") if len(row) > 10 else "",
+                    "last_updated_timestamp": str(row[11] or row[10] or "") if len(row) > 11 else str(row[10] or "") if len(row) > 10 else "",
+                    "updated_device": str(row[12] or "legacy") if len(row) > 12 else "legacy",
                 }
             )
 
@@ -520,7 +530,10 @@ def update_share_allotment(share_name: str, allotted: int) -> dict:
         timestamp = _current_timestamp()
 
         sheet.cell(row=target_row, column=6).value = int(allotted)
-        sheet.cell(row=target_row, column=11).value = timestamp
+        if not sheet.cell(row=target_row, column=11).value:
+            sheet.cell(row=target_row, column=11).value = timestamp
+        sheet.cell(row=target_row, column=12).value = timestamp
+        sheet.cell(row=target_row, column=13).value = "desktop"
         _recompute_sheet(sheet)
         workbook.save(FILE_PATH)
         workbook.close()
@@ -532,6 +545,9 @@ def update_share_allotment(share_name: str, allotted: int) -> dict:
             "previous_allotted": previous_allotted,
             "allotted": int(allotted),
             "timestamp": timestamp,
+            "created_timestamp": str(sheet.cell(row=target_row, column=11).value or timestamp),
+            "last_updated_timestamp": timestamp,
+            "updated_device": "desktop",
         }
 
 
@@ -569,7 +585,10 @@ def update_sip_allotment(share_name: str, allotted: int) -> dict:
         timestamp = _current_timestamp()
 
         sheet.cell(row=target_row, column=6).value = int(allotted)
-        sheet.cell(row=target_row, column=11).value = timestamp
+        if not sheet.cell(row=target_row, column=11).value:
+            sheet.cell(row=target_row, column=11).value = timestamp
+        sheet.cell(row=target_row, column=12).value = timestamp
+        sheet.cell(row=target_row, column=13).value = "desktop"
         _recompute_sheet(sheet)
         average_price = _to_float(sheet.cell(row=target_row, column=4).value)
         workbook.save(FILE_PATH)
@@ -584,6 +603,9 @@ def update_sip_allotment(share_name: str, allotted: int) -> dict:
             "total_investment": total_investment,
             "average_price": average_price,
             "timestamp": timestamp,
+            "created_timestamp": str(sheet.cell(row=target_row, column=11).value or timestamp),
+            "last_updated_timestamp": timestamp,
+            "updated_device": "desktop",
         }
 
 
@@ -687,7 +709,10 @@ def update_share_record(
         sheet.cell(row=excel_row, column=7).value = str(buy_sell or category).strip().lower()
         if category == "sip":
             sheet.cell(row=excel_row, column=8).value = str(unit_price)
-        sheet.cell(row=excel_row, column=11).value = timestamp
+        if not sheet.cell(row=excel_row, column=11).value:
+            sheet.cell(row=excel_row, column=11).value = timestamp
+        sheet.cell(row=excel_row, column=12).value = timestamp
+        sheet.cell(row=excel_row, column=13).value = "desktop"
 
         _recompute_sheet(sheet)
         workbook.save(FILE_PATH)
@@ -702,5 +727,8 @@ def update_share_record(
             "allotted": int(allotted),
             "buy_sell": str(buy_sell or category).strip().lower(),
             "timestamp": timestamp,
+            "created_timestamp": str(sheet.cell(row=excel_row, column=11).value or timestamp),
+            "last_updated_timestamp": timestamp,
+            "updated_device": "desktop",
             "file": str(FILE_PATH),
         }
