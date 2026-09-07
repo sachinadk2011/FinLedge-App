@@ -18,7 +18,8 @@ export type ScreenId =
   | "settings-how-to-use"
   | "settings-version"
   | "import-paste"
-  | "import-review";
+  | "import-review"
+  | "entry-edit";
 
 export type ChartRange = "week" | "month" | "year" | "custom";
 

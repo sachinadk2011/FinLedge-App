@@ -4,7 +4,22 @@ This folder contains the mobile app scaffold for FinLedge.
 
 The mobile app is a Capacitor-wrapped web frontend with SQLite-backed local storage. It is versioned independently from the desktop app: use `mobile-v1.0.0` style tags for mobile releases and `desktop-vX.Y.Z` style tags for desktop releases.
 
-The current app includes the mobile SQLite schema/data-layer scaffold, local TypeScript business-logic ports, and the initial mobile screen shell. Backend integrations, Keep Notes import, Drive sync, and release automation are not implemented yet.
+The current app includes the mobile SQLite schema/data layer, the on-device
+storage/backup service, local TypeScript business-logic ports, the full
+screen set (add-entry ⇄ dashboard pairs, transfer flow, Keep Notes bulk
+import, entry editing, shares quick updates), and persistence wiring for
+every write path. Drive sync and release automation are not implemented yet.
+
+## Persistence
+
+On a real device the app stores everything in SQLite via
+`@capacitor-community/sqlite` (a development build uses the `finledge_mobile_dev`
+database seeded with demo rows, in the app-private `FinLedgeDev` folder;
+set `VITE_FINLEDGE_MODE=production` for a clean `finledge_mobile` database).
+Web/desktop previews fall back to in-memory demo data because the SQLite
+plugin only exists in the Capacitor runtime — nothing is persisted there by
+design. Settings → Backup & sync writes an aggregate `finledge_save.json`
+plus a daily incremental backup into the app-private folder.
 
 ## Tooling
 

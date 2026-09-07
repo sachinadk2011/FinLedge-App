@@ -203,7 +203,7 @@ tracker financial/mobile/
 │  ├─ splash.png                  — dark Android splash master, generated into res/drawable*
 │  └─ splash-dark.png             — dark-mode splash master for @capacitor/assets
 ├─ android/                       — generated Capacitor Android project
-├─ www/                           — Capacitor web build output (from frontendwebapp)
+├─ www/                           — mobile Vite build output (from `src/`, copied into android/ by `cap sync`)
 │  └─ index.html
 ├─ src/                           — mobile app entry, UI, and SQLite data layer
 │  ├─ main.ts                     — mobile app bootstrap, render loop, and event binding
@@ -214,20 +214,21 @@ tracker financial/mobile/
 │  │  ├─ shell.ts                 — app chrome only: screen wrapper, topbar, drawer, bottom nav
 │  │  ├─ home-chart.ts            — Home category breakdown and grouped income/expense/net chart
 │  │  ├─ charts.ts                — shared single/grouped bar charts, category bars, range controls
-│  │  ├─ forms.ts                 — shared form card, field, select options, section title helpers
+│  │  ├─ forms.ts                 — shared form card, field, select options, section title helpers (incl. selectWithCurrent for edit forms)
 │  │  ├─ stats.ts                 — shared stat grid / stat box helpers
-│  │  ├─ history.ts               — shared scrollable transaction-style rows list (search-aware)
+│  │  ├─ history.ts               — shared scrollable transaction-style rows list (search-aware; data-edit/data-delete row actions)
 │  │  ├─ search.ts                — one reusable module search (input, query, filter, binder)
 │  │  └─ share-suggest.ts         — share-name autocomplete panel (single dropdown, tap/keyboard)
 │  ├─ constants/
 │  │  └─ options.ts               — mobile category/dropdown options aligned with desktop constants
 │  ├─ screens/
-│  │  ├─ home.ts                  — Home screen and category filtering
+│  │  ├─ home.ts                  — Home screen and category filtering (mode-scoped)
 │  │  ├─ bank.ts                  — Bank Services add-entry and dashboard screens
-│  │  ├─ shares.ts                — Share Portfolio add-entry and dashboard screens
-│  │  ├─ expenses.ts              — Personal Expenses add-entry and dashboard screens
+│  │  ├─ shares.ts                — Share Portfolio add-entry and dashboard screens (incl. IPO/SIP quick-update cards)
+│  │  ├─ expenses.ts              — Personal Expenses add-entry and dashboard screens (transfer-aware balances + transfer history)
 │  │  ├─ transfer.ts              — Cash ⇄ Bank transfer sub-flow screen
 │  │  ├─ summary.ts               — read-only Financial Summary screen
+│  │  ├─ entry-edit.ts            — edit an existing stored row (per-table prefilled forms, saves via repositories)
 │  │  ├─ keep-notes/
 │  │  │  ├─ paste.ts              — Notes import: paste raw note text (any unstructured format)
 │  │  │  └─ review.ts             — Keep Notes import: full-screen staged review (edit/split/delete/add/confirm/commit)
@@ -237,7 +238,7 @@ tracker financial/mobile/
 │  │     ├─ profile.ts            — Profile Settings sub-screen
 │  │     ├─ import-export.ts      — Import/Export Settings sub-screen
 │  │     ├─ investment.ts         — Investment Settings sub-screen
-│  │     ├─ backup-sync.ts        — Backup & sync Settings sub-screen
+│  │     ├─ backup-sync.ts        — Backup & sync Settings sub-screen (storage info card + backup-now)
 │  │     ├─ privacy.ts            — Privacy Settings sub-screen
 │  │     ├─ about.ts              — About Settings sub-screen
 │  │     ├─ how-to-use.ts         — How To Use Settings sub-screen
@@ -245,15 +246,18 @@ tracker financial/mobile/
 │  ├─ utils/
 │  │  ├─ date.ts                  — mobile date range helpers
 │  │  ├─ format.ts                — mobile money formatting helpers
+│  │  ├─ form.ts                  — formReader({ pick, toNumber }) single source for reading named inputs
 │  │  ├─ html.ts                  — escapeHtml / escapeAttr for safe HTML interpolation
 │  │  ├─ periods.ts               — shared period buckets and range matching for charts
 │  │  └─ viewport.ts              — keyboard-aware field scrolling helpers
 │  └─ data/
-│     ├─ demo-data.ts             — temporary UI scaffold data
-│     ├─ mobile-data.ts           — mobile UI aggregation helpers over local records
+│     ├─ demo-data.ts             — facade re-exporting the live store arrays (kept so screens import one place)
+│     ├─ mobile-data.ts           — mobile UI aggregation helpers over local records (incl. transferAdjustments)
+│     ├─ store.ts                 — in-memory row store; hydrate from SQLite (or demo fallback) + reloadStore
+│     ├─ storage.ts               — FinLedge[Dev] folder management, aggregate save + daily incremental backup, maintenance
 │     ├─ schema.ts                — SQLite DDL for mobile tables
 │     ├─ sqlite.ts                — Capacitor SQLite connection/bootstrap
-│     └─ repositories.ts          — local insert/list helpers
+│     └─ repositories.ts          — local insert/update/delete/rewrite helpers (real SQL writes, recomputes, updated_device stamping)
 ├─ services/                      — ported business logic (TypeScript, on-device)
 │  ├─ bank-category-totals.ts     — Bank Services category totals
 │  ├─ share-fifo-lot-matching.ts  — Share Portfolio FIFO lot-matching
@@ -295,6 +299,20 @@ Root mobile commands:
 - `npm run mobile:test` — compile and run mobile service parity tests.
 - `npm run mobile:sync:android` — run `npx cap sync android` from the repo root.
 - `npm run mobile:android` — explicit alias for build + Android sync.
+- `npm run mobile:run:android` — build + sync + `cap run android` (install and launch on a connected device).
+
+### Mobile persistence & backup (data layer)
+
+SQLite (via `@capacitor-community/sqlite`) is the on-device source of
+truth; screens read the in-memory arrays exposed by `data/store.ts`, which
+is hydrated from SQLite at boot (`data/sqlite.ts`), falling back to the
+`data/demo-data.ts` facade arrays when the plugin is unavailable (e.g. web
+preview). Every write goes through `data/repositories.ts` — inserts stamp
+`updated_device` from `deviceName`; updates recompute derived columns and
+replace `Last Updated Timestamp`. `data/storage.ts` manages the app-private
+`FinLedge[Dev]` folder: it writes an aggregate `finledge_save.json` and a
+daily incremental `<YYYY-MM-DD>.json` backup, once per day on open/resume
+or on demand from Settings > Backup & sync.
 
 ### Updated Device column (schema change across the three desktop services)
 

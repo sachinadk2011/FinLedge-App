@@ -18,20 +18,22 @@ export function historyRows(rows: Array<Record<string, unknown>>, wrap = true, m
   const content = filtered.length
     ? filtered.map((row) => {
         const inferDir = Number(row.amount ?? 0) >= 0 ? "income" : "expense";
-        const direction = String(row.direction ?? inferDir);
+        const direction = row._neutral ? "neutral" : String(row.direction ?? inferDir);
         const amount = Number(row.amount ?? 0);
         const primary = escapeHtml(String(row.description ?? row.category ?? "Entry"));
         const sub = [row.category, row.date].filter(Boolean).map((v) => escapeHtml(String(v))).join(" · ");
         const table = row._table ? String(row._table) : "";
         const rowId = row._id;
         const deletable = Boolean(table && rowId != null && rowId !== "");
-        const editBtn = `<button style="width:26px;height:26px;border-radius:7px;background:var(--bg-surface-2);border:1px solid var(--border);color:var(--text-2);font-size:11px;" disabled title="Edit (coming soon)">✎</button>`;
+        const editBtn = deletable
+          ? `<button style="width:26px;height:26px;border-radius:7px;background:var(--bg-surface-2);border:1px solid var(--border);color:var(--text-2);font-size:11px;" data-edit data-table="${escapeAttr(table)}" data-id="${escapeAttr(String(rowId))}" title="Edit">✎</button>`
+          : `<button style="width:26px;height:26px;border-radius:7px;background:var(--bg-surface-2);border:1px solid var(--border);color:var(--text-2);font-size:11px;" disabled title="Edit (coming soon)">✎</button>`;
         const deleteBtn = deletable
           ? `<button style="width:26px;height:26px;border-radius:7px;background:var(--bg-surface-2);border:1px solid var(--border);color:var(--text-2);font-size:11px;" data-delete data-table="${escapeAttr(table)}" data-id="${escapeAttr(String(rowId))}" title="Delete">🗑</button>`
           : `<button style="width:26px;height:26px;border-radius:7px;background:var(--bg-surface-2);border:1px solid var(--border);color:var(--text-2);font-size:11px;" disabled title="Delete (coming soon)">🗑</button>`;
         return `<div class="history-row">
           <div class="meta"><b>${primary}</b><span>${sub}</span></div>
-          <div class="money ${direction === "income" ? "pos" : "neg"}">${money(amount, { sign: true })}</div>
+          <div class="money ${direction === "income" ? "pos" : direction === "neutral" ? "neu" : "neg"}">${money(amount, { sign: direction !== "neutral" })}</div>
           <div style="display:flex;gap:4px;flex-shrink:0;">
             ${editBtn}
             ${deleteBtn}

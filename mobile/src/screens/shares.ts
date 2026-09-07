@@ -19,13 +19,20 @@ function knownShareNames(): string[] {
 }
 
 /** Share-name text field with a custom autocomplete panel (single dropdown, like a search box). */
-function shareNameFieldWithSuggestions(id: string, placeholder: string, names: string[], name?: string): string {
+function shareNameFieldWithSuggestions(
+  id: string,
+  placeholder: string,
+  names: string[],
+  name?: string,
+  value = "",
+): string {
   const nameAttr = name ? ` name="${escapeAttr(name)}"` : "";
+  const valueAttr = value ? ` value="${escapeAttr(value)}"` : "";
   return `
     <div class="field share-name-field" data-suggest-root="${id}">
       <label>Share name</label>
       <div class="share-name-wrap">
-        <input type="text"${nameAttr} data-suggest-input="${id}" data-suggest-source="${escapeAttr(names.join("\n"))}" placeholder="${placeholder}" autocomplete="off" autocapitalize="none" spellcheck="false">
+        <input type="text"${nameAttr}${valueAttr} data-suggest-input="${id}" data-suggest-source="${escapeAttr(names.join("\n"))}" placeholder="${placeholder}" autocomplete="off" autocapitalize="none" spellcheck="false">
         <div class="share-suggest" data-suggest-list="${id}" hidden>
           ${names.map((n) => `<button type="button" class="share-suggest-item" data-suggest-value="${escapeAttr(n)}">${escapeHtml(n)}</button>`).join("")}
         </div>
@@ -54,7 +61,11 @@ export function sharesAddScreen(): string {
   const isSecondary = type === "buy" || type === "sell";
   const dividendType = appState.sharesDividendType;
 
-  const shareNameField = shareNameFieldWithSuggestions("mobile-share-name-suggestions", "Share name", knownShareNames(), "share_name");
+  // Draft values are stored as the user types, so changing the entry type
+  // never wipes what was already entered (see bindShareFormDraft in main.ts).
+  const draft = (key: string): string => appState.shareFormDraft[key] ?? "";
+
+  const shareNameField = shareNameFieldWithSuggestions("mobile-share-name-suggestions", "Share name", knownShareNames(), "share_name", draft("share_name"));
 
   return `
     <p class="eyebrow">Share Portfolio</p>
@@ -68,7 +79,7 @@ export function sharesAddScreen(): string {
     </section>
 
     <section class="card" data-form="shares-add">
-      ${field("Date", "date", "", "date")}
+      ${field("Date", "date", draft("date"), "date")}
       ${shareNameField}
       <div class="field">
         <label>Entry type</label>
@@ -89,12 +100,12 @@ export function sharesAddScreen(): string {
             <option value="redeem">Redeem</option>
           </select>
         </div>
-        ${field("SIP installment amount", "number", "", "sip_amount")}
+        ${field("SIP installment amount", "number", draft("sip_amount"), "sip_amount")}
       ` : ""}
 
       ${isSecondary ? `
-        ${field("Total Amount", "number", "", "total_amount")}
-        ${field("Quantity", "number", "", "quantity")}
+        ${field("Total Amount", "number", draft("total_amount"), "total_amount")}
+        ${field("Quantity", "number", draft("quantity"), "quantity")}
         <p class="sub" style="margin:0;font-size:11px;color:var(--text-3);">Per unit price is calculated from total amount ÷ quantity.</p>
       ` : ""}
 
@@ -107,13 +118,13 @@ export function sharesAddScreen(): string {
           </select>
         </div>
         ${dividendType === "cash"
-          ? field("Amount", "number", "", "dividend_amount")
-          : field("Number of shares", "number", "", "dividend_shares")}
+          ? field("Amount", "number", draft("dividend_amount"), "dividend_amount")
+          : field("Number of shares", "number", draft("dividend_shares"), "dividend_shares")}
       ` : ""}
 
       ${!isSip && !isSecondary && !isDividend ? `
-        ${field("Per unit price", "number", "", "per_unit_price")}
-        ${field("Allotted", "number", "", "allotted")}
+        ${field("Per unit price", "number", draft("per_unit_price"), "per_unit_price")}
+        ${field("Allotted", "number", draft("allotted"), "allotted")}
       ` : ""}
 
       <button class="btn-primary" data-submit>Add share entry</button>
@@ -200,20 +211,20 @@ export function sharesDashboardScreen(): string {
       ],
     )}
 
-    <section class="card">
+    <section class="card" data-quick-update="ipo">
       <h3>Update IPO allotment</h3>
-      <p class="sub">Search an IPO share and update its allotted quantity after SQLite writes are enabled.</p>
-      ${shareNameFieldWithSuggestions("mobile-ipo-name-suggestions", "Type IPO share name", ipoOnlyNames())}
-      ${field("New allotment", "number")}
-      <button class="btn-secondary">Update</button>
+      <p class="sub">Search an IPO share and update its allotted quantity — saved to the database with FIFO recompute.</p>
+      ${shareNameFieldWithSuggestions("mobile-ipo-name-suggestions", "Type IPO share name", ipoOnlyNames(), "ipo_share")}
+      ${field("New allotment", "number", "", "ipo_allotment")}
+      <button class="btn-secondary" type="button" data-ipo-update>Update</button>
     </section>
 
-    <section class="card">
+    <section class="card" data-quick-update="sip">
       <h3>Update SIP shares</h3>
-      <p class="sub">Search a SIP share and update the total SIP share quantity after SQLite writes are enabled.</p>
-      ${shareNameFieldWithSuggestions("mobile-sip-name-suggestions", "Type SIP share name", sipOnlyNames())}
-      ${field("Total SIP shares", "number")}
-      <button class="btn-secondary">Update SIP</button>
+      <p class="sub">Search a SIP share and set the total SIP share quantity — saved to the database with FIFO recompute.</p>
+      ${shareNameFieldWithSuggestions("mobile-sip-name-suggestions", "Type SIP share name", sipOnlyNames(), "sip_share")}
+      ${field("Total SIP shares", "number", "", "sip_total")}
+      <button class="btn-secondary" type="button" data-sip-update>Update SIP</button>
     </section>
 
     <section class="card">

@@ -12,6 +12,7 @@ import {
 import { drawer, screen, topbar } from "./components/shell.js";
 import { bindShareSuggestions } from "./components/share-suggest.js";
 import { bindSearchInputs } from "./components/search.js";
+import { formReader } from "./utils/form.js";
 import { activeHomeCategories, availableHomeCategories, homeScreen } from "./screens/home.js";
 import { bankAddScreen, bankDashboardScreen } from "./screens/bank.js";
 import { expensesAddScreen, expensesDashboardScreen } from "./screens/expenses.js";
@@ -27,6 +28,7 @@ import { settingsVersionScreen } from "./screens/settings/version.js";
 import { sharesAddScreen, sharesDashboardScreen } from "./screens/shares.js";
 import { summaryScreen } from "./screens/summary.js";
 import { transferScreen } from "./screens/transfer.js";
+import { entryEditScreen } from "./screens/entry-edit.js";
 import { bindKeyboardScrollProtection } from "./utils/viewport.js";
 import type { ChartRange, ScreenId } from "./types.js";
 import { importPasteScreen } from "./screens/keep-notes/paste.js";
@@ -52,6 +54,12 @@ import {
   insertPersonalFinanceRecord,
   insertShareTransaction,
   insertTransfer,
+  updateBankTransaction,
+  updatePersonalFinanceRecord,
+  updateShareAllotment,
+  updateShareTransaction,
+  updateSipQuantity,
+  updateTransfer,
   type SqlExecutor,
 } from "./data/repositories.js";
 
@@ -118,6 +126,7 @@ function render(): void {
       ${screen("settings-version", settingsVersionScreen())}
       ${screen("import-paste", importPasteScreen())}
       ${screen("import-review", importReviewScreen())}
+      ${screen("entry-edit", entryEditScreen())}
     </div>
   `;
   bindEvents();
@@ -240,6 +249,12 @@ function bindEvents(): void {
   document.querySelector("[data-backup-now]")?.addEventListener("click", () => {
     void runBackupNow();
   });
+
+  // Entry editing (✎ on history rows) + shares quick updates.
+  bindRowEdits();
+  bindEntryEdit();
+  bindQuickUpdates();
+  bindShareFormDraft();
 }
 
 /** Keep Notes import flow event wiring (parse, search, add, commit, and per-row actions). */
@@ -270,7 +285,11 @@ function bindImportEvents(): void {
 
   document.querySelector("[data-import-commit]")?.addEventListener("click", async (event) => {
     const button = event.currentTarget as HTMLButtonElement;
-    if (button.dataset.disabled) return;
+    if (button.dataset.disabled) {
+      showToast("Resolve flagged rows before committing.");
+      render();
+      return;
+    }
     const unconfirmed = appState.importEntries.filter((e) => needsConfirm(e));
     if (unconfirmed.length) {
       showToast("Confirm flagged rows before committing.");
@@ -520,14 +539,7 @@ async function submitAddForm(form: HTMLElement): Promise<void> {
     return;
   }
   const kind = form.dataset.form ?? "";
-  const pick = (name: string): string => {
-    const el = form.querySelector<HTMLInputElement | HTMLSelectElement>(`[name="${name}"]`);
-    return el ? String(el.value ?? "").trim() : "";
-  };
-  const toNumber = (name: string): number => {
-    const n = Number(pick(name));
-    return Number.isFinite(n) ? n : 0;
-  };
+  const { pick, toNumber } = formReader(form);
 
   const button = form.querySelector<HTMLButtonElement>("[data-submit]");
   if (button) {
@@ -566,6 +578,7 @@ async function submitAddForm(form: HTMLElement): Promise<void> {
       }
       case "shares-add": {
         await submitShareEntry(db, form, pick, toNumber);
+        appState.shareFormDraft = {};
         next = "shares-dash";
         break;
       }
@@ -701,10 +714,189 @@ async function deleteRow(btn: HTMLElement): Promise<void> {
 function bindTransferChips(): void {
   const form = document.querySelector<HTMLElement>("[data-form='transfer']");
   if (!form) return;
-  form.querySelectorAll<HTMLButtonElement>("[data-transfer-direction]").forEach((chip) => {
+  bindChipRow(form, "[data-transfer-direction]");
+}
+
+/** Keep exactly one chip active in a `.chip-row` when any chip is tapped. */
+function bindChipRow(scope: HTMLElement, chipsSelector: string): void {
+  const chipRow = scope.querySelector(".chip-row");
+  if (!chipRow) return;
+  scope.querySelectorAll<HTMLButtonElement>(chipsSelector).forEach((chip) => {
     chip.addEventListener("click", () => {
-      form.querySelectorAll(".chip").forEach((c) => c.classList.remove("active"));
+      chipRow.querySelectorAll(".chip").forEach((c) => c.classList.remove("active"));
       chip.classList.add("active");
+    });
+  });
+}
+
+/** History ✎ buttons open the entry-edit screen for that stored row. */
+function bindRowEdits(): void {
+  document.querySelectorAll<HTMLElement>("[data-edit]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const table = btn.dataset.table;
+      const id = Number(btn.dataset.id);
+      if (!table || !Number.isFinite(id)) return;
+      appState.editingEntry = { table, id };
+      navigate("entry-edit");
+    });
+  });
+}
+
+/** Entry-edit screen: direction chips + the Save button (real SQL updates). */
+function bindEntryEdit(): void {
+  const form = document.querySelector<HTMLElement>("[data-entry-edit-form]");
+  if (!form) return;
+
+  bindChipRow(form, "[data-edit-transfer-direction]");
+
+  form.querySelector<HTMLButtonElement>("[data-entry-edit-save]")?.addEventListener("click", () => {
+    void saveEntryEdit(form);
+  });
+}
+
+async function saveEntryEdit(form: HTMLElement): Promise<void> {
+  if (!storeReady || !dbAvailable) {
+    showToast(bootNotice ?? "Persistence is not ready yet.");
+    return;
+  }
+  const table = form.dataset.entryEditForm;
+  const id = Number(form.dataset.entryEditId);
+  if (!table || !Number.isFinite(id)) {
+    showToast("Could not identify the entry to edit.");
+    return;
+  }
+  const { pick, toNumber } = formReader(form);
+
+  try {
+    const db = await openMobileDatabase();
+    switch (table) {
+      case "bank_transactions":
+        await updateBankTransaction(db, id, {
+          date: pick("date"),
+          category: pick("category") || "Other Charges",
+          amount: toNumber("amount"),
+          description: pick("description") || null,
+        });
+        break;
+      case "share_transactions":
+        await updateShareTransaction(db, id, {
+          date: pick("date"),
+          share_name: pick("share_name"),
+          category: pick("category"),
+          per_unit_price: toNumber("per_unit_price"),
+          allotted: toNumber("allotted"),
+        });
+        break;
+      case "personal_finance_bank_flow":
+      case "personal_finance_cash_flow": {
+        const currentFlow = table === "personal_finance_bank_flow" ? "bank" : "cash";
+        const requestedFlow = pick("flow") === "Cash Flow" ? "cash" : "bank";
+        const fields: Parameters<typeof insertPersonalFinanceRecord>[1] = {
+          date: pick("date"),
+          flow_type: requestedFlow,
+          direction: pick("direction") === "income" ? "income" : "expense",
+          category: pick("category") || "Other",
+          amount: toNumber("amount"),
+          description: pick("description") || null,
+          source: "manual",
+          updated_device: deviceName,
+        };
+        if (requestedFlow === currentFlow) {
+          await updatePersonalFinanceRecord(db, id, currentFlow, fields);
+        } else {
+          // Flow changed: move the entry into the other flow table.
+          await insertPersonalFinanceRecord(db, fields);
+          await deletePersonalFinanceRecord(db, id, currentFlow);
+        }
+        break;
+      }
+      case "transfers": {
+        const chip = form.querySelector<HTMLElement>(".chip.active[data-edit-transfer-direction]");
+        const direction = chip?.dataset.editTransferDirection;
+        if (direction !== "bank-to-cash" && direction !== "cash-to-bank") {
+          throw new Error("Choose a transfer direction.");
+        }
+        await updateTransfer(db, id, {
+          date: pick("date"),
+          from_flow: direction === "bank-to-cash" ? "bank" : "cash",
+          to_flow: direction === "bank-to-cash" ? "cash" : "bank",
+          amount: toNumber("amount"),
+          description: pick("note") || null,
+        });
+        break;
+      }
+      default:
+        throw new Error(`Unknown table: ${table}`);
+    }
+    await reloadStore();
+    showToast("Saved");
+    goBack();
+  } catch (error) {
+    console.error("[edit] failed", error);
+    showToast(`Could not save: ${error instanceof Error ? error.message : "unknown error"}`);
+    render();
+  }
+}
+
+/** Shares dashboard quick updates: IPO allotment and SIP quantity. */
+function bindQuickUpdates(): void {
+  document.querySelectorAll<HTMLButtonElement>("[data-ipo-update]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      void runQuickShareUpdate("ipo", btn);
+    });
+  });
+  document.querySelectorAll<HTMLButtonElement>("[data-sip-update]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      void runQuickShareUpdate("sip", btn);
+    });
+  });
+}
+
+async function runQuickShareUpdate(kind: "ipo" | "sip", btn: HTMLElement): Promise<void> {
+  if (!storeReady || !dbAvailable) {
+    showToast(bootNotice ?? "Persistence is not ready yet.");
+    return;
+  }
+  const card = btn.closest<HTMLElement>("[data-quick-update]");
+  if (!card) return;
+  const { pick } = formReader(card);
+  const value = Number(pick(kind === "ipo" ? "ipo_allotment" : "sip_total"));
+  const shareName = pick(kind === "ipo" ? "ipo_share" : "sip_share");
+  if (!shareName) {
+    showToast("Type a share name first.");
+    return;
+  }
+  if (!Number.isFinite(value) || value < 0) {
+    showToast("Enter a number of 0 or more.");
+    return;
+  }
+  try {
+    const db = await openMobileDatabase();
+    if (kind === "ipo") {
+      await updateShareAllotment(db, shareName, value);
+    } else {
+      await updateSipQuantity(db, shareName, value);
+    }
+    await reloadStore();
+    showToast(kind === "ipo" ? `IPO allotment updated for ${shareName.toUpperCase()}.` : `SIP quantity updated for ${shareName.toUpperCase()}.`);
+    render();
+  } catch (error) {
+    console.error("[quick-update] failed", error);
+    showToast(`Could not update: ${error instanceof Error ? error.message : "unknown error"}`);
+    render();
+  }
+}
+
+/** Shares add-entry: keep every typed value so entry-type changes never wipe input. */
+function bindShareFormDraft(): void {
+  const form = document.querySelector<HTMLElement>("[data-form='shares-add']");
+  if (!form) return;
+  form.querySelectorAll<HTMLInputElement | HTMLSelectElement>("[name]").forEach((el) => {
+    el.addEventListener("input", () => {
+      appState.shareFormDraft[el.name] = el.value;
+    });
+    el.addEventListener("change", () => {
+      appState.shareFormDraft[el.name] = el.value;
     });
   });
 }

@@ -3,7 +3,8 @@ import {
   buildShareSyncRecords,
   type PersonalFinanceRecord,
 } from "../../services/personal-finance-sync-row-computation.js";
-import { bankRecords, manualExpenseRows, shareRecords } from "./demo-data.js";
+import { toNumber } from "../../services/bank-category-totals.js";
+import { bankRecords, manualExpenseRows, shareRecords, transferRows } from "./demo-data.js";
 import type { Totals } from "../types.js";
 import { monthKey, toDateKey, today } from "../utils/date.js";
 
@@ -36,5 +37,27 @@ export function todayTotals(): Totals {
 
 export function sumRows(rows: PersonalFinanceRecord[]): number {
   return rows.reduce((total, row) => total + Number(row.amount || 0), 0);
+}
+
+export type TransferAdjustment = { bank: number; cash: number };
+
+/**
+ * Net effect of recorded transfers on the Bank and Cash flows, so a transfer
+ * actually moves money between them in the flow balances:
+ *   cash → bank  : bank +amount, cash −amount
+ *   bank → cash  : bank −amount, cash +amount
+ */
+export function transferAdjustments(
+  rows: Array<{ from_flow?: string | null; to_flow?: string | null; amount?: number | string | null }>,
+): TransferAdjustment {
+  let bank = 0;
+  for (const row of rows) {
+    const amount = Math.abs(toNumber(row.amount));
+    const from = String(row.from_flow ?? "").trim();
+    const to = String(row.to_flow ?? "").trim();
+    if (from === "cash" && to === "bank") bank += amount;
+    if (from === "bank" && to === "cash") bank -= amount;
+  }
+  return { bank, cash: -bank };
 }
 

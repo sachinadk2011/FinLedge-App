@@ -245,3 +245,73 @@
 - [ ] 10. Release mobile-v1.0.0
   Notes: (seed) Tag mobile-v1.0.0 and publish the Capacitor/Android build to
   the mobile release channel via the CI pipeline.
+
+## Sessions beyond the phases
+
+Session 2026-09-05 (SQLite data layer finalization + on-device backup):
+- data/store.ts: single in-memory row store (bankRecords, manualExpenseRows,
+  shareRecords, transferRows) with hydrate/reload from SQLite and a demo
+  fallback when the plugin is unavailable. demo-data.ts is now a facade
+  re-exporting the live store arrays so screens import one place.
+- data/repositories.ts: full CRUD — insertBankTransaction /
+  insertPersonalFinanceRecord / insertShareTransaction / insertTransfer,
+  delete* helpers, and commitKeepNotes writes through this layer (receive
+  updated_device stamping). Keep Notes commit now calls reloadStore() after
+  writing, so the UI reflects imported rows immediately.
+- data/storage.ts: manages the app-private FinLedge[Dev] folder in
+  Directory.Data (no scoped-file permission prompts): aggregate
+  finledge_save.json full export + backup/<date>.json daily incremental
+  (id/cursor-tracking), run once per day on open/resume, plus
+  runStorageMaintenance/refreshStorageInfo and the Backup & sync storage
+  info card + "Back up now" button.
+- forms.ts: FormField tuples now carry an optional field name; field()/
+  formCard()/addFormScreen() emit name= attributes and data-form ids.
+  Screens tagged: bank-add, expenses-add, shares-add, transfer (with
+  direction chips + notes).
+- historyRows: rows tagged _table/_id get working delete buttons (bound via
+  bindRowDeletes in main.ts); read-only synced rows never show them.
+- main.ts: async bootstrap() (SQLite → demo fallback, boot notice, storage
+  maintenance), per-form submit handlers, delete binding, transfer chips,
+  backup-now, resume-maintenance listener. Remains bootstrap/render-loop/
+  event-binding only.
+- config.ts: defensive readMode so tsc/Node tests work where import.meta.env
+  is undefined. Bank-flow queries/investment settings/updated_device export
+  fixed; test list greened back to 22/22; builds + `cap sync android` +
+  `gradlew :app:assembleDebug` → BUILD SUCCESSFUL; APK rebuilt. Dev build by
+  default (DB finledge_mobile_dev, FinLedgeDev folder); production via
+  VITE_FINLEDGE_MODE=production.
+
+Session 2026-09-06 (functional fixes round 1 — transfers, updates, edits, filters):
+- Transfers now MOVE money: data/mobile-data.ts transferAdjustments() nets
+  the cash ⇄ bank shift; expenses-dash Bank balance / Cash balance stats
+  include it (replacing the misleading old "transfer chip" card). Transfer
+  rows show in the expenses history (Combined all, Bank/Cash tabs scoped by
+  involved flow) as neutral (sign-less) rows tagged _table:"transfers" +
+  _id, so they get delete + edit buttons.
+- time default: transfer screen date defaults to today; field() now honors a
+  provided date value for draft/edit rehydration instead of always today.
+- Shares quick updates write for real: "Update IPO allotment" →
+  updateShareAllotment (applies to the newest ipo row, recomputes FIFO);
+  "Update SIP shares" → updateSipQuantity (adjusts newest installment row so
+  total allotted equals the entered number, recomputes). Both throw (toast)
+  when no matching rows exist and use the share-name suggestion panel.
+- ✎ Edit buttons work: new screens/entry-edit.ts (per-table prefilled
+  forms; share category select preserves raw values) + types.ts entry-edit
+  ScreenId + appState.editingEntry. Save runs the new repositories
+  updateBankTransaction / updatePersonalFinanceRecord (per flow) /
+  updateTransfer (direction chips) / updateShareTransaction, then
+  reloadStore() + toast + back.
+- Income vs expense categories: availableHomeCategories() now filters by
+  appState.homeMode so income mode never lists expense categories; mode
+  switch resets selection.
+- Shares add-entry draft: appState.shareFormDraft captures every named input
+  and rehydrates on render, so switching entry type (IPO/SIP/buy/sell/
+  dividend) no longer wipes user input; cleared after a successful submit.
+- Keep Notes: disabled "Commit" now toasts "Resolve flagged rows before
+  committing." (import already legitimately writes on confirm via
+  repositories + reloadStore — nothing fake).
+- Reuse pass (§10): extracted utils/form.ts formReader({ pick, toNumber })
+  (was 3 duplicated copies in main.ts) and forms.ts selectWithCurrent()
+  (entry-edit now reuses it instead of a local select helper).
+- Verify: tsc + vite build clean, 22/22 tests pass, cap sync + gradle
+  assembleDebug → BUILD SUCCESSFUL, APK rebuilt.

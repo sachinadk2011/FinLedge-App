@@ -1,4 +1,5 @@
 import { summarizePersonalFinanceRecords } from "../../services/personal-finance-sync-row-computation.js";
+import { toNumber } from "../../services/bank-category-totals.js";
 import { periodGroupedBarsChart } from "../components/charts.js";
 import { formCard, sectionTitle } from "../components/forms.js";
 import { historyRows } from "../components/history.js";
@@ -7,7 +8,7 @@ import { statGrid } from "../components/stats.js";
 import { bottomNav } from "../components/shell.js";
 import { appState } from "../app-state.js";
 import { transferRows } from "../data/demo-data.js";
-import { currentPersonalFinanceRows } from "../data/mobile-data.js";
+import { currentPersonalFinanceRows, transferAdjustments } from "../data/mobile-data.js";
 import { money } from "../utils/format.js";
 import { getPeriodBuckets, matchesPeriod } from "../utils/periods.js";
 import type { ChartBucket } from "../types.js";
@@ -53,14 +54,13 @@ export function expensesDashboardScreen(): string {
       ? rows.filter((r) => r.flow_type === "cash")
       : rows;
 
-  const displayRows = tabRows.map((row) => ({
-    ...row,
-    _table: row.source === "manual" ? (row.flow_type === "bank" ? "personal_finance_bank_flow" : "personal_finance_cash_flow") : undefined,
-    _id: row.source === "manual" ? row.id : undefined,
-  }));
+  // A recorded transfer moves money between the Cash and Bank flows: the flow
+  // balances below include the net effect so the income section reflects it.
+  const transferShift = transferAdjustments(transferRows);
+  const bankBalance = summary.bank.net + transferShift.bank;
+  const cashBalance = summary.cash.net + transferShift.cash;
 
   const trendBuckets = buildExpensesTrendBuckets(tabRows);
-  const transfer = transferRows[0];
 
   return `
     <p class="eyebrow">Personal Expenses</p>
@@ -74,21 +74,17 @@ export function expensesDashboardScreen(): string {
     </div>
 
     <section class="card">
-      <div class="transfer-chip">
-        <div class="tc-icon">⇄</div>
-        <div class="tc-body"><b>Cash → Bank transfer</b><span>Shown here, excluded from income/expense totals</span></div>
-        <div class="money neu">${money(Number(transfer?.amount ?? 0))}</div>
-      </div>
       ${tab === "combined"
         ? `${statGrid([
             ["Income", summary.combined.overall_income, "pos"],
             ["Expenses", summary.combined.overall_expenses, "neg"],
-            ["Bank net", summary.bank.net, summary.bank.net >= 0 ? "pos" : "neg"],
-            ["Cash net", summary.cash.net, summary.cash.net >= 0 ? "pos" : "neg"],
+            ["Bank balance", bankBalance, bankBalance >= 0 ? "pos" : "neg"],
+            ["Cash balance", cashBalance, cashBalance >= 0 ? "pos" : "neg"],
           ])}
           <div class="stat-box stat-box-full" style="margin-top:10px;text-align:center;">
             <div class="label">Overall net / savings</div>
             <div class="value money ${summary.combined.overall_net >= 0 ? "pos" : "neg"}" style="font-size:20px;">${money(summary.combined.overall_net, { sign: true })}</div>
+            <div class="label sub" style="margin-top:4px;">Balances include net transfers (cash ⇄ bank)</div>
           </div>`
         : tab === "bank"
           ? statGrid([
@@ -100,24 +96,64 @@ export function expensesDashboardScreen(): string {
               ["Service cost", summary.bank.service_cost, "neg"],
               ["Total income", summary.bank.total_income, "pos"],
               ["Total expense", summary.bank.total_expenses, "neg"],
-              ["Bank net", summary.bank.net, summary.bank.net >= 0 ? "pos" : "neg"],
+              ["Bank balance", bankBalance, bankBalance >= 0 ? "pos" : "neg"],
             ])
           : statGrid([
               ["Cash income", summary.cash.total_income, "pos"],
               ["Cash expense", summary.cash.total_expenses, "neg"],
-              ["Cash net", summary.cash.net, summary.cash.net >= 0 ? "pos" : "neg"],
+              ["Cash balance", cashBalance, cashBalance >= 0 ? "pos" : "neg"],
             ])}
     </section>
 
     ${periodGroupedBarsChart("Money flow trend", trendBuckets)}
 
-    <section class="card">
-      ${sectionTitle("All transactions", "Filter")}
-      ${searchInput("expenses", "Search by category or description")}
-      ${historyRows(displayRows, false, "expenses")}
-    </section>
-
+    ${historySection(tab)}
     ${bottomNav("home", "expenses-add")}
+  `;
+}
+
+/** History list: personal/bank-flow entries plus recorded transfers. */
+function historySection(tab: "combined" | "bank" | "cash"): string {
+  const transferRowsFor = (rows: Array<Record<string, unknown>>): Array<Record<string, unknown>> =>
+    rows
+      .filter((row) => {
+        if (tab === "combined") return true;
+        const from = String(row.from_flow ?? "");
+        const to = String(row.to_flow ?? "");
+        return from === tab || to === tab;
+      })
+      .map((row) => ({
+        description: `${String(row.from_flow === "cash" ? "Cash" : "Bank")} → ${String(row.to_flow === "cash" ? "Cash" : "Bank")}`,
+        category: "Transfer",
+        amount: Math.abs(toNumber(row.amount)),
+        direction: "neutral",
+        _neutral: true,
+        flow_type: "transfer",
+        date: String(row.date ?? ""),
+        _table: "transfers",
+        _id: row.id,
+      }));
+
+  const transfers = transferRowsFor(transferRows as unknown as Array<Record<string, unknown>>);
+
+  const rows = (() => {
+    const base = currentPersonalFinanceRows();
+    const scoped = tab === "bank" ? base.filter((r) => r.flow_type === "bank") : tab === "cash" ? base.filter((r) => r.flow_type === "cash") : base;
+    return scoped.map((row) => ({
+      ...row,
+      _table: row.source === "manual" ? (row.flow_type === "bank" ? "personal_finance_bank_flow" : "personal_finance_cash_flow") : undefined,
+      _id: row.source === "manual" ? row.id : undefined,
+    }));
+  })();
+
+  const merged = [...transfers, ...rows].sort((a, b) => String(b.date ?? "").localeCompare(String(a.date ?? "")));
+
+  return `
+    <section class="card">
+      ${sectionTitle("Transfer & transaction history", "Filter")}
+      ${searchInput("expenses", "Search by category or description")}
+      ${historyRows(merged, false, "expenses")}
+    </section>
   `;
 }
 

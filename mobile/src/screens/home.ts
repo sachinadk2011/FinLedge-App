@@ -65,6 +65,9 @@ export function homeScreen(): string {
 export function availableHomeCategories(): string[] {
   const seen = new Set<string>();
   for (const row of manualRowsForCurrentMonth()) {
+    // In income mode, only ever list income categories (and vice versa) so
+    // expense categories like Food / Entertainment never appear as income.
+    if (row.direction !== appState.homeMode) continue;
     seen.add(String(row.category || "Other"));
   }
   return [...seen].sort((a, b) => a.localeCompare(b));

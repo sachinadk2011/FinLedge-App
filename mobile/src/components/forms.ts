@@ -9,7 +9,7 @@ import {
 } from "../constants/options.js";
 import type { ScreenId } from "../types.js";
 import { toDateKey, today } from "../utils/date.js";
-import { escapeAttr } from "../utils/html.js";
+import { escapeAttr, escapeHtml } from "../utils/html.js";
 import { bottomNav } from "./shell.js";
 
 /** Today's date as YYYY-MM-DD, computed once per render. */
@@ -34,9 +34,9 @@ export function formCard(fields: FormField[], submit: string, formId = ""): stri
   return `<section class="card"${formAttr}>${fields.map(([label, type, value, name]) => field(label, type, value, name)).join("")}<button class="btn-primary" data-submit>${submit}</button></section>`;
 }
 
-/** Renders a form field. Date inputs default to today — user only taps if they need a different date. */
+/** Renders a form field. Date inputs default to today when no value is given — user only taps if they need a different date. */
 export function field(label: string, type: string, value?: string, name?: string): string {
-  const defaultValue = type === "date" ? todayStr : (value ?? "");
+  const defaultValue = type === "date" && !value ? todayStr : (value ?? "");
   const nameAttr = name ? ` name="${escapeAttr(name)}"` : "";
   if (type === "select") {
     return `<div class="field"><label>${label}</label><select${nameAttr}>${selectOptions(label, value)}</select></div>`;
@@ -55,6 +55,16 @@ export function selectOptions(label: string, fallback = "Other"): string {
   };
   const options = optionsByLabel[label] || [fallback ?? "Other", "Other"];
   return options.map((o) => `<option value="${o}">${SHARE_CATEGORY_LABELS[o] || o}</option>`).join("");
+}
+
+/** Select with an existing value preserved: raw `current` is kept as a selected
+ * option when it isn't one of `options`, and `labelMap` pretty-prints raw codes. */
+export function selectWithCurrent(options: string[], current: string, labelMap: Record<string, string> = {}): string {
+  const present = options.includes(current);
+  const currentOption = present ? "" : `<option value="${escapeAttr(current)}" selected>${escapeHtml(current || "Other")}</option>`;
+  return `${currentOption}${options
+    .map((option) => `<option value="${escapeAttr(option)}" ${option === current ? "selected" : ""}>${escapeHtml(labelMap[option] ?? option)}</option>`)
+    .join("")}`;
 }
 
 export function sectionTitle(heading: string, rightLabel = ""): string {

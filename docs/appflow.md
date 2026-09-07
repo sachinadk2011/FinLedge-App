@@ -86,3 +86,54 @@ Part of Import/Export, **separate from normal expense entry**. Handles Cash
 ⇄ Bank moves using the `transfers` table (schema.md §1.5). It is its own
 flow, distinct from recording a routine expense, so cash and bank balances
 move together without being miscategorized as income/expense.
+
+### 3.1 Transfer semantics (functional behavior)
+
+- A recorded transfer **moves money between flows**: cash → bank adds to
+  Bank and subtracts from Cash; bank → cash does the reverse. The net shift
+  is applied to the Expenses dashboard "Bank balance" / "Cash balance" stat
+  boxes via the mobile `transferAdjustments()` helper.
+- Transfers are **neutral** (not income/expense) — they render without a
+  +/- sign in history and do not feed income/expense totals.
+- Transfers appear in the Expenses dashboard history in every tab: Combined
+  tab shows all transfers; Bank flow shows transfers that involve Bank; Cash
+  flow shows transfers that involve Cash.
+- Transfer history rows carry `_table: "transfers"` + `_id`, so they get a
+  working ✎ Edit and delete button like other stored rows.
+
+## 5. Edit-entry flow
+
+Every deletable stored row whose history list renders a working delete
+button also renders a working **✎ Edit** button. Both appear on rows tagged
+with `_table` + `_id` (manual bank, personal expense, share, and transfer
+rows — never on read-only synced rows).
+
+1. Tapping ✎ stores `editingEntry = { table, id }` and opens the
+   `entry-edit` screen.
+2. The screen pre-fills a per-table form (bank / share / personal /
+   transfer; transfers get a direction chip pair). Derived share columns
+   and the transfer nested amount sign are recomputed by the repository on
+   save — the user never edits derived values directly.
+3. **Save changes** runs the matching repository `update*` function (a real
+   SQL write, with any recomputes and timestamp stamping), calls
+   `reloadStore()`, toasts "Saved", and goes back to the previous screen.
+
+## 6. Shares quick updates
+
+The Shares dashboard "Update IPO allotment" and "Update SIP shares" cards
+write to SQLite directly:
+
+- IPO allotment update applies the new `allotted` to the newest `ipo` row
+  for that share and recomputes FIFO.
+- SIP quantity update adjusts the newest SIP installment row so total
+  allotted equals the entered number, then recomputes.
+- Both throw (→ toast) when the share has no matching rows; the name field
+  uses the same share-name suggestion panel as the add-entry form.
+
+## 7. Income section category filter
+
+The Home Income/Expense category checkboxes only list categories that exist
+for the **current Home mode** (`row.direction === appState.homeMode`) — so
+income mode never shows expense categories (Food, Entertainment, …).
+Switching modes resets the selection so the checked set always matches the
+mode.

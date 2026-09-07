@@ -32,6 +32,11 @@ export const appState = {
   importPasteDraft: "",
   importEntries: [] as StagedEntry[],
   importReviewQuery: "",
+  // Row currently being edited via the entry-edit screen
+  editingEntry: null as { table: string; id: number } | null,
+  // Shares add-entry: keyed draft of field values so changing the entry type
+  // never wipes what the user already typed
+  shareFormDraft: {} as Record<string, string>,
 };
 
 
