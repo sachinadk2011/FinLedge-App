@@ -11,7 +11,7 @@ const { pathToFileURL } = require("url");
 const { spawn } = require("child_process");
 
 const LOG_FILE = path.join(os.tmpdir(), "finledge-electron.log");
-const WINDOW_TITLE = "Finledge – Financial Tracker";
+const WINDOW_TITLE = "FinLedge";
 const GITHUB_RELEASES_URL = "https://github.com/sachinadk2011/FinLedge-App/releases";
 const DEFAULT_UPDATE_POLICY_URL =
   "https://raw.githubusercontent.com/sachinadk2011/FinLedge-App/main/update-policy.json";
@@ -207,14 +207,46 @@ function createPlaceholderIconPng(filePath) {
   const rowSize = 1 + width * 4;
   const raw = Buffer.alloc(rowSize * height);
 
+  const cx = width / 2;
+  const cy = height / 2;
+  const radius = width / 2;
+  const corner = 110; // ~43% of size — near-circle but corners still visible
+  const minCorner = corner;
+  const maxCorner = width - 1 - corner;
   for (let y = 0; y < height; y++) {
     raw[y * rowSize] = 0;
     for (let x = 0; x < width; x++) {
       const i = y * rowSize + 1 + x * 4;
+      let inside = true;
+      if (x < minCorner && y < minCorner) {
+        // top-left corner circle
+        const dx = x - minCorner;
+        const dy = y - minCorner;
+        inside = dx * dx + dy * dy <= corner * corner;
+      } else if (x > maxCorner && y < minCorner) {
+        // top-right
+        const dx = x - maxCorner;
+        const dy = y - minCorner;
+        inside = dx * dx + dy * dy <= corner * corner;
+      } else if (x < minCorner && y > maxCorner) {
+        // bottom-left
+        const dx = x - minCorner;
+        const dy = y - maxCorner;
+        inside = dx * dx + dy * dy <= corner * corner;
+      } else if (x > maxCorner && y > maxCorner) {
+        // bottom-right
+        const dx = x - maxCorner;
+        const dy = y - maxCorner;
+        inside = dx * dx + dy * dy <= corner * corner;
+      }
+      if (!inside) {
+        raw[i + 3] = 0;
+        continue;
+      }
       const t = (x + y) / (width + height);
-      raw[i] = Math.round(10 + 20 * t);
-      raw[i + 1] = Math.round(90 + 90 * t);
-      raw[i + 2] = Math.round(95 + 70 * t);
+      raw[i] = Math.round(11 + 17 * t);
+      raw[i + 1] = Math.round(122 + 34 * t);
+      raw[i + 2] = Math.round(118 + 30 * t);
       raw[i + 3] = 255;
     }
   }
@@ -233,11 +265,17 @@ function createPlaceholderIconPng(filePath) {
     }
   }
 
-  const fx = 76;
-  const fy = 62;
-  fillRect(fx, fy, 26, 130);
-  fillRect(fx, fy, 104, 24);
-  fillRect(fx, fy + 54, 84, 22);
+  // Block "FL" mark (white) on the teal gradient, matching the branded icons.
+  // Centered geometry: bbox x 53..203, y 56..200 (both center at 128).
+  const fx = 53;
+  const fy = 56;
+  // F vertical + top bar + middle bar
+  fillRect(fx, fy, 28, 144);
+  fillRect(fx, fy, 90, 24);
+  fillRect(fx, fy + 60, 70, 22);
+  // L vertical + bottom bar
+  fillRect(fx + 112, fy, 28, 144);
+  fillRect(fx + 112, fy + 118, 38, 22);
 
   const signature = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
   const ihdr = Buffer.alloc(13);
@@ -515,7 +553,7 @@ function getLoadingUrl() {
       <div class="logo">F</div>
       <div>
         <div class="title">Finledge</div>
-        <div class="sub">Starting Financial Tracker...</div>
+        <div class="sub">Starting FinLedge...</div>
       </div>
     </div>
     <div class="sub">Launching the backend engine and loading the UI. This can take a few seconds on the first run.</div>
