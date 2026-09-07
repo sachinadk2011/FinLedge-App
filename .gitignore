@@ -24,3 +24,7 @@ desktop/build/
 Thumbs.db
 
 tests/
+.npm-cache/
+android/
+dist/
+finledge-mobile-design-v3.html
