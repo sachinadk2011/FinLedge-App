@@ -54,7 +54,12 @@ if (statusBefore) {
   throw new Error("Working tree must be clean before starting a release.");
 }
 
-const tag = `v${version}`;
+// Desktop releases use the "desktop-vX.Y.Z" tag format to separate them from
+// future mobile releases (mobile-vX.Y.Z). Old clients (v1.1.0-v1.2.0) detect
+// the new version through the update-policy.json backward-compat shim which
+// carries a plain semver latestVersion that their old parser can compare.
+const tag = `desktop-v${version}`;
+
 const existingTag = spawnSync("git", ["rev-parse", "-q", "--verify", `refs/tags/${tag}`], {
   cwd: projectRoot,
   encoding: "utf8",
@@ -89,18 +94,22 @@ const releaseFiles = [
   "frontendwebapp/package-lock.json",
   "desktop/package.json",
   "desktop/package-lock.json",
-  "update-policy.json", // latestVersion is kept in sync by version:sync
+  "desktop-update-policy.json", // primary policy: latestVersion = "desktop-vX.Y.Z"
+  "update-policy.json",          // compat shim:    latestVersion = "X.Y.Z" (plain semver for old clients)
 ];
 
 run("git", ["add", ...releaseFiles]);
 const staged = run("git", ["diff", "--cached", "--name-only"]);
 if (staged) {
-  run("git", ["commit", "-m", `Release v${version}`]);
+  run("git", ["commit", "-m", `Release ${tag}`]);
 } else {
   console.log("Version files already match; no release version commit needed.");
 }
 
-run("git", ["tag", "-a", tag, "-m", `FinLedge ${tag}`]);
+run("git", ["tag", "-a", tag, "-m", `FinLedge Desktop ${tag}`]);
 run("git", ["push", "--atomic", "origin", "main", tag]);
 
 console.log(`Release ${tag} pushed. GitHub Actions will build and publish the release.`);
+
+
+

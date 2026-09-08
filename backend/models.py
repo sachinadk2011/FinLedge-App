@@ -62,7 +62,6 @@ class PersonalFinanceCategory(str, Enum):
     investment_income = "Investment Income"
     investment_return = "Investment Return"
     dividend = "Dividend"
-    share_sell_proceeds = "Share Sell Proceeds"
     other_income = "Other Income"
 
 
@@ -92,9 +91,7 @@ PF_EXPENSE_CATEGORIES = {
     PersonalFinanceCategory.rent,
     PersonalFinanceCategory.travel,
     PersonalFinanceCategory.insurance,
-    PersonalFinanceCategory.investment,
-    PersonalFinanceCategory.sip,
-    PersonalFinanceCategory.share_market,
+    PersonalFinanceCategory.gift,
     PersonalFinanceCategory.other,
 }
 
@@ -105,10 +102,6 @@ PF_INCOME_CATEGORIES = {
     PersonalFinanceCategory.prize_lottery,
     PersonalFinanceCategory.gift,
     PersonalFinanceCategory.refund,
-    PersonalFinanceCategory.investment_income,
-    PersonalFinanceCategory.investment_return,
-    PersonalFinanceCategory.dividend,
-    PersonalFinanceCategory.share_sell_proceeds,
     PersonalFinanceCategory.other_income,
 }
 
@@ -128,6 +121,18 @@ class PersonalFinanceAddRequest(BaseModel):
         if self.direction == PersonalFinanceDirection.income and self.category not in PF_INCOME_CATEGORIES:
             raise ValueError("Income entries must use an income category.")
         return self
+
+
+class TransferDirection(str, Enum):
+    bank_to_cash = "bank_to_cash"  # Withdraw: bank income reduced, cash income increased
+    cash_to_bank = "cash_to_bank"  # Deposit: cash income reduced, bank income increased
+
+
+class PersonalFinanceTransferRequest(BaseModel):
+    dates: date | None = None
+    direction: TransferDirection
+    amount: Decimal = Field(..., gt=0)
+    description: str | None = Field(default=None, max_length=500)
 
 
 class ShareBaseRequest(BaseModel):

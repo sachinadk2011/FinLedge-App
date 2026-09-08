@@ -294,3 +294,136 @@
 
   **Follow-up — desktop branding rename "Financial Tracker" → "FinLedge"**
   Notes: Completed as visible UI text only per AGENTS.md §6 Hard Rule 2 (renaming UI labels, no logic changes). Updated desktop window title and loading text in `desktop/main.js`, the badge mark `FT` → `FL` and header text "Financial Tracker" → "FinLedge" in `frontendwebapp/src/App.jsx`, the Home hero eyebrow in `frontendwebapp/src/pages/Home.jsx`, and the page title in `frontendwebapp/index.html`. Files, routes, service names, API/bridge identifiers (`window.financialTracker`), and `package.json` package names were intentionally left unchanged, matching the v1.2.0 module rename pattern.
+
+
+## v1.3.0 — Bank ↔ Cash Transfer Feature
+
+- [x] **Backend — Transfer data model & storage**
+  - `backend/models.py` — Added `TransferDirection` enum (`bank_to_cash`, `cash_to_bank`) + `PersonalFinanceTransferRequest` Pydantic model
+  - `backend/services/personal_finance_service.py` — Added `TRANSFER_FILE_PATH`, `TRANSFER_SHEET_NAME` constants and `_ensure_transfer_workbook_exists()`. Separate Excel file `personal_finance_transfer.xlsx` (sheet: `Transfer Flow`) holds one row per transfer event.
+
+- [x] **Backend — Transfer create / read**
+  - `create_transfer_record()` — validates transfer amount ≤ origin side's current total income before writing (raises `ValueError` with clear message if exceeded); writes one row; returns dict with `transfer_ref = transfer:YYYY-MM-DD:xxxxxxxx`
+  - `read_transfer_records()` — reads all raw rows from the transfer Excel; returns list of dicts including `transfer_direction`
+
+- [x] **Backend — Transfer injection into flows**
+  - `_build_transfer_records_for_flow(flow_type)` — shapes each transfer record per perspective: `bank_to_cash` → bank gets `signed_amount = -amount` ("Withdrawn to Cash"), cash gets `signed_amount = +amount` ("Received from Bank"); `cash_to_bank` reversed
+  - `_build_transfer_records_for_combined()` — shows each transfer exactly ONCE in combined view (from originating side only, label: "Withdrawn to Cash" or "Deposited to Bank")
+  - `read_personal_finance_records()` restructured — bank/cash flows include full per-perspective transfer records; combined view uses deduplicated records
+
+- [x] **Backend — Summary accounting**
+  - `_empty_flow_summary()` — added `transfer_out: 0.0` and `transfer_in: 0.0` keys
+  - `summarize_personal_finance_records()` — transfer records detected by `source == "transfer"`; positive `signed_amount` → receiving side: `income +=`, `transfer_in +=`; negative → originating side: `income -=`, `transfer_out +=`; `net` correctly reflects per-side movement; combined overall_net self-balances (+/− cancel out)
+
+- [x] **Backend — Route**
+  - `routes/personal_finance.py` — Added `POST /personal-finance/transfer` endpoint
+  - `routes/personal_finance.py` — Fixed `GET /personal-finance/data` combined view: summary now recomputed from full per-flow records (`bank + cash`) so both sides of each transfer are accounted for in per-side income/net; display records remain deduplicated (one row per transfer in UI)
+
+- [x] **Frontend — API & Transfer page**
+  - `personalFinanceApi.js` — Added `createTransfer(form)` → `POST /personal-finance/transfer`
+  - `PersonalFinanceTransferPage.jsx` — New page: date, direction dropdown (default: "Bank to Cash (Withdraw)" / "Cash to Bank (Deposit)"), amount, optional notes; Transfer button; View Dashboard button (goes to bank or cash dashboard based on `?from=` param); "Recent transfers" section at bottom showing last 12 transfers; no live preview below amount field
+
+- [x] **Frontend — Entry page banner**
+  - `PersonalFinancePage.jsx` — Full-width gradient Transfer banner between form and recent-entries table; links to `/personal-finance-transfer?from=bank` or `?from=cash`; entry page recent-transactions table shows only `source = manual` records (12-row limit)
+
+- [x] **Frontend — Hub & routing**
+  - `PersonalFinanceHome.jsx` — Added 4th "Transfer" card (violet/fuchsia gradient); grid updated to `grid-cols-2 lg:grid-cols-4`
+  - `App.jsx` — Added `/personal-finance-transfer` route + `"Transfer"` breadcrumb label; navbar changed from `max-w-6xl` centred to full-width with responsive padding (`px-6 xl:px-10 2xl:px-16`), no more odd left/right gaps on large screens
+
+- [x] **Frontend — Dashboard**
+  - `PersonalFinanceDashboard.jsx` — Transfer rows display as type "Transfer" (not "Expense" or "Income"); `transfer_in`/`transfer_out` stat rows shown conditionally when non-zero; dashboard history tables show ALL records (no 12-row cap); **Edit/Delete actions** for `source = manual` rows in Combined, Bank Flow, and Cash Flow views; "Read-only" label for synced/transfer records; ConfirmDialog wired up; data reloads in background after delete
+  - `Home.jsx` & `PersonalFinanceHome.jsx` — Card grids changed to `grid-cols-2 lg:grid-cols-4 lg:gap-5 xl:gap-6`; icons grow to `xl:h-14 xl:w-14`, padding increases at xl for better large-screen appearance
+
+- [x] **Bug fixes**
+  - Cash flow income went negative: combined summary was computed from deduplicated records (only originating side of each transfer). Fixed by recomputing summary from full per-flow records in the `/data` combined endpoint.
+  - Bank→Cash transfer not appearing in cash income: same root cause, same fix.
+  - Combined view showed two rows per transfer: fixed by `_build_transfer_records_for_combined()`.
+  - Direction label showed "Expense" for transfer records in combined history: fixed by `getDirectionLabel()` helper checking `record.source === "transfer"` first.
+  - Transfer amount validation: if user tries to transfer more than available income on the origin side, backend rejects with a human-readable error message before writing anything.
+
+---
+
+## v1.3.0 — Category Cleanup, Transfer Edit, Splash Screen, UI Responsiveness
+
+- [x] **Category cleanup — Expense**
+  - Removed `Investment`, `SIP`, `Share Market` from `PERSONAL_FINANCE_EXPENSE_CATEGORIES` (these belong to the Share Portfolio module and Bank Services sync — adding them as manual personal expense was confusing and redundant)
+  - Added `Gift` to `PERSONAL_FINANCE_EXPENSE_CATEGORIES` (user can give gifts as an expense)
+  - Changes applied in both `backend/models.py` (`PF_EXPENSE_CATEGORIES` set) and `frontendwebapp/src/constants/options.js` (`PERSONAL_FINANCE_EXPENSE_CATEGORIES`)
+  - Old enum values kept in `PersonalFinanceCategory` so existing saved records with those categories still deserialize correctly — they just can't be selected for new entries
+
+- [x] **Category cleanup — Income**
+  - Removed `Investment Income`, `Investment Return`, `Dividend`, `Share Sell Proceeds` from `PERSONAL_FINANCE_INCOME_CATEGORIES` (duplicated from Share Portfolio module)
+  - `Gift` already in income; kept
+  - Same dual change: `backend/models.py` + `options.js`
+
+- [x] **Transfer edit — Backend**
+  - `backend/services/personal_finance_service.py` — Added `update_transfer_record(transfer_id, entry_date, direction, amount, description)`: finds row by 1-based sequential ID, validates new amount against available origin income (excludes old transfer's own contribution if direction unchanged), overwrites date/direction/amount/description/last_updated_timestamp in-place in Excel
+  - `backend/routes/personal_finance.py` — Added `PUT /personal-finance/transfer/{transfer_id}` endpoint
+
+- [x] **Transfer edit — Frontend**
+  - `personalFinanceApi.js` — Added `updateTransfer(transferId, form)` → `PUT /personal-finance/transfer/{id}`
+  - `PersonalFinanceTransferPage.jsx` — Full edit mode: reads `?edit=N` from URL, loads that transfer into the form, submits as PUT; Cancel button returns to transfer page; "Save Changes"/"Saving…" button labels in edit mode; history table now shows Edit button per row (navigates to `?edit=N`); edit mode hides the history section and the description paragraph
+
+- [x] **Splash screen — app logo pulse**
+  - `desktop/main.js` — `getLoadingUrl()` replaced: reads `finledge_icon.png` as base64 and embeds it directly in the splash HTML; full-screen white background; icon centred at 100×100px with rounded corners; CSS `@keyframes pulse` animation fades opacity 1→0.35→1 and scales 1→0.92→1 every 1.6s; app name "FinLedge" and "Starting up…" shown below; falls back to a gradient "F" div if icon file not found
+
+- [x] **Cards — always 4-col on lg+, larger on xl**
+  - `Home.jsx` — grid class changed from `sm:grid-cols-2 lg:grid-cols-4` to `grid-cols-2 lg:grid-cols-4 lg:gap-5 xl:gap-6`; card inner padding increased at xl (`xl:p-8`); icon size increased at xl (`xl:h-14 xl:w-14`); title font size increased at xl (`xl:text-xl`)
+  - `PersonalFinanceHome.jsx` — same grid class change
+
+
+- [x] **Navbar — full-width, no odd gaps**
+  - `App.jsx` — removed `max-w-6xl` and `mx-auto` from header inner div; changed to full-width with responsive padding `px-6 xl:px-10 2xl:px-16`; added subtle `border-b border-slate-200/60`; reduced nav link padding from `px-4` to `px-3` and gap from `gap-3` to `gap-1` so all 5 links fit on one row at laptop width without wrapping
+
+---
+
+## v1.3.0 — Platform Separation: Desktop Versioning & Release System
+
+- [x] **New versioning scheme: `desktop-vX.Y.Z`**
+  - Desktop releases now use the tag format `desktop-v1.3.0` instead of `v1.3.0`
+  - `desktop/package.json` bumped to `1.3.0`
+  - Root `package.json` bumped to `1.3.0`
+
+- [x] **New update policy file: `desktop-update-policy.json`**
+  - Created `desktop-update-policy.json` — primary update policy for desktop clients v1.3.0+
+  - `latestVersion` field uses the full `"desktop-v1.3.0"` string
+  - `releaseUrl` points to the `desktop-v1.3.0` GitHub tag
+  - Kept `update-policy.json` as a **backward-compatibility shim**: old clients (v1.1.0–v1.2.0) still fetch this URL; `latestVersion` updated to plain `"1.3.0"` so their old `parseVersionParts` (which only strips a `v` prefix) can still detect the upgrade. `releaseUrl` in the shim also points to the new `desktop-v1.3.0` tag.
+
+- [x] **`desktop/main.js` — update checker adapted for new versioning**
+  - `DEFAULT_UPDATE_POLICY_URL` → `desktop-update-policy.json`
+  - `parseVersionParts(version)` — now strips `desktop-v` prefix first, then legacy `v`, so `"desktop-v1.3.0"` → `[1, 3, 1]` and can be compared with the running `app.getVersion()` (`"1.3.0"`)
+  - `getReleaseUrl(info)` — now constructs GitHub tag URLs as `desktop-v${bare}` (e.g. `.../tag/desktop-v1.3.0`) instead of the old `v${bare}` format
+
+- [x] **GitHub Actions workflow renamed and updated**
+  - `.github/workflows/release.yml` **deleted**
+  - `.github/workflows/desktop-release.yml` **created** — triggers on `desktop-v*.*.*` tags, release title is `FinLedge Desktop desktop-v1.3.0`, everything else (build steps, asset upload) unchanged
+
+- [x] **Platform separation rationale**
+  - Mobile version is coming; `desktop-update-policy.json` is the desktop-specific policy — a future `mobile-update-policy.json` can be added independently
+  - Tags like `desktop-v1.3.0` and (future) `mobile-v1.0.0` coexist cleanly in the same repo without collision
+  - Old clients keep working through the `update-policy.json` shim
+
+---
+
+## Security & Maintenance Pass (2026-09-08)
+
+- [x] **Dependency vulnerability cleanup — `frontendwebapp` (6 → 0)**
+  - `react-router-dom` `^6.27.0` → `^7.18.3` — required because React Router advisories GHSA-wrjc-x8rr-h8h6 (open redirect) and GHSA-337j-9hxr-rhxg (SSR constructor injection) are only fixed in `>=7.18.0`; no safe 6.x release exists. App only uses the standard declarative APIs (`BrowserRouter`/`HashRouter`, `Routes`, `Link`, `Navigate`, `Outlet`, `useLocation`, `useNavigate`, `useSearchParams`), all fully supported in v7, and React 18.3.1 satisfies the v7 `>=18` peer requirement. Verified via `npm run build` (608 modules) + smoke test.
+  - `postcss` `^8.4.49` → `^8.5.28` — fixes GHSA-fxqj-rqcc-2cmp / GHSA-r28c-9q8g-f849 (path traversal via sourceMappingURL).
+  - Transitive deps auto-fixed by lockfile re-resolution + `npm audit fix`: `browserslist` 4.28.9, `nanoid` 3.3.18, `postcss-selector-parser` 6.1.4.
+  - Result: `npm audit` = 0 vulnerabilities; production build passes.
+
+- [x] **Dependency vulnerability cleanup — `desktop` (7 → 0)**
+  - `electron` `^42.4.0` → `^42.11.2` (latest of the same 42.x major — no runtime breaking change) — fixes GHSA-r4w5-6pfg-jxp5 (session cache leak in `ProtocolResponse.url`). The dev app instance had to be closed first so the old binary DLLs were not locked; verified `npx electron --version` → `v42.11.2`.
+  - Remaining vulns were all **build-time** electron-builder toolchain deps, fixed in place with `npm audit fix` (no `--force`, no overrides, `electron-builder` stayed at `^26.15.3`): `tar` 7.5.22, `undici` 6.28.1 / 7.29.1, `fast-uri` 3.1.7, `js-yaml` 4.3.2, `@xmldom/xmldom` 0.8.15, `brace-expansion` 1.1.18 / 2.1.4 / 5.0.9.
+  - Result: `npm audit` = 0 vulnerabilities.
+
+- [x] **FastAPI `@app.on_event("startup")` deprecation fix** (`backend/main.py`)
+  - Replaced the deprecated `@app.on_event("startup")` decorator (warned about in pytest output, see test verification note below) with the recommended **`lifespan` context manager** (`@asynccontextmanager`), wired via `FastAPI(..., lifespan=lifespan)`.
+  - Migration behaviour unchanged: `apply_pending_data_migrations()` still runs before the app serves, still prints the same `[migration] ...` status line.
+  - Verified with `venv\Scripts\python.exe -m py_compile backend/main.py` and `from backend.main import app`.
+
+- **Backups**: original `package.json` / `package-lock.json` for both `frontendwebapp` and `desktop` copied to `%TEMP%\opencode\finance_backup\` before any dependency changes. Nothing committed.
+
+

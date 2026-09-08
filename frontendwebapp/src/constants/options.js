@@ -49,9 +49,7 @@ export const PERSONAL_FINANCE_EXPENSE_CATEGORIES = [
   "Rent",
   "Travel",
   "Insurance",
-  "Investment",
-  "SIP",
-  "Share Market",
+  "Gift",
   "Other",
 ];
 
@@ -62,9 +60,5 @@ export const PERSONAL_FINANCE_INCOME_CATEGORIES = [
   "Prize/Lottery",
   "Gift",
   "Refund",
-  "Investment Income",
-  "Investment Return",
-  "Dividend",
-  "Share Sell Proceeds",
   "Other Income",
 ];

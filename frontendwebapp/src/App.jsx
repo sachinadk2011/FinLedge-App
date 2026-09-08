@@ -8,15 +8,18 @@ import Home from "./pages/Home";
 import PersonalFinanceDashboard from "./pages/PersonalFinanceDashboard";
 import PersonalFinanceHome from "./pages/PersonalFinanceHome";
 import PersonalFinancePage from "./pages/PersonalFinancePage";
+import PersonalFinanceTransferPage from "./pages/PersonalFinanceTransferPage";
 import Settings from "./pages/Settings";
 import ShareDashboard from "./pages/ShareDashboard";
 import SharePage from "./pages/SharePage";
 import Summary from "./pages/Summary";
 
+
 function getRouteLabel(pathname) {
   if (pathname.startsWith("/bank-dashboard")) return "Bank Services Dashboard";
   if (pathname.startsWith("/bank")) return "Bank Services";
   if (pathname.startsWith("/personal-finance-dashboard")) return "Personal Expenses Dashboard";
+  if (pathname.startsWith("/personal-finance-transfer")) return "Transfer";
   if (pathname.startsWith("/personal-finance-entry")) return "Personal Expenses Entry";
   if (pathname.startsWith("/personal-finance")) return "Personal Expenses";
   if (pathname.startsWith("/share-dashboard")) return "Share Portfolio Dashboard";
@@ -34,8 +37,8 @@ function Layout() {
     <div className="app-shell">
       <UpdateNotice />
       {/* <OnboardingTour /> */}{/* Tour guide disabled for now — code is ready, will be enabled later */}
-      <header className="sticky top-0 z-20 bg-white/70 supports-[backdrop-filter]:bg-white/40 supports-[backdrop-filter]:backdrop-blur-xl">
-        <div className="mx-auto flex max-w-6xl flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:gap-6 sm:px-6">
+      <header className="sticky top-0 z-20 bg-white/70 supports-[backdrop-filter]:bg-white/40 supports-[backdrop-filter]:backdrop-blur-xl border-b border-slate-200/60">
+        <div className="flex flex-col gap-3 px-6 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-6 xl:px-10 2xl:px-16">
           <div className="brand-cluster">
             <Link className="group flex items-center gap-3 no-underline" to="/">
               <img
@@ -50,37 +53,37 @@ function Layout() {
             </Link>
           </div>
 
-          <nav className="flex flex-wrap items-center justify-center gap-2 sm:justify-end sm:gap-3">
+          <nav className="flex flex-wrap items-center justify-center gap-2 sm:justify-end sm:gap-1">
             <Link
-              className="no-underline rounded-full px-4 py-2 text-sm font-bold text-slate-700 transition hover:-translate-y-0.5 hover:bg-white/70 hover:text-slate-900 hover:shadow-soft"
+              className="no-underline rounded-full px-3 py-2 text-sm font-bold text-slate-700 transition hover:-translate-y-0.5 hover:bg-white/70 hover:text-slate-900 hover:shadow-soft"
               to="/bank"
               data-tour="nav-bank"
             >
               Bank Services
             </Link>
             <Link
-              className="no-underline rounded-full px-4 py-2 text-sm font-bold text-slate-700 transition hover:-translate-y-0.5 hover:bg-white/70 hover:text-slate-900 hover:shadow-soft"
+              className="no-underline rounded-full px-3 py-2 text-sm font-bold text-slate-700 transition hover:-translate-y-0.5 hover:bg-white/70 hover:text-slate-900 hover:shadow-soft"
               to="/share"
               data-tour="nav-share"
             >
               Share Portfolio
             </Link>
             <Link
-              className="no-underline rounded-full px-4 py-2 text-sm font-bold text-slate-700 transition hover:-translate-y-0.5 hover:bg-white/70 hover:text-slate-900 hover:shadow-soft"
+              className="no-underline rounded-full px-3 py-2 text-sm font-bold text-slate-700 transition hover:-translate-y-0.5 hover:bg-white/70 hover:text-slate-900 hover:shadow-soft"
               to="/personal-finance"
               data-tour="nav-personal-finance"
             >
               Personal Expenses
             </Link>
             <Link
-              className="no-underline rounded-full px-4 py-2 text-sm font-bold text-slate-700 transition hover:-translate-y-0.5 hover:bg-white/70 hover:text-slate-900 hover:shadow-soft"
+              className="no-underline rounded-full px-3 py-2 text-sm font-bold text-slate-700 transition hover:-translate-y-0.5 hover:bg-white/70 hover:text-slate-900 hover:shadow-soft"
               to="/summary"
               data-tour="nav-summary"
             >
               Financial Summary
             </Link>
             <Link
-              className="no-underline rounded-full px-4 py-2 text-sm font-bold text-slate-700 transition hover:-translate-y-0.5 hover:bg-white/70 hover:text-slate-900 hover:shadow-soft"
+              className="no-underline rounded-full px-3 py-2 text-sm font-bold text-slate-700 transition hover:-translate-y-0.5 hover:bg-white/70 hover:text-slate-900 hover:shadow-soft"
               to="/settings"
               data-tour="nav-settings"
             >
@@ -89,6 +92,7 @@ function Layout() {
           </nav>
         </div>
       </header>
+
       <Outlet />
     </div>
   );
@@ -105,6 +109,7 @@ function App() {
         <Route path="/share-dashboard" element={<ShareDashboard />} />
         <Route path="/personal-finance" element={<PersonalFinanceHome />} />
         <Route path="/personal-finance-entry" element={<PersonalFinancePage />} />
+        <Route path="/personal-finance-transfer" element={<PersonalFinanceTransferPage />} />
         <Route path="/personal-finance-dashboard" element={<PersonalFinanceDashboard />} />
         <Route path="/summary" element={<Summary />} />
         <Route path="/settings" element={<Settings />} />

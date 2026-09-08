@@ -1,6 +1,5 @@
 {
-  "_comment": "Legacy compatibility shim. New clients (v1.3.0+) use desktop-update-policy.json. Old clients (v1.1.0-v1.2.0) fetch this file and compare using plain semver.",
-  "latestVersion": "1.3.0",
+  "latestVersion": "desktop-v1.3.0",
   "minimumSupportedVersion": "1.1.0",
   "releaseUrl": "https://github.com/sachinadk2011/FinLedge-App/releases/tag/desktop-v1.3.0",
   "availableMessage": "FinLedge Desktop 1.3.0 is available. Install it from the release page to get the latest features.",
