@@ -31,3 +31,23 @@ export function getPersonalFinanceData(flowType) {
 export function deletePersonalFinanceRecord(recordId, flowType) {
   return deleteJson(`/personal-finance/delete/${flowType}/${recordId}`);
 }
+
+export function createTransfer(form) {
+  const payload = {
+    direction: form.direction,
+    amount: Math.abs(Number(form.amount)),
+    description: form.description?.trim() || undefined,
+  };
+  if (form.dates) payload.dates = form.dates;
+  return postJson("/personal-finance/transfer", payload);
+}
+
+export function updateTransfer(transferId, form) {
+  const payload = {
+    direction: form.direction,
+    amount: Math.abs(Number(form.amount)),
+    description: form.description?.trim() || undefined,
+  };
+  if (form.dates) payload.dates = form.dates;
+  return putJson(`/personal-finance/transfer/${transferId}`, payload);
+}

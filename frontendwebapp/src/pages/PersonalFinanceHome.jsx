@@ -47,7 +47,7 @@ function PersonalFinanceHome() {
           </p>
         </header>
 
-        <div className="grid w-full gap-5 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid w-full grid-cols-2 gap-4 lg:grid-cols-4 lg:gap-5 xl:gap-6">
           <Link
             to="/personal-finance-entry?flow=bank"
             className="group relative overflow-hidden rounded-3xl bg-gradient-to-br from-emerald-700 to-teal-500 p-[1px] shadow-soft transition duration-200 hover:-translate-y-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70 no-underline"
@@ -92,6 +92,23 @@ function PersonalFinanceHome() {
               </div>
             </div>
           </Link>
+
+          <Link
+            to="/personal-finance-transfer"
+            className="group relative overflow-hidden rounded-3xl bg-gradient-to-br from-violet-700 to-fuchsia-500 p-[1px] shadow-soft transition duration-200 hover:-translate-y-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400/70 no-underline"
+          >
+            <div className="flex h-full flex-col items-center rounded-3xl bg-white/80 p-6 text-center sm:p-7 md:supports-[backdrop-filter]:bg-white/65 md:supports-[backdrop-filter]:backdrop-blur">
+              <span className="grid h-12 w-12 place-items-center rounded-2xl bg-violet-100 text-violet-800 transition group-hover:scale-[1.06]">
+                <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" fill="currentColor">
+                  <path d="M7.5 3.75a.75.75 0 0 1 .75.75v1.19l1.72-1.72a.75.75 0 1 1 1.06 1.06L8.81 7.25H10a.75.75 0 0 1 0 1.5H7A.75.75 0 0 1 6.25 8V5a.75.75 0 0 1 .75-.75h.5ZM14 15.75a.75.75 0 0 1 .75-.75h3a.75.75 0 0 1 .75.75v3a.75.75 0 0 1-1.5 0v-1.19l-1.72 1.72a.75.75 0 1 1-1.06-1.06l2.22-2.22H15a.75.75 0 0 1-.75-.75ZM3 12a9 9 0 0 1 16.83-4.5h-1.6a.75.75 0 0 0 0 1.5h3a.75.75 0 0 0 .75-.75v-3a.75.75 0 0 0-1.5 0v1.41A10.5 10.5 0 1 0 22.5 12a.75.75 0 0 0-1.5 0A9 9 0 0 1 3 12Z"/>
+                </svg>
+              </span>
+              <div className="mt-5 text-xl font-extrabold tracking-tight text-slate-900">Transfer</div>
+              <div className="mt-2 text-sm font-semibold leading-relaxed text-slate-600">
+                Move money between Bank &amp; Cash
+              </div>
+            </div>
+          </Link>
         </div>
       </section>
     </main>
@@ -99,3 +116,4 @@ function PersonalFinanceHome() {
 }
 
 export default PersonalFinanceHome;
+

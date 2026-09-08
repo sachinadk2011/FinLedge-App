@@ -174,7 +174,7 @@ function PersonalFinancePage() {
         .filter((record) => record.source === "manual")
         .filter((record) => requestedFlow === "combined" || record.flow_type === form.flow_type)
         .reverse()
-        .slice(0, 20)
+        .slice(0, 12)
         .map((record) => ({
           id: record.id,
           display_id: record.display_id || `${record.flow_type === "cash" ? "C" : "B"}-${record.id}`,
@@ -231,8 +231,44 @@ function PersonalFinancePage() {
         submitting={submitting}
         submitLabel={editId ? "Update Personal Expenses Entry" : "Add Personal Expenses Entry"}
       />
+
+      {/* Transfer banner */}
+      <Link
+        to={`/personal-finance-transfer?from=${form.flow_type}`}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          padding: "0.9rem 1.25rem",
+          borderRadius: "12px",
+          background: "linear-gradient(135deg, #f0f9ff 0%, #faf5ff 100%)",
+          border: "1px solid #c7d2fe",
+          textDecoration: "none",
+          color: "#312e81",
+          marginBottom: "0.25rem",
+          transition: "box-shadow 0.15s, transform 0.15s",
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.boxShadow = "0 4px 18px rgba(99,102,241,0.13)";
+          e.currentTarget.style.transform = "translateY(-1px)";
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.boxShadow = "";
+          e.currentTarget.style.transform = "";
+        }}
+      >
+        <span style={{ display: "flex", alignItems: "center", gap: "0.6rem", fontWeight: 600, fontSize: "0.95rem" }}>
+          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="currentColor">
+            <path d="M7.5 3.75a.75.75 0 0 1 .75.75v1.19l1.72-1.72a.75.75 0 1 1 1.06 1.06L8.81 7.25H10a.75.75 0 0 1 0 1.5H7A.75.75 0 0 1 6.25 8V5a.75.75 0 0 1 .75-.75h.5ZM14 15.75a.75.75 0 0 1 .75-.75h3a.75.75 0 0 1 .75.75v3a.75.75 0 0 1-1.5 0v-1.19l-1.72 1.72a.75.75 0 1 1-1.06-1.06l2.22-2.22H15a.75.75 0 0 1-.75-.75ZM3 12a9 9 0 0 1 16.83-4.5h-1.6a.75.75 0 0 0 0 1.5h3a.75.75 0 0 0 .75-.75v-3a.75.75 0 0 0-1.5 0v1.41A10.5 10.5 0 1 0 22.5 12a.75.75 0 0 0-1.5 0A9 9 0 0 1 3 12Z"/>
+          </svg>
+          Transfer money between Bank &amp; Cash
+        </span>
+        <span style={{ fontWeight: 700, fontSize: "0.88rem", opacity: 0.85 }}>Transfer →</span>
+      </Link>
+
       {success ? <p className="success">{success}</p> : null}
       {error ? <pre className="error-pre">{error}</pre> : null}
+
 
       <section className="card">
         <h3>Recent transactions</h3>

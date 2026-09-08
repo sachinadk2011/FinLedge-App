@@ -49,7 +49,7 @@ function Home() {
     <main className="min-h-[calc(100vh-84px)] px-4 py-14 sm:px-6">
       <section className="mx-auto flex w-full max-w-6xl flex-col items-center justify-center gap-10">
         <header className="w-full max-w-3xl text-center">
-          <p className="text-xs font-extrabold uppercase tracking-[0.22em] text-slate-600">Financial Tracker</p>
+          <p className="text-xs font-extrabold uppercase tracking-[0.22em] text-slate-600">FinLedge</p>
           <h1 className="mt-4 text-4xl font-extrabold tracking-tight text-slate-900 md:text-6xl">
             Keep your money story tidy
           </h1>
@@ -58,17 +58,17 @@ function Home() {
           </p>
         </header>
 
-        <div className="grid w-full gap-5 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid w-full grid-cols-2 gap-4 lg:grid-cols-4 lg:gap-5 xl:gap-6">
           <Link
             to="/bank"
             className="group relative overflow-hidden rounded-3xl bg-gradient-to-br from-emerald-700 to-teal-500 p-[1px] shadow-soft transition duration-200 hover:-translate-y-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70 no-underline"
           >
-            <div className="flex h-full flex-col items-center rounded-3xl bg-white/80 p-6 text-center sm:p-7 md:supports-[backdrop-filter]:bg-white/65 md:supports-[backdrop-filter]:backdrop-blur">
-              <span className="grid h-12 w-12 place-items-center rounded-2xl bg-emerald-100 text-emerald-800 transition group-hover:scale-[1.06]">
+            <div className="flex h-full flex-col items-center rounded-3xl bg-white/80 p-5 text-center sm:p-6 xl:p-8 md:supports-[backdrop-filter]:bg-white/65 md:supports-[backdrop-filter]:backdrop-blur">
+              <span className="grid h-12 w-12 place-items-center rounded-2xl bg-emerald-100 text-emerald-800 transition group-hover:scale-[1.06] xl:h-14 xl:w-14">
                 <IconBank />
               </span>
-              <div className="mt-5 text-xl font-extrabold tracking-tight text-slate-900">Bank Services</div>
-              <div className="mt-2 text-sm font-semibold leading-relaxed text-slate-600">
+              <div className="mt-4 text-base font-extrabold tracking-tight text-slate-900 xl:mt-5 xl:text-xl">Bank Services</div>
+              <div className="mt-1.5 text-xs font-semibold leading-relaxed text-slate-600 xl:text-sm">
                 Track interest earned, charges, and renewals
               </div>
             </div>
@@ -78,12 +78,12 @@ function Home() {
             to="/share"
             className="group relative overflow-hidden rounded-3xl bg-gradient-to-br from-indigo-700 to-sky-500 p-[1px] shadow-soft transition duration-200 hover:-translate-y-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 no-underline"
           >
-            <div className="flex h-full flex-col items-center rounded-3xl bg-white/80 p-6 text-center sm:p-7 md:supports-[backdrop-filter]:bg-white/65 md:supports-[backdrop-filter]:backdrop-blur">
-              <span className="grid h-12 w-12 place-items-center rounded-2xl bg-sky-100 text-sky-800 transition group-hover:scale-[1.06]">
+            <div className="flex h-full flex-col items-center rounded-3xl bg-white/80 p-5 text-center sm:p-6 xl:p-8 md:supports-[backdrop-filter]:bg-white/65 md:supports-[backdrop-filter]:backdrop-blur">
+              <span className="grid h-12 w-12 place-items-center rounded-2xl bg-sky-100 text-sky-800 transition group-hover:scale-[1.06] xl:h-14 xl:w-14">
                 <IconShare />
               </span>
-              <div className="mt-5 text-xl font-extrabold tracking-tight text-slate-900">Share Portfolio</div>
-              <div className="mt-2 text-sm font-semibold leading-relaxed text-slate-600">Track IPO, SIP, trades, and dividends</div>
+              <div className="mt-4 text-base font-extrabold tracking-tight text-slate-900 xl:mt-5 xl:text-xl">Share Portfolio</div>
+              <div className="mt-1.5 text-xs font-semibold leading-relaxed text-slate-600 xl:text-sm">Track IPO, SIP, trades, and dividends</div>
             </div>
           </Link>
 
@@ -91,12 +91,12 @@ function Home() {
             to="/personal-finance"
             className="group relative overflow-hidden rounded-3xl bg-gradient-to-br from-rose-700 to-amber-500 p-[1px] shadow-soft transition duration-200 hover:-translate-y-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/70 no-underline"
           >
-            <div className="flex h-full flex-col items-center rounded-3xl bg-white/80 p-6 text-center sm:p-7 md:supports-[backdrop-filter]:bg-white/65 md:supports-[backdrop-filter]:backdrop-blur">
-              <span className="grid h-12 w-12 place-items-center rounded-2xl bg-amber-100 text-amber-800 transition group-hover:scale-[1.06]">
+            <div className="flex h-full flex-col items-center rounded-3xl bg-white/80 p-5 text-center sm:p-6 xl:p-8 md:supports-[backdrop-filter]:bg-white/65 md:supports-[backdrop-filter]:backdrop-blur">
+              <span className="grid h-12 w-12 place-items-center rounded-2xl bg-amber-100 text-amber-800 transition group-hover:scale-[1.06] xl:h-14 xl:w-14">
                 <IconPersonalFinance />
               </span>
-              <div className="mt-5 text-xl font-extrabold tracking-tight text-slate-900">Personal Expenses</div>
-              <div className="mt-2 text-sm font-semibold leading-relaxed text-slate-600">
+              <div className="mt-4 text-base font-extrabold tracking-tight text-slate-900 xl:mt-5 xl:text-xl">Personal Expenses</div>
+              <div className="mt-1.5 text-xs font-semibold leading-relaxed text-slate-600 xl:text-sm">
                 Track everyday bank and cash flow
               </div>
             </div>
@@ -106,15 +106,16 @@ function Home() {
             to="/summary"
             className="group relative overflow-hidden rounded-3xl bg-gradient-to-br from-purple-700 to-teal-500 p-[1px] shadow-soft transition duration-200 hover:-translate-y-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400/70 no-underline"
           >
-            <div className="flex h-full flex-col items-center rounded-3xl bg-white/80 p-6 text-center sm:p-7 md:supports-[backdrop-filter]:bg-white/65 md:supports-[backdrop-filter]:backdrop-blur">
-              <span className="grid h-12 w-12 place-items-center rounded-2xl bg-slate-200/70 text-slate-800 transition group-hover:scale-[1.06]">
+            <div className="flex h-full flex-col items-center rounded-3xl bg-white/80 p-5 text-center sm:p-6 xl:p-8 md:supports-[backdrop-filter]:bg-white/65 md:supports-[backdrop-filter]:backdrop-blur">
+              <span className="grid h-12 w-12 place-items-center rounded-2xl bg-slate-200/70 text-slate-800 transition group-hover:scale-[1.06] xl:h-14 xl:w-14">
                 <IconSummary />
               </span>
-              <div className="mt-5 text-xl font-extrabold tracking-tight text-slate-900">Financial Summary</div>
-              <div className="mt-2 text-sm font-semibold leading-relaxed text-slate-600">View your overall financial position</div>
+              <div className="mt-4 text-base font-extrabold tracking-tight text-slate-900 xl:mt-5 xl:text-xl">Financial Summary</div>
+              <div className="mt-1.5 text-xs font-semibold leading-relaxed text-slate-600 xl:text-sm">View your overall financial position</div>
             </div>
           </Link>
         </div>
+
       </section>
     </main>
   );

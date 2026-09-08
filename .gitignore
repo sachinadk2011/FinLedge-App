@@ -18,9 +18,14 @@ desktop/build/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+.npm-cache/
 
 # OS / editor
 .DS_Store
 Thumbs.db
 
 tests/
+.npm-cache/
+android/
+dist/
+finledge-mobile-design-v3.html
