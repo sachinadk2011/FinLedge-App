@@ -648,13 +648,14 @@ function stripHtml(text) {
     .replace(/<br\s*\/?>/gi, "\n")
     .replace(/<\/(p|div|li|h[1-6])>/gi, "\n")
     .replace(/<li[^>]*>/gi, "- ")
-    .replace(/<[^>]+>/g, "")
+    .replace(/[<>]/g, "")
     .replace(/&nbsp;/gi, " ")
     .replace(/&lt;/gi, "<")
     .replace(/&gt;/gi, ">")
     .replace(/&quot;/gi, '"')
     .replace(/&#39;/gi, "'")
     .replace(/&amp;/gi, "&")
+    .replace(/[<>]/g, "")
     .trim();
 }
 
