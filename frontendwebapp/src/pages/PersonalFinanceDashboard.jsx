@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 
-import { getPersonalFinanceData } from "../api/personalFinanceApi";
+import { deletePersonalFinanceRecord, getPersonalFinanceData } from "../api/personalFinanceApi";
 import BarChart from "../components/BarChart";
+import ConfirmDialog from "../components/ConfirmDialog";
 import InteractiveTimelineChart from "../components/InteractiveTimelineChart";
 import StatGrid from "../components/StatGrid";
 import TransactionsTable from "../components/TransactionsTable";
@@ -57,26 +58,32 @@ function buildMonthlyFlowOverview(records, flowType) {
 function getSourceLabel(source) {
   if (source === "share-sync") return "Share Portfolio";
   if (source === "bank-services-sync") return "Bank Services";
+  if (source === "transfer") return "Transfer";
   return "Manual";
 }
 
-function FlowDashboard({ title, netLabel, summary, records, flowType }) {
+function getDirectionLabel(record) {
+  if (record.source === "transfer") return "Transfer";
+  return record.direction === "income" ? "Income" : "Expense";
+}
+
+function FlowDashboard({ title, netLabel, summary, records, flowType, navigate, deletingId, setPendingDeleteRow }) {
   const monthlyOverview = useMemo(() => buildMonthlyFlowOverview(records, flowType), [records, flowType]);
   const flowRows = useMemo(
     () =>
       records
         .filter((record) => record.flow_type === flowType)
         .reverse()
-        .slice(0, 12)
         .map((record) => ({
           id: record.id,
           display_id: record.display_id || `${flowType === "cash" ? "C" : "B"}-${record.id}`,
           date: record.date,
-          direction: record.direction === "income" ? "Income" : "Expense",
+          direction: getDirectionLabel(record),
           category: record.category,
           description: record.description || "-",
           amount: formatter.format(record.amount),
           source: getSourceLabel(record.source),
+          raw: record,
         })),
     [records, flowType],
   );
@@ -88,15 +95,21 @@ function FlowDashboard({ title, netLabel, summary, records, flowType }) {
         { label: "Investment income", value: formatter.format(summary.investment_income || 0) },
         { label: "Interest earned", value: formatter.format(summary.interest_earned || 0) },
         { label: "Service cost", value: formatter.format(summary.service_cost || 0) },
+        ...(summary.transfer_out > 0 ? [{ label: "Transferred to Cash", value: formatter.format(summary.transfer_out || 0) }] : []),
+        ...(summary.transfer_in > 0 ? [{ label: "Received from Cash", value: formatter.format(summary.transfer_in || 0) }] : []),
         { label: "Total income", value: formatter.format(summary.total_income || 0) },
         { label: "Total expense", value: formatter.format(summary.total_expenses || 0) },
         { label: "Net profit/loss", value: formatter.format(summary.net || 0) },
       ]
     : [
-        { label: "Income", value: formatter.format(summary.total_income || 0) },
+        { label: "Income", value: formatter.format(summary.income || 0) },
         { label: "Expense", value: formatter.format(summary.total_expenses || 0) },
+        ...(summary.transfer_out > 0 ? [{ label: "Transferred to Bank", value: formatter.format(summary.transfer_out || 0) }] : []),
+        ...(summary.transfer_in > 0 ? [{ label: "Received from Bank", value: formatter.format(summary.transfer_in || 0) }] : []),
+        { label: "Total income", value: formatter.format(summary.total_income || 0) },
         { label: "Net profit/loss", value: formatter.format(summary.net || 0) },
       ];
+
   const columns = [
     { key: "date", label: "Date" },
     { key: "direction", label: "Type" },
@@ -135,8 +148,38 @@ function FlowDashboard({ title, netLabel, summary, records, flowType }) {
         />
       </section>
       <section className="card">
-        <h3>Recent {title} transactions</h3>
-        <TransactionsTable columns={columns} rows={flowRows} />
+        <h3>All {title} transactions</h3>
+        <TransactionsTable
+          columns={columns}
+          rows={flowRows}
+          actions={(row) =>
+            row.raw?.source !== "manual" ? (
+              <span className="muted-text">Read-only</span>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  className="ghost"
+                  onClick={() =>
+                    navigate(
+                      `/personal-finance-entry?edit=${row.id}&recordFlow=${row.raw.flow_type}`
+                    )
+                  }
+                >
+                  Edit
+                </button>
+                <button
+                  type="button"
+                  className="ghost danger"
+                  onClick={() => setPendingDeleteRow(row)}
+                  disabled={deletingId === row.id}
+                >
+                  Delete
+                </button>
+              </>
+            )
+          }
+        />
       </section>
     </>
   );
@@ -152,17 +195,37 @@ function PersonalFinanceDashboard() {
   const [activeView, setActiveView] = useState(initialView);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
+  const [deletingId, setDeletingId] = useState(null);
+  const [pendingDeleteRow, setPendingDeleteRow] = useState(null);
 
   useEffect(() => {
     setActiveView(initialView);
   }, [initialView]);
 
-  useEffect(() => {
+  function loadData(background = false) {
+    if (!background) setLoading(true);
     getPersonalFinanceData()
       .then((response) => setData(response))
       .catch((err) => setError(err.message || "Unable to load Personal Expenses data."))
-      .finally(() => setLoading(false));
-  }, []);
+      .finally(() => { if (!background) setLoading(false); });
+  }
+
+  useEffect(() => { loadData(); }, []);
+
+  async function handleDelete(row) {
+    if (!row) return;
+    setDeletingId(row.id);
+    setError("");
+    try {
+      await deletePersonalFinanceRecord(row.id, row.raw?.flow_type || "bank");
+      setPendingDeleteRow(null);
+      loadData(true);
+    } catch (err) {
+      setError(err.message || "Unable to delete record.");
+    } finally {
+      setDeletingId(null);
+    }
+  }
 
   const records = data?.records || [];
   const summary = data?.summary || {
@@ -183,20 +246,20 @@ function PersonalFinanceDashboard() {
 
   const recentRows = [...records]
     .reverse()
-    .slice(0, 12)
     .map((record) => ({
       id: record.id,
       display_id: record.display_id || `${record.flow_type === "cash" ? "C" : "B"}-${record.id}`,
       date: record.date,
       flow: record.flow_type === "cash" ? "Cash Flow" : "Bank Flow",
-      direction: record.direction === "income" ? "Income" : "Expense",
+      direction: getDirectionLabel(record),
       category: record.category,
       amount: formatter.format(record.amount),
       description: record.description || "-",
       source: getSourceLabel(record.source),
+      raw: record,
     }));
 
-  const columns = [
+  const combinedColumns = [
     { key: "date", label: "Date" },
     { key: "flow", label: "Flow" },
     { key: "direction", label: "Type" },
@@ -284,23 +347,85 @@ function PersonalFinanceDashboard() {
                 ]} />
               </div>
               <section className="card">
-                <h3>Recent Personal Expenses transactions</h3>
-                <TransactionsTable columns={columns} rows={recentRows} />
+                <h3>All Personal Expenses transactions</h3>
+                <TransactionsTable
+                  columns={combinedColumns}
+                  rows={recentRows}
+                  actions={(row) =>
+                    row.raw?.source !== "manual" ? (
+                      <span className="muted-text">Read-only</span>
+                    ) : (
+                      <>
+                        <button
+                          type="button"
+                          className="ghost"
+                          onClick={() =>
+                            navigate(
+                              `/personal-finance-entry?edit=${row.id}&recordFlow=${row.raw.flow_type}`
+                            )
+                          }
+                        >
+                          Edit
+                        </button>
+                        <button
+                          type="button"
+                          className="ghost danger"
+                          onClick={() => setPendingDeleteRow(row)}
+                          disabled={deletingId === row.id}
+                        >
+                          Delete
+                        </button>
+                      </>
+                    )
+                  }
+                />
               </section>
             </>
           ) : null}
 
           {activeView === "bank" ? (
-            <FlowDashboard title="Bank Flow" netLabel="Bank Net" summary={summary.bank} records={records} flowType="bank" />
+            <FlowDashboard
+              title="Bank Flow"
+              netLabel="Bank Net"
+              summary={summary.bank}
+              records={records}
+              flowType="bank"
+              navigate={navigate}
+              deletingId={deletingId}
+              setPendingDeleteRow={setPendingDeleteRow}
+            />
           ) : null}
 
           {activeView === "cash" ? (
-            <FlowDashboard title="Cash Flow" netLabel="Cash Net" summary={summary.cash} records={records} flowType="cash" />
+            <FlowDashboard
+              title="Cash Flow"
+              netLabel="Cash Net"
+              summary={summary.cash}
+              records={records}
+              flowType="cash"
+              navigate={navigate}
+              deletingId={deletingId}
+              setPendingDeleteRow={setPendingDeleteRow}
+            />
           ) : null}
         </>
       ) : null}
+
+      <ConfirmDialog
+        open={Boolean(pendingDeleteRow)}
+        title="Delete personal finance entry?"
+        message={
+          pendingDeleteRow
+            ? `This will remove the ${pendingDeleteRow.category} entry from ${pendingDeleteRow.date}.`
+            : ""
+        }
+        confirming={deletingId === pendingDeleteRow?.id}
+        onCancel={() => setPendingDeleteRow(null)}
+        onConfirm={() => handleDelete(pendingDeleteRow)}
+      />
     </main>
   );
 }
 
 export default PersonalFinanceDashboard;
+

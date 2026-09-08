@@ -1,9 +1,9 @@
-name: Windows Release
+name: Windows Desktop Release
 
 on:
   push:
     tags:
-      - "v*.*.*"
+      - "desktop-v*.*.*"
 
 permissions:
   actions: read
@@ -70,4 +70,4 @@ jobs:
 
           # Create a fresh release and upload all assets
           Write-Host "Creating new release..."
-          gh release create "${{ github.ref_name }}" $exePath $ymlPath $blockmapPath --title "FinLedge ${{ github.ref_name }}" --generate-notes
+          gh release create "${{ github.ref_name }}" $exePath $ymlPath $blockmapPath --title "FinLedge Desktop ${{ github.ref_name }}" --generate-notes

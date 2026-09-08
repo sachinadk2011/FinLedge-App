@@ -1,4 +1,5 @@
 import sys
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -13,14 +14,16 @@ from backend.routes.share import router as share_router
 from backend.routes.summary import router as summary_router
 from backend.services.data_migration_service import run_pending_data_migrations
 
-app = FastAPI(title="Financial Tracker API")
 
-
-@app.on_event("startup")
-def apply_pending_data_migrations() -> None:
+@asynccontextmanager
+async def lifespan(app: FastAPI):
     """Upgrade legacy local data before API routes can read it."""
     result = run_pending_data_migrations()
     print(f"[migration] {result.get('status', 'unknown')}: {result.get('source_file', '')}")
+    yield
+
+
+app = FastAPI(title="Financial Tracker API", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,

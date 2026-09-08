@@ -14,7 +14,7 @@ const LOG_FILE = path.join(os.tmpdir(), "finledge-electron.log");
 const WINDOW_TITLE = "FinLedge";
 const GITHUB_RELEASES_URL = "https://github.com/sachinadk2011/FinLedge-App/releases";
 const DEFAULT_UPDATE_POLICY_URL =
-  "https://raw.githubusercontent.com/sachinadk2011/FinLedge-App/main/update-policy.json";
+  "https://raw.githubusercontent.com/sachinadk2011/FinLedge-App/main/desktop-update-policy.json";
 const IS_ELECTRON_DEV = String(process.env.ELECTRON_DEV || "") === "1";
 const PROJECT_ROOT = path.resolve(__dirname, "..");
 const ICON_PATH = path.join(__dirname, "assets", "finledge_icon.png");
@@ -528,37 +528,45 @@ function getInitialWindowBounds() {
 }
 
 function getLoadingUrl() {
+  // Try to embed the actual icon as a base64 PNG for the splash
+  let iconSrc = "";
+  try {
+    const iconBytes = fs.readFileSync(ICON_PATH);
+    iconSrc = `data:image/png;base64,${iconBytes.toString("base64")}`;
+  } catch {
+    // icon not found — use the text fallback logo
+  }
+
+  const logoHtml = iconSrc
+    ? `<img src="${iconSrc}" alt="FinLedge" style="width:100px;height:100px;border-radius:22px;object-fit:cover;box-shadow:0 8px 32px rgba(15,118,110,.25);" />`
+    : `<div style="width:100px;height:100px;border-radius:22px;background:linear-gradient(135deg,#0f766e,#2dd4bf);display:grid;place-items:center;color:#fff;font-size:42px;font-weight:900;letter-spacing:-.03em;box-shadow:0 8px 32px rgba(15,118,110,.25);">F</div>`;
+
   const html = `<!doctype html>
 <html>
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Finledge</title>
+  <title>FinLedge</title>
   <style>
-    html,body{height:100%;margin:0;font-family:Segoe UI,Arial,sans-serif;}
-    body{display:grid;place-items:center;background:linear-gradient(180deg,#f8fafc,#eef2f7);color:#0f172a;}
-    .card{background:rgba(255,255,255,.8);border:1px solid rgba(226,232,240,.9);border-radius:16px;padding:18px 20px;box-shadow:0 18px 45px rgba(15,23,42,.10);width:min(520px,92vw);}
-    .brand{display:flex;align-items:center;gap:12px;margin-bottom:10px;}
-    .logo{width:44px;height:44px;border-radius:14px;background:linear-gradient(135deg,#0f766e,#2dd4bf);display:grid;place-items:center;color:#fff;font-weight:900;}
-    .title{font-size:18px;font-weight:800;letter-spacing:-.01em;}
-    .sub{font-size:13px;color:#475569;line-height:1.45;}
-    .bar{height:10px;border-radius:999px;background:#e2e8f0;overflow:hidden;margin-top:14px;}
-    .fill{height:100%;width:35%;background:linear-gradient(90deg,#0f766e,#3b82f6);animation:move 1.2s ease-in-out infinite alternate;border-radius:999px;}
-    @keyframes move{from{transform:translateX(-15%);}to{transform:translateX(140%);}}
+    *{box-sizing:border-box;margin:0;padding:0;}
+    html,body{height:100%;width:100%;overflow:hidden;background:#f8fafc;}
+    body{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:28px;font-family:Segoe UI,Arial,sans-serif;}
+    .logo-wrap{animation:pulse 1.6s ease-in-out infinite;}
+    @keyframes pulse{
+      0%  {opacity:1;   transform:scale(1);}
+      50% {opacity:0.35;transform:scale(0.92);}
+      100%{opacity:1;   transform:scale(1);}
+    }
+    .app-name{font-size:22px;font-weight:800;letter-spacing:-.02em;color:#0f172a;opacity:.85;}
+    .hint{font-size:13px;color:#64748b;font-weight:500;}
   </style>
 </head>
 <body>
-  <div class="card">
-    <div class="brand">
-      <div class="logo">F</div>
-      <div>
-        <div class="title">Finledge</div>
-        <div class="sub">Starting FinLedge...</div>
-      </div>
-    </div>
-    <div class="sub">Launching the backend engine and loading the UI. This can take a few seconds on the first run.</div>
-    <div class="bar"><div class="fill"></div></div>
+  <div class="logo-wrap">${logoHtml}</div>
+  <div>
+    <div class="app-name">FinLedge</div>
   </div>
+  <div class="hint">Starting up&hellip;</div>
 </body>
 </html>`;
 
@@ -625,9 +633,11 @@ function getUpdateVersion(info) {
 
 function getReleaseUrl(info) {
   const version = getUpdateVersion(info);
-  const normalizedVersion = version.replace(/^v/i, "");
-  if (normalizedVersion) {
-    return `${GITHUB_RELEASES_URL}/tag/v${normalizedVersion}`;
+  // version from policy may be "desktop-v1.3.1" or legacy "1.3.1" / "v1.3.1"
+  // Strip any prefix to get the bare semver, then reconstruct the desktop-v tag.
+  const bare = version.replace(/^desktop-v/i, "").replace(/^v/i, "");
+  if (bare) {
+    return `${GITHUB_RELEASES_URL}/tag/desktop-v${bare}`;
   }
 
   return GITHUB_RELEASES_URL;
@@ -671,7 +681,8 @@ function normalizeReleaseNotes(notes) {
 
 function parseVersionParts(version) {
   return String(version || "")
-    .replace(/^v/i, "")
+    .replace(/^desktop-v/i, "")  // strip new "desktop-v" prefix first
+    .replace(/^v/i, "")          // then strip legacy "v" prefix
     .split(/[.-]/)
     .slice(0, 3)
     .map((part) => Number.parseInt(part, 10) || 0);
