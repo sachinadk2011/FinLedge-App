@@ -251,8 +251,7 @@ async function main() {
   }
 }
 
-main().catch((err) => {
-  const errorType = err && typeof err === "object" && "name" in err ? String(err.name || "Error") : "Error";
-  console.error(`FinLedge command failed (${errorType}).`);
+main().catch(() => {
+  console.error("FinLedge command failed.");
   process.exit(1);
 });
