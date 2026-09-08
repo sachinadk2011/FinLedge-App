@@ -252,10 +252,7 @@ async function main() {
 }
 
 main().catch((err) => {
-  const message = err instanceof Error ? err.message : String(err);
-  console.error(`FinLedge command failed: ${message}`);
-  if (err instanceof Error && err.stack) {
-    console.error(err.stack);
-  }
+  const errorType = err && typeof err === "object" && "name" in err ? String(err.name || "Error") : "Error";
+  console.error(`FinLedge command failed (${errorType}).`);
   process.exit(1);
 });
