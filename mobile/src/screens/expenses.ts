@@ -1,38 +1,39 @@
 import { summarizePersonalFinanceRecords } from "../../services/personal-finance-sync-row-computation.js";
-import { toNumber } from "../../services/bank-category-totals.js";
 import { periodGroupedBarsChart } from "../components/charts.js";
-import { formCard, sectionTitle } from "../components/forms.js";
+import { formCard } from "../components/forms.js";
 import { historyRows } from "../components/history.js";
 import { searchInput } from "../components/search.js";
-import { statGrid } from "../components/stats.js";
+import { statGrid, type StatTone } from "../components/stats.js";
 import { bottomNav } from "../components/shell.js";
 import { appState } from "../app-state.js";
-import { transferRows } from "../data/demo-data.js";
-import { currentPersonalFinanceRows, transferAdjustments } from "../data/mobile-data.js";
+import { personalFinanceRowsForView, personalFinanceSummaryRows } from "../data/mobile-data.js";
 import { money } from "../utils/format.js";
 import { getPeriodBuckets, matchesPeriod } from "../utils/periods.js";
 import type { ChartBucket } from "../types.js";
 
 import type { PersonalFinanceRecord } from "../../services/personal-finance-sync-row-computation.js";
 
+type ExpensesHistoryFilter = typeof appState.expensesHistoryFilter;
+type ExpenseStat = [string, number, StatTone];
+
 export function expensesAddScreen(): string {
+  const draft = appState.expensesAddDraft;
   return `
     <p class="eyebrow">Personal Expenses</p>
     <h1 class="pagehead">Add expense entry</h1>
-    <p class="sub">Log day-to-day bank-flow or cash-flow income and expenses.</p>
 
     <div class="transfer-chip" data-nav="transfer" role="button" style="cursor:pointer;">
       <div class="tc-icon">⇄</div>
-      <div class="tc-body"><b>Record a transfer instead?</b><span>Cash ⇄ Bank — kept separate from income/expense</span></div>
+      <div class="tc-body"><b>Record a transfer</b><span>Cash to Bank or Bank to Cash</span></div>
       <span style="color:var(--text-3);">›</span>
     </div>
 
     ${formCard(
       [
-        ["Date", "date", "", "date"],
-        ["Flow", "select", "Bank Flow", "flow"],
-        ["Type", "select", "Expense", "type"],
-        ["Category", "select", "Food", "category"],
+        ["Date", "date", draft.date ?? "", "date"],
+        ["Flow", "select", draft.flow ?? "Bank Flow", "flow"],
+        ["Type", "select", draft.type ?? "Expense", "type"],
+        ["Category", "select", draft.category ?? "Food", "category"],
         ["Amount", "number", "", "amount"],
         ["Description (optional)", "text", "", "description"],
       ],
@@ -44,28 +45,15 @@ export function expensesAddScreen(): string {
 }
 
 export function expensesDashboardScreen(): string {
-  const rows = currentPersonalFinanceRows();
-  const summary = summarizePersonalFinanceRecords(rows);
   const tab = appState.expensesDashTab;
-
-  const tabRows = tab === "bank"
-    ? rows.filter((r) => r.flow_type === "bank")
-    : tab === "cash"
-      ? rows.filter((r) => r.flow_type === "cash")
-      : rows;
-
-  // A recorded transfer moves money between the Cash and Bank flows: the flow
-  // balances below include the net effect so the income section reflects it.
-  const transferShift = transferAdjustments(transferRows);
-  const bankBalance = summary.bank.net + transferShift.bank;
-  const cashBalance = summary.cash.net + transferShift.cash;
-
+  const rows = personalFinanceRowsForView(tab);
+  const summary = summarizePersonalFinanceRecords(personalFinanceSummaryRows());
+  const tabRows = rows;
   const trendBuckets = buildExpensesTrendBuckets(tabRows);
 
   return `
     <p class="eyebrow">Personal Expenses</p>
     <h1 class="pagehead">Expenses dashboard</h1>
-    <p class="sub">Combines manual Personal Expenses with live Bank Flow (Bank Services + Share activity).</p>
 
     <div class="segmented alt" style="margin-bottom:10px;">
       <button class="${tab === "combined" ? "active" : ""}" data-expenses-tab="combined">Combined</button>
@@ -78,83 +66,129 @@ export function expensesDashboardScreen(): string {
         ? `${statGrid([
             ["Income", summary.combined.overall_income, "pos"],
             ["Expenses", summary.combined.overall_expenses, "neg"],
-            ["Bank balance", bankBalance, bankBalance >= 0 ? "pos" : "neg"],
-            ["Cash balance", cashBalance, cashBalance >= 0 ? "pos" : "neg"],
+            ["Bank net", summary.bank.net, summary.bank.net >= 0 ? "pos" : "neg"],
+            ["Cash net", summary.cash.net, summary.cash.net >= 0 ? "pos" : "neg"],
           ])}
           <div class="stat-box stat-box-full" style="margin-top:10px;text-align:center;">
             <div class="label">Overall net / savings</div>
             <div class="value money ${summary.combined.overall_net >= 0 ? "pos" : "neg"}" style="font-size:20px;">${money(summary.combined.overall_net, { sign: true })}</div>
-            <div class="label sub" style="margin-top:4px;">Balances include net transfers (cash ⇄ bank)</div>
           </div>`
         : tab === "bank"
           ? statGrid([
-              ["Bank income", summary.bank.income, "pos"],
-              ["Bank expense", summary.bank.expenses, "neg"],
-              ["Investment income", summary.bank.investment_income, "pos"],
-              ["Investment expense", summary.bank.investment_expense, "neg"],
-              ["Interest earned", summary.bank.interest_earned, "pos"],
-              ["Service cost", summary.bank.service_cost, "neg"],
-              ["Total income", summary.bank.total_income, "pos"],
-              ["Total expense", summary.bank.total_expenses, "neg"],
-              ["Bank balance", bankBalance, bankBalance >= 0 ? "pos" : "neg"],
+              ["Income", summary.bank.income, summary.bank.income >= 0 ? "pos" : "neg"],
+              ["Expense", summary.bank.expenses, "neg"],
+              ...(summary.bank.transfer_out > 0 ? [["Transferred to Cash", summary.bank.transfer_out, "neg"] as ExpenseStat] : []),
+              ...(summary.bank.transfer_in > 0 ? [["Received from Cash", summary.bank.transfer_in, "pos"] as ExpenseStat] : []),
+              ["Net profit/loss", summary.bank.net, summary.bank.net >= 0 ? "pos" : "neg"],
             ])
           : statGrid([
-              ["Cash income", summary.cash.total_income, "pos"],
-              ["Cash expense", summary.cash.total_expenses, "neg"],
-              ["Cash balance", cashBalance, cashBalance >= 0 ? "pos" : "neg"],
+              ["Income", summary.cash.income, summary.cash.income >= 0 ? "pos" : "neg"],
+              ["Expense", summary.cash.total_expenses, "neg"],
+              ...(summary.cash.transfer_out > 0 ? [["Transferred to Bank", summary.cash.transfer_out, "neg"] as ExpenseStat] : []),
+              ...(summary.cash.transfer_in > 0 ? [["Received from Bank", summary.cash.transfer_in, "pos"] as ExpenseStat] : []),
+              ["Net profit/loss", summary.cash.net, summary.cash.net >= 0 ? "pos" : "neg"],
             ])}
     </section>
 
     ${periodGroupedBarsChart("Money flow trend", trendBuckets)}
 
     ${historySection(tab)}
+    ${expenseFilterSheet()}
     ${bottomNav("home", "expenses-add")}
   `;
 }
 
 /** History list: personal/bank-flow entries plus recorded transfers. */
 function historySection(tab: "combined" | "bank" | "cash"): string {
-  const transferRowsFor = (rows: Array<Record<string, unknown>>): Array<Record<string, unknown>> =>
-    rows
-      .filter((row) => {
-        if (tab === "combined") return true;
-        const from = String(row.from_flow ?? "");
-        const to = String(row.to_flow ?? "");
-        return from === tab || to === tab;
-      })
-      .map((row) => ({
-        description: `${String(row.from_flow === "cash" ? "Cash" : "Bank")} → ${String(row.to_flow === "cash" ? "Cash" : "Bank")}`,
-        category: "Transfer",
-        amount: Math.abs(toNumber(row.amount)),
-        direction: "neutral",
-        _neutral: true,
-        flow_type: "transfer",
-        date: String(row.date ?? ""),
-        _table: "transfers",
-        _id: row.id,
-      }));
-
-  const transfers = transferRowsFor(transferRows as unknown as Array<Record<string, unknown>>);
-
-  const rows = (() => {
-    const base = currentPersonalFinanceRows();
-    const scoped = tab === "bank" ? base.filter((r) => r.flow_type === "bank") : tab === "cash" ? base.filter((r) => r.flow_type === "cash") : base;
-    return scoped.map((row) => ({
-      ...row,
-      _table: row.source === "manual" ? (row.flow_type === "bank" ? "personal_finance_bank_flow" : "personal_finance_cash_flow") : undefined,
-      _id: row.source === "manual" ? row.id : undefined,
-    }));
-  })();
-
-  const merged = [...transfers, ...rows].sort((a, b) => String(b.date ?? "").localeCompare(String(a.date ?? "")));
+  const rows = personalFinanceRowsForView(tab).map((row) => ({
+    ...row,
+    direction: row.source === "transfer" ? (Number(row.signed_amount ?? 0) >= 0 ? "income" : "expense") : row.direction,
+    _table: row.source === "manual"
+      ? (row.flow_type === "bank" ? "personal_finance_bank_flow" : "personal_finance_cash_flow")
+      : row.source === "transfer"
+        ? "transfers"
+        : undefined,
+    _id: row.source === "manual" || row.source === "transfer" ? row.id : undefined,
+  }));
+  const filter = validExpensesFilter(tab, appState.expensesHistoryFilter);
+  const merged = applyExpensesHistoryFilter(rows, filter);
+  const options = expensesHistoryFilters(tab);
+  const filterLabel = options.find((option) => option.value === filter)?.label ?? "Filter";
 
   return `
     <section class="card">
-      ${sectionTitle("Transfer & transaction history", "Filter")}
+      <div class="section-title">
+        <h3>Transfer &amp; transaction history</h3>
+        <button type="button" class="filter-action" data-expenses-filter-open>${filterLabel}</button>
+      </div>
       ${searchInput("expenses", "Search by category or description")}
       ${historyRows(merged, false, "expenses")}
     </section>
   `;
+}
+
+function expensesHistoryFilters(tab: "combined" | "bank" | "cash"): Array<{ value: ExpensesHistoryFilter; label: string; note: string }> {
+  if (tab === "bank") {
+    return [
+      { value: "all", label: "All bank", note: "Bank entries and activity" },
+      { value: "bank-manual", label: "Bank entries", note: "Personal bank flow" },
+      { value: "transfers", label: "Transfers", note: "Bank and Cash moves" },
+    ];
+  }
+  if (tab === "cash") {
+    return [
+      { value: "all", label: "All cash", note: "Cash entries and transfers" },
+      { value: "cash-manual", label: "Cash entries", note: "Personal cash flow" },
+      { value: "transfers", label: "Transfers", note: "Cash and Bank moves" },
+    ];
+  }
+  return [
+    { value: "all", label: "All", note: "Bank, Cash, transfers" },
+    { value: "bank-manual", label: "Bank entries", note: "Personal bank flow" },
+    { value: "cash-manual", label: "Cash entries", note: "Personal cash flow" },
+    { value: "transfers", label: "Transfers", note: "Cash and Bank moves" },
+  ];
+}
+
+function expenseFilterSheet(): string {
+  if (!appState.expensesFilterOpen) return "";
+  return `
+    <div class="sheet-backdrop" data-expenses-filter-close></div>
+    <section class="filter-sheet" role="dialog" aria-modal="true" aria-label="Filter expenses history">
+      <div class="filter-sheet-head">
+        <div>
+          <p class="eyebrow">History filter</p>
+          <h3>Show entries</h3>
+        </div>
+        <button type="button" class="icon-btn" data-expenses-filter-close aria-label="Close filter">×</button>
+      </div>
+      <div class="filter-option-list">
+        ${expensesHistoryFilters(appState.expensesDashTab).map((option) => `
+          <button type="button" class="filter-option ${option.value === validExpensesFilter(appState.expensesDashTab, appState.expensesHistoryFilter) ? "active" : ""}" data-expenses-filter="${option.value}">
+            <span>
+              <b>${option.label}</b>
+            </span>
+            <i>${option.value === appState.expensesHistoryFilter ? "Selected" : ""}</i>
+          </button>
+        `).join("")}
+      </div>
+    </section>
+  `;
+}
+
+function applyExpensesHistoryFilter(rows: Array<Record<string, unknown>>, filter: ExpensesHistoryFilter): Array<Record<string, unknown>> {
+  if (filter === "all") return rows;
+  return rows.filter((row) => {
+    const source = String(row.source ?? "").toLowerCase();
+    const flow = String(row.flow_type ?? "").toLowerCase();
+    if (filter === "bank-manual") return source === "manual" && flow === "bank";
+    if (filter === "cash-manual") return source === "manual" && flow === "cash";
+    return flow === "transfer";
+  });
+}
+
+function validExpensesFilter(tab: "combined" | "bank" | "cash", filter: ExpensesHistoryFilter): ExpensesHistoryFilter {
+  return expensesHistoryFilters(tab).some((option) => option.value === filter) ? filter : "all";
 }
 
 function buildExpensesTrendBuckets(rows: PersonalFinanceRecord[]): ChartBucket[] {
@@ -166,6 +200,10 @@ function buildExpensesTrendBuckets(rows: PersonalFinanceRecord[]): ChartBucket[]
       const amount = Number(row.amount ?? 0);
       if (row.direction === "income") {
         income += amount;
+      } else if (row.source === "transfer") {
+        const signed = Number(row.signed_amount ?? 0);
+        if (signed >= 0) income += amount;
+        else expense += amount;
       } else {
         expense += amount;
       }

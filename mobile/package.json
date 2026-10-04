@@ -5,7 +5,7 @@
   "description": "Mobile scaffold for the FinLedge app.",
   "type": "module",
   "scripts": {
-    "build": "npm run build:web && npm run build:services",
+    "build": "npm run build:web && npm test",
     "build:web": "vite build",
     "build:services": "tsc -p tsconfig.json",
     "dev": "vite --host 127.0.0.1",
@@ -20,12 +20,27 @@
     "@capacitor/core": "^7.0.0",
     "@capacitor/filesystem": "^7.1.8",
     "@capacitor/splash-screen": "^7.0.5",
-    "financial-tracker-root": "file:.."
+    "financial-tracker-root": "file:..",
+    "uuid": "^14.0.2"
   },
   "devDependencies": {
     "@capacitor/assets": "^3.0.5",
     "@capacitor/cli": "^7.0.0",
     "typescript": "^5.9.3",
     "vite": "^8.2.2"
+  },
+  "overrides": {
+    "@capacitor/assets": {
+      "@capacitor/cli": {
+        "tar": "7.5.22"
+      },
+      "sharp": "^0.35.4",
+      "@trapezedev/project": {
+        "xcode": {
+          "uuid": "^11.1.1"
+        }
+      }
+    },
+    "brace-expansion": "^5.0.12"
   }
 }

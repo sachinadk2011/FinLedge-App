@@ -1,4 +1,12 @@
-import { signedAmount } from "../../services/personal-finance-sync-row-computation.js";
+import {
+  signedAmount,
+  type PersonalFinanceRecord,
+} from "../../services/personal-finance-sync-row-computation.js";
+import {
+  findTransferRunningBalanceConflict,
+  transferConflictMessage,
+  type TransferBalanceRecord,
+} from "../../services/transfer-running-balance.js";
 import { recomputeShareRecords, type ShareRecord } from "../../services/share-fifo-lot-matching.js";
 import { deviceName } from "../app-state.js";
 
@@ -88,6 +96,7 @@ export async function insertShareTransaction(db: SqlExecutor, input: ShareRecord
 }
 
 export async function insertPersonalFinanceRecord(db: SqlExecutor, input: PersonalFinanceInput): Promise<void> {
+  assertPersonalFinanceAmount(input.direction, input.amount);
   const table = personalFinanceTable(input.flow_type);
   const now = currentTimestamp();
   await db.run(
@@ -117,6 +126,19 @@ export async function insertTransfer(db: SqlExecutor, input: TransferInput): Pro
   }
 
   const now = currentTimestamp();
+  const proposedTransfers = [
+    ...await transferValidationRows(db),
+    {
+      date: input.date,
+      from_flow: input.from_flow,
+      to_flow: input.to_flow,
+      amount: Math.abs(input.amount),
+      description: input.description?.trim() || null,
+      created_timestamp: now,
+      last_updated_timestamp: now,
+    },
+  ];
+  await assertTransferSequenceValid(db, proposedTransfers, "Saving");
   await db.run(
     `INSERT INTO transfers
       (date, from_flow, to_flow, amount, description, created_timestamp, last_updated_timestamp, updated_device)
@@ -197,6 +219,15 @@ export async function deletePersonalFinanceRecord(
 }
 
 export async function deleteTransfer(db: SqlExecutor, id: number): Promise<void> {
+  const rows = await transferValidationRows(db);
+  if (!rows.some((row) => String(row.id) === String(id))) {
+    throw new Error("Transfer not found.");
+  }
+  await assertTransferSequenceValid(
+    db,
+    rows.filter((row) => String(row.id) !== String(id)),
+    "Deleting",
+  );
   await db.run("DELETE FROM transfers WHERE id = ?", [id]);
 }
 
@@ -262,6 +293,7 @@ export async function updatePersonalFinanceRecord(
   }
   const direction = patch.direction ?? (rows[0].direction as "income" | "expense");
   const amount = patch.amount ?? rows[0].amount;
+  assertPersonalFinanceAmount(direction, amount);
   await db.run(
     `UPDATE ${table}
       SET date = ?, direction = ?, category = ?, amount = ?, signed_amount = ?,
@@ -302,6 +334,20 @@ export async function updateTransfer(db: SqlExecutor, id: number, patch: Transfe
   if (fromFlow === toFlow) {
     throw new Error("Transfer flows must differ.");
   }
+  const now = currentTimestamp();
+  const proposedTransfers = (await transferValidationRows(db)).map((row) => {
+    if (String(row.id) !== String(id)) return row;
+    return {
+      ...row,
+      date: patch.date ?? rows[0].date,
+      from_flow: fromFlow,
+      to_flow: toFlow,
+      amount: Math.abs(patch.amount ?? rows[0].amount),
+      description: patch.description?.trim() || null,
+      last_updated_timestamp: now,
+    };
+  });
+  await assertTransferSequenceValid(db, proposedTransfers, "Updating");
   await db.run(
     `UPDATE transfers
       SET date = ?, from_flow = ?, to_flow = ?, amount = ?, description = ?,
@@ -313,7 +359,7 @@ export async function updateTransfer(db: SqlExecutor, id: number, patch: Transfe
       toFlow,
       Math.abs(patch.amount ?? rows[0].amount),
       patch.description?.trim() || null,
-      currentTimestamp(),
+      now,
       deviceName,
       id,
     ],
@@ -446,8 +492,43 @@ function personalFinanceTable(flowType: "bank" | "cash"): string {
   return flowType === "bank" ? "personal_finance_bank_flow" : "personal_finance_cash_flow";
 }
 
+function assertPersonalFinanceAmount(direction: string, amount: number): void {
+  if (String(direction).trim().toLowerCase() === "income" && amount < 0) {
+    throw new Error("Income amount must be 0 or more.");
+  }
+}
+
 function getValues<T>(result: { values?: T[] }): T[] {
   return Array.isArray(result.values) ? result.values : [];
+}
+
+async function manualPersonalFinanceRows(db: SqlExecutor): Promise<PersonalFinanceRecord[]> {
+  const [bankRows, cashRows] = await Promise.all([
+    db.query<PersonalFinanceRecord>("SELECT * FROM personal_finance_bank_flow ORDER BY id ASC"),
+    db.query<PersonalFinanceRecord>("SELECT * FROM personal_finance_cash_flow ORDER BY id ASC"),
+  ]);
+  return [
+    ...getValues(bankRows).map((row) => ({ ...row, flow_type: "bank", source: row.source ?? "manual" })),
+    ...getValues(cashRows).map((row) => ({ ...row, flow_type: "cash", source: row.source ?? "manual" })),
+  ];
+}
+
+async function transferValidationRows(db: SqlExecutor): Promise<TransferBalanceRecord[]> {
+  return getValues(await db.query<TransferBalanceRecord>("SELECT * FROM transfers ORDER BY id ASC"));
+}
+
+async function assertTransferSequenceValid(
+  db: SqlExecutor,
+  proposedTransfers: TransferBalanceRecord[],
+  action: string,
+): Promise<void> {
+  const conflict = findTransferRunningBalanceConflict(
+    await manualPersonalFinanceRows(db),
+    proposedTransfers,
+  );
+  if (conflict) {
+    throw new Error(transferConflictMessage(action, conflict));
+  }
 }
 
 function currentTimestamp(): string {

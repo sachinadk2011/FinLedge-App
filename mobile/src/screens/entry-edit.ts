@@ -32,7 +32,6 @@ export function entryEditScreen(): string {
   return `
     <p class="eyebrow">Edit entry</p>
     <h1 class="pagehead">Edit entry</h1>
-    <p class="sub">Changes are saved straight to the on-device database.</p>
     <section class="card" data-entry-edit-form="${escapeAttr(editing.table)}" data-entry-edit-id="${escapeAttr(String(editing.id))}">
       ${form}
       <button class="btn-primary" data-entry-edit-save>Save changes</button>
@@ -62,7 +61,6 @@ function editFormFor(table: string, id: number): string {
       <div class="field"><label>Category</label><select name="category">${selectWithCurrent(SHARE_CATEGORIES, currentCategory, SHARE_CATEGORY_LABELS)}</select></div>
       ${field("Per unit price", "number", String(Number(row.per_unit_price ?? 0)), "per_unit_price")}
       ${field("Allotted", "number", String(Number(row.allotted ?? 0)), "allotted")}
-      <p class="sub" style="margin:0;font-size:11px;color:var(--text-3);">Total, ASBA and profit/loss are recomputed automatically.</p>
     `;
   }
   if (table === "personal_finance_bank_flow" || table === "personal_finance_cash_flow") {

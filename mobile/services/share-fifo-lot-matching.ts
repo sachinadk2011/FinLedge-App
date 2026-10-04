@@ -13,6 +13,8 @@ export type ShareRecord = {
   profit_loss?: number | string | null;
   cumulative_profit?: number | string | null;
   timestamp?: string | null;
+  created_timestamp?: string | null;
+  last_updated_timestamp?: string | null;
   sync_ref?: string | null;
 };
 
@@ -28,6 +30,8 @@ export type ShareComputedRecord = Omit<
   profit_loss: number;
   cumulative_profit: number;
   timestamp?: string | null;
+  created_timestamp?: string | null;
+  last_updated_timestamp?: string | null;
   sync_ref?: string | null;
 };
 

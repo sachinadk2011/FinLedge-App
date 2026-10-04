@@ -216,18 +216,18 @@ tracker financial/mobile/
 │  │  ├─ charts.ts                — shared single/grouped bar charts, category bars, range controls
 │  │  ├─ forms.ts                 — shared form card, field, select options, section title helpers (incl. selectWithCurrent for edit forms)
 │  │  ├─ stats.ts                 — shared stat grid / stat box helpers
-│  │  ├─ history.ts               — shared scrollable transaction-style rows list (search-aware; data-edit/data-delete row actions)
+│  │  ├─ history.ts               — shared scrollable transaction-style rows list (search-aware; optional data-edit/data-delete row actions; Date/Created/Updated/_id ordering key)
 │  │  ├─ search.ts                — one reusable module search (input, query, filter, binder)
 │  │  └─ share-suggest.ts         — share-name autocomplete panel (single dropdown, tap/keyboard)
 │  ├─ constants/
 │  │  └─ options.ts               — mobile category/dropdown options aligned with desktop constants
 │  ├─ screens/
-│  │  ├─ home.ts                  — Home screen and category filtering (mode-scoped)
+│  │  ├─ home.ts                  — Home screen and category/time-range filtering (mode-scoped)
 │  │  ├─ bank.ts                  — Bank Services add-entry and dashboard screens
 │  │  ├─ shares.ts                — Share Portfolio add-entry and dashboard screens (incl. IPO/SIP quick-update cards)
-│  │  ├─ expenses.ts              — Personal Expenses add-entry and dashboard screens (transfer-aware balances + transfer history)
+│  │  ├─ expenses.ts              — Personal Expenses add-entry and dashboard screens (manual Bank/Cash rows + transfer-aware balances/history)
 │  │  ├─ transfer.ts              — Cash ⇄ Bank transfer sub-flow screen
-│  │  ├─ summary.ts               — read-only Financial Summary screen
+│  │  ├─ summary.ts               — read-only Financial Summary screen with cross-module All history
 │  │  ├─ entry-edit.ts            — edit an existing stored row (per-table prefilled forms, saves via repositories)
 │  │  ├─ keep-notes/
 │  │  │  ├─ paste.ts              — Notes import: paste raw note text (any unstructured format)
@@ -252,7 +252,7 @@ tracker financial/mobile/
 │  │  └─ viewport.ts              — keyboard-aware field scrolling helpers
 │  └─ data/
 │     ├─ demo-data.ts             — facade re-exporting the live store arrays (kept so screens import one place)
-│     ├─ mobile-data.ts           — mobile UI aggregation helpers over local records (incl. transferAdjustments)
+│     ├─ mobile-data.ts           — mobile UI aggregation helpers over local records (manual Personal Expenses + shaped transfer records)
 │     ├─ store.ts                 — in-memory row store; hydrate from SQLite (or demo fallback) + reloadStore
 │     ├─ storage.ts               — FinLedge[Dev] folder management, aggregate save + daily incremental backup, maintenance
 │     ├─ schema.ts                — SQLite DDL for mobile tables
@@ -262,7 +262,8 @@ tracker financial/mobile/
 │  ├─ bank-category-totals.ts     — Bank Services category totals
 │  ├─ share-fifo-lot-matching.ts  — Share Portfolio FIFO lot-matching
 │  ├─ personal-finance-sync-row-computation.ts — PF sync-row computation
-│  ├─ keep-notes-parser.ts        — loose note text → staging list parser (amount-first, label-first +chains, date headers, checksums)
+│  ├─ transfer-running-balance.ts — mobile transfer create/update/delete running-balance validator
+│  ├─ keep-notes-parser.ts        — loose note text → staging list parser (amount-first, label-first +chains, date headers, checksums, transfers, cash/online split)
 │  └─ keep-notes-commit.ts        — Keep Notes staged-entry commit via the repository layer
 ├─ tests/                         — TypeScript parity, schema, and repository tests
 │  ├─ bank-category-totals.test.ts
@@ -295,7 +296,7 @@ a desktop stat or field. This is a parity floor, not a ceiling.
 Root mobile commands:
 
 - `npm run mobile` — run the placeholder mobile build and sync Android.
-- `npm run mobile:build` — build the mobile Vite app, services, and tests from the repo root.
+- `npm run mobile:build` — build the mobile Vite app, compile services/tests, and run the mobile test suite from the repo root.
 - `npm run mobile:test` — compile and run mobile service parity tests.
 - `npm run mobile:sync:android` — run `npx cap sync android` from the repo root.
 - `npm run mobile:android` — explicit alias for build + Android sync.

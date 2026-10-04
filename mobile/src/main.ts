@@ -1,6 +1,7 @@
 import "./styles.css";
 
 import { App } from "@capacitor/app";
+import { Capacitor } from "@capacitor/core";
 import {
   appState,
   deviceName,
@@ -180,6 +181,16 @@ function bindEvents(): void {
   document.querySelectorAll<HTMLInputElement>("[data-category-check]").forEach((node) => {
     node.addEventListener("change", updateCategorySelection);
   });
+  document.querySelector("[data-home-filter-open]")?.addEventListener("click", () => {
+    appState.homeFilterOpen = true;
+    render();
+  });
+  document.querySelectorAll("[data-home-filter-close]").forEach((node) => {
+    node.addEventListener("click", () => {
+      appState.homeFilterOpen = false;
+      render();
+    });
+  });
   document.querySelector<HTMLInputElement>("[data-custom-start]")?.addEventListener("change", (event) => {
     appState.customStart = (event.target as HTMLInputElement).value || appState.customStart;
     render();
@@ -208,6 +219,23 @@ function bindEvents(): void {
   document.querySelectorAll<HTMLButtonElement>("[data-expenses-tab]").forEach((node) => {
     node.addEventListener("click", () => {
       appState.expensesDashTab = (node.dataset.expensesTab as typeof appState.expensesDashTab) ?? "combined";
+      render();
+    });
+  });
+  document.querySelector("[data-expenses-filter-open]")?.addEventListener("click", () => {
+    appState.expensesFilterOpen = true;
+    render();
+  });
+  document.querySelectorAll("[data-expenses-filter-close]").forEach((node) => {
+    node.addEventListener("click", () => {
+      appState.expensesFilterOpen = false;
+      render();
+    });
+  });
+  document.querySelectorAll<HTMLElement>("[data-expenses-filter]").forEach((node) => {
+    node.addEventListener("click", () => {
+      appState.expensesHistoryFilter = (node.dataset.expensesFilter as typeof appState.expensesHistoryFilter) ?? "all";
+      appState.expensesFilterOpen = false;
       render();
     });
   });
@@ -240,10 +268,9 @@ function bindEvents(): void {
   });
 
   bindImportEvents();
-  document.addEventListener("input", handleImportFieldEdit);
-
   // Add-entry forms, delete buttons, transfer direction chips, and backup-now.
   bindFormSubmits();
+  bindAddFormDrafts();
   bindRowDeletes();
   bindTransferChips();
   document.querySelector("[data-backup-now]")?.addEventListener("click", () => {
@@ -271,10 +298,42 @@ function bindImportEvents(): void {
     navigate("import-review");
   });
 
+  // Clear: save current text to undo buffer then wipe the draft.
+  document.querySelector("[data-import-clear]")?.addEventListener("click", () => {
+    const raw = appState.importPasteDraft.trim();
+    if (!raw) return;
+    appState.importClearUndo = raw;
+    appState.importClearTime = Date.now();
+    appState.importPasteDraft = "";
+    render();
+  });
+
+  // Undo clear: restore within 5 minutes — after that the button disappears.
+  document.querySelector("[data-import-undo-clear]")?.addEventListener("click", () => {
+    const UNDO_MS = 5 * 60 * 1000;
+    if (appState.importClearUndo !== null && Date.now() - appState.importClearTime < UNDO_MS) {
+      appState.importPasteDraft = appState.importClearUndo;
+    }
+    appState.importClearUndo = null;
+    appState.importClearTime = 0;
+    render();
+  });
+
+  // Keep draft in sync as the user types in the textarea.
+  document.querySelector("[data-import-note]")?.addEventListener("input", (event) => {
+    appState.importPasteDraft = (event.target as HTMLTextAreaElement).value;
+  });
+
   document.querySelector("[data-import-add-row]")?.addEventListener("click", () => {
-    appState.importEntries.push(blankEntry());
+    const newEntry = blankEntry();
+    appState.importEntries.push(newEntry);
     appState.importReviewQuery = "";
     render();
+    // Scroll to the new card so the user immediately sees it was created.
+    requestAnimationFrame(() => {
+      document.querySelector(`[data-import-row="${newEntry.id}"]`)
+        ?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
   });
 
   document.querySelector("[data-import-search]")?.addEventListener("input", (event) => {
@@ -316,6 +375,10 @@ function bindImportEvents(): void {
   // Row actions use delegation so rows keep working after filter re-renders.
   document.querySelectorAll<HTMLElement>("[data-import-row]").forEach((panel) => {
     const id = panel.dataset.importRow ?? "";
+    panel.querySelectorAll<HTMLInputElement | HTMLSelectElement>("input, select").forEach((field) => {
+      field.addEventListener("input", handleImportFieldEdit);
+      field.addEventListener("change", handleImportFieldEdit);
+    });
     panel.querySelector("[data-import-confirm]")?.addEventListener("click", () => {
       confirmRow(id);
     });
@@ -342,13 +405,14 @@ function handleImportFieldEdit(event: Event): void {
   if (!entry) return;
 
   const attr =
-    field.dataset.importDate ? "date" :
-    field.dataset.importLabel ? "label" :
-    field.dataset.importModule ? "module" :
-    field.dataset.importFlow ? "flow" :
-    field.dataset.importDirection ? "direction" :
-    field.dataset.importCategory ? "category" :
-    field.dataset.importDescription ? "description" :
+    field.hasAttribute("data-import-date") ? "date" :
+    field.hasAttribute("data-import-label") ? "label" :
+    field.hasAttribute("data-import-module") ? "module" :
+    field.hasAttribute("data-import-flow") ? "flow" :
+    field.hasAttribute("data-import-transfer-direction") ? "transferDirection" :
+    field.hasAttribute("data-import-direction") ? "direction" :
+    field.hasAttribute("data-import-category") ? "category" :
+    field.hasAttribute("data-import-description") ? "description" :
     (field instanceof HTMLInputElement && field.type === "number") ? "amount" : "";
   if (!attr) return;
 
@@ -358,6 +422,8 @@ function handleImportFieldEdit(event: Event): void {
     entry.amount = Number.isFinite(n) ? n : 0;
   } else if (attr === "module") {
     entry.module = value as StagedEntry["module"];
+  } else if (attr === "transferDirection") {
+    entry.transferDirection = value as StagedEntry["transferDirection"];
   } else if (attr === "direction") {
     entry.direction = value as StagedEntry["direction"];
   } else if (attr === "flow") {
@@ -372,7 +438,9 @@ function handleImportFieldEdit(event: Event): void {
     entry.description = value;
   }
   entry.edited = true;
-  // Amount handled separately (number input).
+  if (attr === "module" || attr === "direction" || attr === "transferDirection") {
+    render();
+  }
 }
 
 function confirmRow(id: string): void {
@@ -503,12 +571,17 @@ let bootNotice: string | null = null;
 
 async function bootstrap(): Promise<void> {
   try {
-    const db = await openMobileDatabase();
-    await hydrateStore({ seedIfEmpty: true });
-    try {
-      await runStorageMaintenance(db);
-    } catch (error) {
-      console.warn("[storage] maintenance failed", error);
+    if (Capacitor.getPlatform() === "web") {
+      bootNotice = "Persistence is unavailable here — showing demo data. Install on a device for real storage.";
+      await hydrateDemoStore();
+    } else {
+      const db = await openMobileDatabase();
+      await hydrateStore({ seedIfEmpty: true });
+      try {
+        await runStorageMaintenance(db);
+      } catch (error) {
+        console.warn("[storage] maintenance failed", error);
+      }
     }
   } catch (error) {
     console.warn("[boot] SQLite unavailable; using demo store", error);
@@ -533,6 +606,33 @@ function bindFormSubmits(): void {
   });
 }
 
+function bindAddFormDrafts(): void {
+  document.querySelectorAll<HTMLElement>("[data-form='bank-add'], [data-form='expenses-add']").forEach((form) => {
+    form.querySelectorAll<HTMLInputElement | HTMLSelectElement>("[name]").forEach((el) => {
+      const update = () => {
+        const target = form.dataset.form === "bank-add" ? appState.bankAddDraft : appState.expensesAddDraft;
+        target[el.name] = el.value;
+      };
+      el.addEventListener("input", update);
+      el.addEventListener("change", update);
+    });
+  });
+}
+
+function preserveAddSelections(kind: string, pick: (name: string) => string): void {
+  if (kind === "bank-add") {
+    appState.bankAddDraft = { date: pick("date"), category: pick("category") };
+  }
+  if (kind === "expenses-add") {
+    appState.expensesAddDraft = {
+      date: pick("date"),
+      flow: pick("flow"),
+      type: pick("type"),
+      category: pick("category"),
+    };
+  }
+}
+
 async function submitAddForm(form: HTMLElement): Promise<void> {
   if (!storeReady || !dbAvailable) {
     showToast(bootNotice ?? "Persistence is not ready yet.");
@@ -549,7 +649,6 @@ async function submitAddForm(form: HTMLElement): Promise<void> {
 
   const db = await openMobileDatabase();
   try {
-    let next: ScreenId = "home";
     switch (kind) {
       case "bank-add": {
         await insertBankTransaction(db, {
@@ -559,7 +658,6 @@ async function submitAddForm(form: HTMLElement): Promise<void> {
           description: pick("description") || null,
           updated_device: deviceName,
         });
-        next = "bank-dash";
         break;
       }
       case "expenses-add": {
@@ -573,13 +671,11 @@ async function submitAddForm(form: HTMLElement): Promise<void> {
           source: "manual",
           updated_device: deviceName,
         });
-        next = "expenses-dash";
         break;
       }
       case "shares-add": {
         await submitShareEntry(db, form, pick, toNumber);
         appState.shareFormDraft = {};
-        next = "shares-dash";
         break;
       }
       case "transfer": {
@@ -595,15 +691,15 @@ async function submitAddForm(form: HTMLElement): Promise<void> {
           description: pick("note") || null,
           updated_device: deviceName,
         });
-        next = "expenses-dash";
         break;
       }
       default:
         throw new Error(`Unknown form: ${kind}`);
     }
     await reloadStore();
+    preserveAddSelections(kind, pick);
     showToast("Saved");
-    navigate(next);
+    render();
   } catch (error) {
     console.error("[submit] failed", error);
     showToast(`Could not save: ${error instanceof Error ? error.message : "unknown error"}`);
@@ -715,6 +811,11 @@ function bindTransferChips(): void {
   const form = document.querySelector<HTMLElement>("[data-form='transfer']");
   if (!form) return;
   bindChipRow(form, "[data-transfer-direction]");
+  form.querySelectorAll<HTMLButtonElement>("[data-transfer-direction]").forEach((chip) => {
+    chip.addEventListener("click", () => {
+      appState.transferDirection = chip.dataset.transferDirection as typeof appState.transferDirection;
+    });
+  });
 }
 
 /** Keep exactly one chip active in a `.chip-row` when any chip is tapped. */

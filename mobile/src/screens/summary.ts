@@ -2,6 +2,8 @@ import { summarizeBankRecords } from "../../services/bank-category-totals.js";
 import { summarizeShareRecords } from "../../services/share-fifo-lot-matching.js";
 import { summarizePersonalFinanceRecords } from "../../services/personal-finance-sync-row-computation.js";
 import { periodBarsChart, type BarChartBucket } from "../components/charts.js";
+import { historyRows } from "../components/history.js";
+import { searchInput } from "../components/search.js";
 import { statGrid } from "../components/stats.js";
 import { bottomNav } from "../components/shell.js";
 import { getPeriodBuckets } from "../utils/periods.js";
@@ -20,7 +22,6 @@ export function summaryScreen(): string {
   return `
     <p class="eyebrow">Financial Summary</p>
     <h1 class="pagehead">Overall position</h1>
-    <p class="sub">Combines Bank Services, Share Portfolio, and manual Personal Expenses — the full picture Home doesn't show.</p>
 
     ${statGrid([
       ["Bank net",     bank.net_balance,          bank.net_balance          >= 0 ? "pos" : "neg"],
@@ -54,6 +55,12 @@ export function summaryScreen(): string {
       </table>
     </section>
 
+    <section class="card">
+      <div class="section-title"><h3>All history</h3></div>
+      ${searchInput("summary", "Search all records")}
+      ${historyRows(summaryHistoryRows(), false, "summary", { actions: false })}
+    </section>
+
     ${bottomNav("home")}
   `;
 }
@@ -71,4 +78,52 @@ function buildSummaryTrendBuckets(bankNet: number, sharesPL: number, pfNet: numb
     const color = net >= 0 ? "var(--brand-teal)" : "var(--accent-amber)";
     return { label: b.label, sublabel: b.sublabel, value: net, color };
   });
+}
+
+function summaryHistoryRows(): Array<Record<string, unknown>> {
+  const bankRows = bankRecords.map((row) => ({
+    description: row.description || row.category || "Bank entry",
+    category: "Bank Services",
+    amount: Math.abs(Number(row.amount ?? 0)),
+    direction: Number(row.amount ?? 0) >= 0 ? "income" : "expense",
+    date: row.date,
+    created_timestamp: row.created_timestamp ?? row.timestamp,
+    last_updated_timestamp: row.last_updated_timestamp,
+    _id: row.id,
+  }));
+
+  const shareRows = shareRecords.map((row) => {
+    const category = String(row.category ?? "").trim();
+    const shareName = String(row.share_name ?? "").trim().toUpperCase();
+    const profit = Number(row.profit_loss ?? 0);
+    return {
+      description: shareName ? `${shareName} ${category}` : category || "Share entry",
+      category: "Share Portfolio",
+      amount: Math.abs(Number(row.total_amount ?? 0)),
+      direction: profit >= 0 ? "income" : "expense",
+      date: row.date,
+      created_timestamp: row.created_timestamp ?? row.timestamp,
+      last_updated_timestamp: row.last_updated_timestamp,
+      _id: row.id,
+    };
+  });
+
+  const personalRows = currentPersonalFinanceRows().map((row) => {
+    const signed = Number(row.signed_amount ?? 0);
+    const direction = row.source === "transfer"
+      ? (signed >= 0 ? "income" : "expense")
+      : row.direction;
+    return {
+      description: row.description || row.category || "Personal entry",
+      category: row.source === "transfer" ? "Transfer" : "Personal Expenses",
+      amount: Math.abs(Number(row.amount ?? 0)),
+      direction,
+      date: row.date,
+      created_timestamp: row.created_timestamp ?? row.timestamp,
+      last_updated_timestamp: row.last_updated_timestamp,
+      _id: row.id,
+    };
+  });
+
+  return [...bankRows, ...shareRows, ...personalRows];
 }

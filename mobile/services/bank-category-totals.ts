@@ -21,6 +21,8 @@ export type BankRecord = {
   amount?: number | string | null;
   description?: string | null;
   timestamp?: string | null;
+  created_timestamp?: string | null;
+  last_updated_timestamp?: string | null;
 };
 
 export type BankCategoryTotalsSummary = {

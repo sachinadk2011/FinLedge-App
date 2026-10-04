@@ -26,7 +26,7 @@ export function addFormScreen(
   next: ScreenId,
   formId = "",
 ): string {
-  return `<p class="eyebrow">${eyebrow}</p><h1 class="pagehead">${title}</h1><p class="sub">Stored locally on this device.</p>${formCard(fields, submit, formId)}${bottomNav("home", next)}`;
+  return `<p class="eyebrow">${eyebrow}</p><h1 class="pagehead">${title}</h1>${formCard(fields, submit, formId)}${bottomNav("home", next)}`;
 }
 
 export function formCard(fields: FormField[], submit: string, formId = ""): string {
@@ -53,8 +53,9 @@ export function selectOptions(label: string, fallback = "Other"): string {
     "Dividend Type": ["cash", "bonus"],
     "SIP type": ["installment", "redeem"],
   };
-  const options = optionsByLabel[label] || [fallback ?? "Other", "Other"];
-  return options.map((o) => `<option value="${o}">${SHARE_CATEGORY_LABELS[o] || o}</option>`).join("");
+  const current = fallback ?? "Other";
+  const options = optionsByLabel[label] || [current, "Other"];
+  return options.map((o) => `<option value="${escapeAttr(o)}" ${o === current ? "selected" : ""}>${escapeHtml(SHARE_CATEGORY_LABELS[o] || o)}</option>`).join("");
 }
 
 /** Select with an existing value preserved: raw `current` is kept as a selected

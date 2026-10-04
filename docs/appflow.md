@@ -24,6 +24,11 @@ excludes Bank Services and Share Portfolio figures — those live behind
 their own module pairs. Home is the quick capture + overview surface for
 daily spending and income.
 
+Home category charts use the selected Week/Month/Year/Custom range instead
+of being locked to the current month. The category filter opens as a sheet
+so users can choose just the categories they want to inspect for that
+period.
+
 ### 1.2 Drawer
 
 A hamburger opens the drawer (matches the design file's `.drawer`). It's
@@ -36,6 +41,11 @@ Every module is exactly two screens — **Add-entry ⇄ Dashboard** — never
 combined into one page (AGENTS.md §8). The drawer links to the pair(s):
 Bank Services, Share Portfolio, Personal Finance (Bank Flow / Cash Flow).
 Each pair follows the Add-entry ⇄ Dashboard toggling pattern.
+
+After a successful Add-entry save, the user stays on the same Add screen so
+multiple entries can be captured quickly. Reusable form draft state preserves
+selection fields such as date/category/type/flow, and the Transfer screen
+preserves its selected direction chip after save.
 
 ### 1.4 Financial Summary
 
@@ -80,6 +90,10 @@ paste → parse preview/review → confirm → commit
 4. **Commit** — confirmed rows are written via the same service layer as
    manual entries (inheriting timestamps and `updated_device`).
 
+Review edits are the source of truth at commit time. Changing a staged row
+from Cash to Bank commits it to Bank history, and transfer rows commit
+through the transfer repository rather than through Personal Expense rows.
+
 ## 3. Transfer sub-flow (Cash ⇄ Bank)
 
 Part of Import/Export, **separate from normal expense entry**. Handles Cash
@@ -90,16 +104,19 @@ move together without being miscategorized as income/expense.
 ### 3.1 Transfer semantics (functional behavior)
 
 - A recorded transfer **moves money between flows**: cash → bank adds to
-  Bank and subtracts from Cash; bank → cash does the reverse. The net shift
-  is applied to the Expenses dashboard "Bank balance" / "Cash balance" stat
-  boxes via the mobile `transferAdjustments()` helper.
-- Transfers are **neutral** (not income/expense) — they render without a
-  +/- sign in history and do not feed income/expense totals.
+  Bank and subtracts from Cash; bank → cash does the reverse. The Expenses
+  dashboard shapes transfer rows per selected flow so Bank and Cash totals show
+  transfer-in and transfer-out movement directly.
+- Transfers are stored separately from manual income/expense entries. They show
+  as transfer rows in history and feed only the transfer-aware dashboard totals.
 - Transfers appear in the Expenses dashboard history in every tab: Combined
   tab shows all transfers; Bank flow shows transfers that involve Bank; Cash
   flow shows transfers that involve Cash.
 - Transfer history rows carry `_table: "transfers"` + `_id`, so they get a
-  working ✎ Edit and delete button like other stored rows.
+  working Edit and delete button like other stored rows.
+- Transfer create/update/delete runs a full chronological Bank and Cash replay.
+  The validator blocks only transfer outflow points that would make that flow
+  negative; ordinary manual expenses may still make a flow negative.
 
 ## 5. Edit-entry flow
 

@@ -16,6 +16,18 @@ Any schema or column change (e.g. new Updated Device field) → also read schema
 State explicitly: this table exists because desktop and mobile are diverging tracks — reading only the old sections below is not enough once a task is mobile- or release-specific.
 
 
+
+## 0.5 When an instruction is ambiguous — the default is always the narrower one
+
+If a user instruction could reasonably mean either a narrow, safe action
+or a broader, riskier one (deleting data, rewriting a doc's existing
+content, touching a file outside today's task scope), do the narrow one
+and say what you did and why — never guess toward the broader
+interpretation "to be helpful" or "to save a round trip." This applies
+doubly to anything SAFETY.md governs: there, ambiguity always means STOP
+AND ASK, not "pick the safer-sounding option and proceed."
+
+
 ## 1. Naming Conventions (observed, do not change)
 
 | Layer | Convention | Examples |
@@ -239,9 +251,114 @@ Before finishing any task that creates, updates, or deletes code, answer these h
 - Did I find inconsistent or duplicated code nearby that I could safely fix? (If yes and safe → fix it. If yes but risky → note it, don't silently skip it.)
 - Is what I wrote reusable elsewhere, or is it a one-off that should have been generalized?
 - Have I verified the code still runs / existing tests still pass after any change or refactor I made?
+- Have I written the "Docs touched" line required by §9, and is it actually true?
 
 This checklist applies in addition to, not instead of, the existing ## 7. Before You Write Code — Checklist.
 
 ## 12. Doc authority — do not silently rewrite user decisions
 
 These docs encode explicit user decisions, not agent scratch space. Progress trackers (TASKS.md, TASKS-mobile.md) may be freely appended to per §9. Every other doc (PLAN.md, design.md, schema.md, appflow.md, prd.md, rules.md, keepNotesImport.md, CODEBASE.md, AGENTS.md itself) may only be edited by: (a) pure additions that don't remove or reword existing content, or (b) a change the user explicitly requested in this task. If a task seems to require changing an existing requirement in one of these files, stop and show the user the exact before/after diff before applying it — never resolve a conflict by quietly rewriting the doc to match new code behavior.
+
+## 13. UI tasks are not done until the rendered output was actually looked at
+
+"The build passed" and "the code compiles" are not sufficient evidence a
+UI task is complete — they prove the syntax is valid, not that the
+rendered page is clean. Stray text leaking into the real app (a `//`
+comment that wasn't wrapped in `{/* */}` and rendered as a visible text
+node, a placeholder string that never got replaced, debug copy left where
+real copy belongs) compiles perfectly and only shows up when a human
+opens the app — which is too late.
+
+Before marking any task that touches `.jsx`/`.tsx`/`.html` done:
+
+1. Grep the touched files for leaked placeholder/debug markers:
+   `grep -rn "TODO\|FIXME\|XXX\|lorem ipsum\|placeholder text\|DEBUG:" <touched files>`
+2. Specifically check every JSX comment in the diff uses `{/* ... */}` —
+   never a bare `//` or `<!-- -->` sitting directly inside JSX children,
+   since both render as literal text in that position.
+3. If the agent's tooling can render/screenshot the page (browser preview,
+   dev server + screenshot), actually do that for the screen(s) touched —
+   don't rely on reading the JSX source as a substitute for seeing the
+   rendered output.
+4. If the agent's tooling CANNOT render/screenshot the page, say so
+   explicitly in the task's final response ("could not visually verify —
+   recommend a manual check before release") rather than silently
+   presenting the task as fully verified.
+5. Reading built/compiled HTML, JS bundle output, or JSX source is NOT
+   rendered-output verification, even when described as "checking the
+   compiled screen." It catches different bugs than actually opening the
+   page does (it cannot catch bad runtime escaping, CSS that hides
+   content, or anything that only resolves when the browser/WebView
+   actually paints it). If this is the only check available because
+   rendering tools are broken or unavailable, say so using this exact
+   phrasing in the task's final response: "Static source/HTML check only
+   — rendered-in-browser verification was NOT performed." Do not describe
+   a source-level check using language that could be read as equivalent
+   to visual verification (e.g. "validated the screen," "verified the
+   UI") — name the specific, narrower thing that was actually done.
+
+## 14. User-facing text — permanent copy vs. conditional messages
+
+Two separate rules. Violating either means the task is not done.
+
+### 14.1 Permanent/always-visible text must never explain internals
+
+Any text that renders unconditionally on a screen (labels, descriptions,
+helper paragraphs, button captions) must read like a finished product
+wrote it — never like a task description, code comment, or spec sentence
+that was left in place because it happened to be accurate.
+
+**Banned in permanent UI copy, no exceptions:**
+- Implementation vocabulary a user has no reason to know: "originating
+  side," "target workbook," "source_ref," "the validator," "the backend,"
+  "the sync layer," field/column names as they exist in code
+  (`signed_amount`, `flow_type`) instead of their on-screen labels.
+- Explaining a VALIDATION RULE as permanent descriptive text instead of
+  just enforcing it. If a form has a constraint (e.g. "can't transfer more
+  than you have"), the constraint belongs in the error message that fires
+  when it's violated (see §14.2) — not as a standing paragraph explaining
+  the rule to everyone, every time, whether or not it's relevant to them
+  right now.
+- Any sentence whose natural audience is "a developer verifying this
+  works correctly" rather than "a person trying to get something done."
+
+Test before shipping any permanent copy: if you deleted this sentence,
+would a user still be able to use the screen correctly just from the
+form's own labels and inputs? If yes, the sentence is explaining internals
+for no reason — cut it. If the screen genuinely cannot be understood
+without it, rewrite it in the plain language test from §13 point 5, not
+spec language.
+
+### 14.2 Conditional messages (errors, warnings, status) must be conditional — not pre-rendered
+
+A message that only matters when a specific condition is true (a
+validation failure, a load error, a stale-data warning, an empty state)
+must:
+
+- Not render in the DOM/component tree at all until that condition is
+  actually true — not rendered-but-hidden via CSS, not rendered with
+  empty/placeholder content waiting to be filled in. If the condition
+  isn't true, the message does not exist on the page.
+- Say exactly what went wrong and, where possible, what the user can do
+  about it — using the real numbers/values involved, not a generic
+  restatement of the rule. "Cannot transfer more than available income on
+  the originating side" is not acceptable even as an error message — it's
+  still spec language. "You have NPR 1,200 available in Cash — try a
+  smaller amount" is the standard to hit.
+- Disappear again once the condition clears (the existing
+  `useDismissibleMessage` / 5-second auto-dismiss pattern already used
+  across `BankPage.jsx`, `SharePage.jsx`, etc. is the reference
+  implementation — reuse it, don't invent a new pattern per screen).
+- Never be the mechanism for teaching the user a rule in advance. If a
+  constraint is worth knowing before attempting the action (e.g. a hard
+  limit), put it on the input itself (placeholder text, a max attribute,
+  inline helper text tied to the field) — not as a floating paragraph
+  elsewhere on the page.
+
+### 14.3 Self-check addition (applies with §11 and §13)
+
+- Does every permanently-visible string on this screen pass the "delete
+  it — does the screen still work?" test from §14.1?
+- Does every conditional message only exist in the DOM when its condition
+  is true, use real values instead of restating the rule, and clear
+  itself afterward per the existing dismiss pattern?

@@ -16,9 +16,10 @@ import {
  * Nothing here writes anything — it only parses into a staging list.
  */
 
-export type ImportModule = "share" | "bank" | "personal";
+export type ImportModule = "share" | "bank" | "personal" | "transfer";
 export type ImportDirection = "income" | "expense";
 export type ImportFlow = "bank" | "cash";
+export type ImportTransferDirection = "cash-to-bank" | "bank-to-cash";
 
 export type ImportFlag =
   | { kind: "ambiguous"; message: string }
@@ -40,6 +41,7 @@ export type StagedEntry = {
   module: ImportModule;
   direction: ImportDirection;
   flow: ImportFlow;
+  transferDirection?: ImportTransferDirection;
   category: string;
   /** Parser-assigned flags that require/encourage user attention. */
   flags: ImportFlag[];
@@ -118,6 +120,23 @@ export function parseKeepNotes(raw: string): ParseResult {
         flags: [{ kind: "info", message: "Arithmetic/balance note — informational only, not imported." }],
         edited: false,
       });
+      ignoredLines.push(line);
+      i += 1;
+      continue;
+    }
+
+    const transferEntry = parseTransferLine(line, currentGroup);
+    if (transferEntry) {
+      entries.push(transferEntry);
+      ignoredLines.push(line);
+      i += 1;
+      continue;
+    }
+
+    const mixedIncomeEntries = parseMixedIncomeLine(line, currentGroup);
+    if (mixedIncomeEntries.length) {
+      entries.push(...mixedIncomeEntries);
+      currentGroup.sum += mixedIncomeEntries.reduce((sum, entry) => sum + entry.amount, 0);
       ignoredLines.push(line);
       i += 1;
       continue;
@@ -408,4 +427,47 @@ function expenseCategoryFor(l: string): string {
 
 function incomeCategoryFor(l: string): string {
   return MODE_INCOME.has(l) ? PERSONAL_FINANCE_INCOME_CATEGORIES.find((c) => c.toLowerCase() === l)! : "Other Income";
+}
+
+function makeTransferEntry(
+  group: RawDateGroup,
+  amount: number,
+  label: string,
+  transferDirection: ImportTransferDirection,
+): StagedEntry {
+  return {
+    ...makeEntry(group, amount, label, label, "transfer", "expense", transferDirection === "cash-to-bank" ? "cash" : "bank", "Transfer", [
+      { kind: "ambiguous", message: "Confirm this transfer before commit." },
+    ]),
+    transferDirection,
+  };
+}
+
+function parseTransferLine(line: string, group: RawDateGroup): StagedEntry | null {
+  const match = line.match(/\btransfer\s+(?:to\s+)?(cash|bank)\b[\s:-]*(\d[\d,]*\.?\d*k?)?/i)
+    ?? line.match(/\b(cash|bank)\s+transfer\b[\s:-]*(\d[\d,]*\.?\d*k?)?/i);
+  if (!match) return null;
+  const target = String(match[1]).toLowerCase();
+  const amountToken = match[2] ?? line.match(/(\d[\d,]*\.?\d*k?)/i)?.[1] ?? "";
+  const amount = parseAmountToken(amountToken);
+  if (amount == null || amount <= 0) return null;
+  return makeTransferEntry(group, amount, line, target === "cash" ? "bank-to-cash" : "cash-to-bank");
+}
+
+function parseMixedIncomeLine(line: string, group: RawDateGroup): StagedEntry[] {
+  const lower = line.toLowerCase();
+  if (!/\bonline\b/.test(lower) || !/\bcash\b/.test(lower)) return [];
+  const cashMatch = lower.match(/\bcash\s+(\d[\d,]*\.?\d*k?)/i);
+  const onlineMatch = lower.match(/(\d[\d,]*\.?\d*k?)\s+online\b/i);
+  const cashAmount = cashMatch ? parseAmountToken(cashMatch[1]) : null;
+  const onlineAmount = onlineMatch ? parseAmountToken(onlineMatch[1]) : null;
+  const entries: StagedEntry[] = [];
+  const label = line.replace(/\bcash\s+\d[\d,]*\.?\d*k?/i, "").replace(/\d[\d,]*\.?\d*k?\s+online\b/i, "").replace(/[,\s]+$/g, "").trim() || "Income";
+  if (cashAmount != null && cashAmount > 0) {
+    entries.push(makeEntry(group, cashAmount, `${label} cash`.trim(), line, "personal", "income", "cash", "Other Income", []));
+  }
+  if (onlineAmount != null && onlineAmount > 0) {
+    entries.push(makeEntry(group, onlineAmount, `${label} online`.trim(), line, "personal", "income", "bank", "Other Income", []));
+  }
+  return entries;
 }

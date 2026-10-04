@@ -15,6 +15,7 @@ const MODULE_LABEL: Record<ImportModule, string> = {
   share: "Share",
   bank: "Bank",
   personal: "Personal",
+  transfer: "Transfer",
 };
 
 /**
@@ -86,9 +87,11 @@ function stagedRowHtml(row: StagedEntry): string {
         <label class="field">${row.module === "share" ? "Share name" : "Label"}<input type="text" data-import-label value="${escapeAttr(row.label)}"></label>
         <label class="field">Amount<input type="number" inputmode="decimal" value="${row.amount}"></label>
         <label class="field">Module<select data-import-module>${moduleOptions(row)}</select></label>
-        <label class="field" data-import-flow-field>Flow<select data-import-flow>${flowOptions(row)}</select></label>
-        <label class="field">Type<select data-import-direction>${directionOptions(row)}</select></label>
-        <label class="field">Category<select data-import-category>${categoryOptions(row)}</select></label>
+        ${row.module === "transfer"
+          ? `<label class="field">Direction<select data-import-transfer-direction>${transferDirectionOptions(row)}</select></label>`
+          : `<label class="field" data-import-flow-field>Flow<select data-import-flow>${flowOptions(row)}</select></label>
+             <label class="field">Type<select data-import-direction>${directionOptions(row)}</select></label>
+             <label class="field">Category<select data-import-category>${categoryOptions(row)}</select></label>`}
         <label class="field full">Description<input type="text" data-import-description value="${escapeAttr(row.description)}"></label>
       </div>
       <div class="import-row-actions">
@@ -107,9 +110,17 @@ function flagChips(flags: ImportFlag[]): string {
 }
 
 function moduleOptions(row: StagedEntry): string {
-  return (["share", "bank", "personal"] as ImportModule[])
+  return (["share", "bank", "personal", "transfer"] as ImportModule[])
     .map((m) => `<option value="${m}" ${row.module === m ? "selected" : ""}>${MODULE_LABEL[m]}</option>`)
     .join("");
+}
+
+function transferDirectionOptions(row: StagedEntry): string {
+  const current = row.transferDirection ?? "cash-to-bank";
+  return [
+    ["cash-to-bank", "Cash to Bank"],
+    ["bank-to-cash", "Bank to Cash"],
+  ].map(([value, label]) => `<option value="${value}" ${current === value ? "selected" : ""}>${label}</option>`).join("");
 }
 
 function flowOptions(row: StagedEntry): string {

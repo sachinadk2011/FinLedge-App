@@ -1,4 +1,4 @@
-import { insertBankTransaction, insertPersonalFinanceRecord, insertShareTransaction, type SqlExecutor } from "../src/data/repositories.js";
+import { insertBankTransaction, insertPersonalFinanceRecord, insertShareTransaction, insertTransfer, type SqlExecutor } from "../src/data/repositories.js";
 import { deviceName } from "../src/app-state.js";
 import type { StagedEntry } from "./keep-notes-parser.js";
 
@@ -67,7 +67,6 @@ async function writeEntry(db: SqlExecutor, entry: StagedEntry): Promise<void> {
       });
       return;
     case "personal":
-    default:
       await insertPersonalFinanceRecord(db, {
         date: entry.date,
         flow_type: entry.flow,
@@ -79,5 +78,17 @@ async function writeEntry(db: SqlExecutor, entry: StagedEntry): Promise<void> {
         updated_device: deviceName,
       });
       return;
+    case "transfer": {
+      const direction = entry.transferDirection ?? "cash-to-bank";
+      await insertTransfer(db, {
+        date: entry.date,
+        from_flow: direction === "cash-to-bank" ? "cash" : "bank",
+        to_flow: direction === "cash-to-bank" ? "bank" : "cash",
+        amount: entry.amount,
+        description,
+        updated_device: deviceName,
+      });
+      return;
+    }
   }
 }

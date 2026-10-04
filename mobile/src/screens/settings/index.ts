@@ -6,24 +6,24 @@ const settingsGroups: SettingsGroup[] = [
   {
     title: "Account",
     rows: [
-      ["settings-profile", "Profile", "Name and profile initials", "👤"],
+      ["settings-profile", "Profile", "", "👤"],
     ],
   },
   {
     title: "Data & storage",
     rows: [
-      ["settings-import-export", "Import / Export", "Notes paste, Excel import, Excel export", "📥"],
-      ["settings-backup-sync", "Backup & sync", "Local backup status and future sync", "☁"],
-      ["settings-privacy", "Privacy", "On-device SQLite storage and data controls", "🔒"],
+      ["settings-import-export", "Import / Export", "", "📥"],
+      ["settings-backup-sync", "Backup & sync", "", "☁"],
+      ["settings-privacy", "Privacy", "", "🔒"],
     ],
   },
   {
     title: "About",
     rows: [
-      ["settings-investment", "Investment", "Share portfolio rules and SIP notes", "📈"],
-      ["settings-how-to-use", "How To Use", "Navigation and entry guidance", "?"],
-      ["settings-about", "About", "Mobile runtime and desktop differences", "ℹ"],
-      ["settings-version", "Version", "Mobile and desktop release tags", "#"],
+      ["settings-investment", "Investment", "", "📈"],
+      ["settings-how-to-use", "How To Use", "", "?"],
+      ["settings-about", "About", "", "ℹ"],
+      ["settings-version", "Version", "", "#"],
     ],
   },
 ];
@@ -49,7 +49,6 @@ export function settingsScreen(): string {
       <span class="settings-cta-icon">📝</span>
       <div>
         <h3>Import from notes</h3>
-        <p class="settings-cta-text">Paste unstructured notes and map them to categories — with smart defaults you can override per line.</p>
       </div>
       <button class="btn-primary" data-nav="import-paste">Start import</button>
     </section>
@@ -62,7 +61,7 @@ function settingsNavRow(target: ScreenId, label: string, detail: string, icon: s
       <span class="settings-icon">${icon}</span>
       <span class="settings-row-main">
         <b>${label}</b>
-        <span>${detail}</span>
+        ${detail ? `<span>${detail}</span>` : ""}
       </span>
       <span class="settings-chevron" aria-hidden="true">›</span>
     </button>

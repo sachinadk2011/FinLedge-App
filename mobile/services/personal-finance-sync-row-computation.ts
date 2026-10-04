@@ -13,6 +13,8 @@ export type PersonalFinanceRecord = {
   description?: string | null;
   source?: string | null;
   timestamp?: string | null;
+  created_timestamp?: string | null;
+  last_updated_timestamp?: string | null;
   source_ref?: string | null;
 };
 
@@ -23,6 +25,8 @@ export type FlowSummary = {
   investment_income: number;
   interest_earned: number;
   service_cost: number;
+  transfer_out: number;
+  transfer_in: number;
   total_income: number;
   total_expenses: number;
   net: number;
@@ -168,6 +172,22 @@ export function summarizePersonalFinanceRecords(records: PersonalFinanceRecord[]
     const categoryKey = category.toLowerCase();
     const summary = flowSummaries[flowType];
 
+    if (source === "transfer") {
+      const signed = toNumber(record.signed_amount);
+      if (signed >= 0) {
+        summary.total_income += amount;
+        summary.income += amount;
+        summary.transfer_in += amount;
+        summary.income_breakdown["Transfer In"] = (summary.income_breakdown["Transfer In"] ?? 0) + amount;
+      } else {
+        summary.total_income -= amount;
+        summary.income -= amount;
+        summary.transfer_out += amount;
+        summary.income_breakdown["Transfer Out"] = (summary.income_breakdown["Transfer Out"] ?? 0) + amount;
+      }
+      continue;
+    }
+
     if (direction === "income") {
       summary.total_income += amount;
       summary.income_breakdown[category] = (summary.income_breakdown[category] ?? 0) + amount;
@@ -222,6 +242,8 @@ function emptyFlowSummary(): FlowSummary {
     investment_income: 0,
     interest_earned: 0,
     service_cost: 0,
+    transfer_out: 0,
+    transfer_in: 0,
     total_income: 0,
     total_expenses: 0,
     net: 0,

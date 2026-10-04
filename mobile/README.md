@@ -44,9 +44,10 @@ Note the distinction between the two Android commands:
   built web assets and plugins into the native Android project. It does **not**
   build the web app, and it does **not** install or launch on a device.
 - `npm run cap:run:android` — **build + sync + run**: runs `npm run build`
-  (web + services), then `npm run cap:sync:android`, then `npx cap run android`
-  to build, install, and launch the app on the connected device. This is the
-  single command to go from source to a running app in one step.
+  (web + service tests), then `npm run cap:sync:android`, then
+  `npx cap run android` to build, install, and launch the app on the connected
+  device. This is the single command to go from source to a running app in one
+  step.
 
 From the repository root you can run the same full chain with
 `npm run mobile:run:android` (maps to `scripts/finledge.mjs mobile-android-run`).
@@ -75,3 +76,12 @@ npx @capacitor/assets generate --android
 
 This regenerates the adaptive-icon foreground/background in every density
 plus the standard `ic_launcher` variants.
+
+## Dependency security
+
+`package.json` pins `overrides` that force patched transitive versions inside
+`@capacitor/assets` (unmaintained upstream): `tar@7.5.22`, `sharp@^0.35.4`,
+`uuid@^11.1.1` under `xcode`, and `brace-expansion@^5.0.12` tree-wide. Without
+them, `npm audit` reports 3 high/critical findings from the icon tool. Do not
+remove them; if a dependency needs bumping, regenerate the lockfile and
+re-verify `npm audit` returns 0.

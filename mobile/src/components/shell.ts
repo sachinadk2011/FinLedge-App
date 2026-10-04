@@ -1,4 +1,4 @@
-import { appState, appVersionLabel, deviceName, getProfileName, greeting, profileInitial } from "../app-state.js";
+import { appState, appVersionLabel, getProfileName, greeting, profileInitial } from "../app-state.js";
 import type { ScreenId } from "../types.js";
 import { escapeHtml } from "../utils/html.js";
 
@@ -32,7 +32,7 @@ export function drawer(): string {
   return `
     <div class="drawer-overlay" data-close-drawer></div>
     <nav class="drawer" aria-label="Mobile navigation">
-      <div class="drawer-head"><img class="mark mark-img" src="./icon.png" alt="FinLedge logo"><div class="brand-text"><b>FinLedge</b><span>${appVersionLabel} / ${deviceName}</span></div></div>
+      <div class="drawer-head"><img class="mark mark-img" src="./icon.png" alt="FinLedge logo"><div class="brand-text"><b>FinLedge</b><span>${appVersionLabel}</span></div></div>
       ${items.map(([id, label, icon, screens]) => `<button class="drawer-item ${screens.includes(appState.activeScreen) ? "active" : ""}" data-nav="${id}"><span>${icon}</span>${label}</button>`).join("")}
     </nav>
   `;

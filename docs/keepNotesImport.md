@@ -22,6 +22,8 @@ Keep breaks a note into lines. A line is one of:
 | Plus-prefixed | `+1006 sip this to sip investment part` / `+600 printing` | Prefixed with `+`; type (expense vs other) is ambiguous and REQUIRES user confirmation |
 | Label-then-sum | `Rakhi` then `50+135+...` | A label line followed by a line of `+`-joined numbers — sum them and import as one entry under that label |
 | Scaled thousands | `2k`, `22k` | `k` means ×1000 (`2k` → `2000`, `22k` → `22000`) |
+| Transfer note | `transfer to cash 150` | Stages a Cash ⇄ Bank transfer row; review shows a direction selector before commit |
+| Mixed cash/online income | `by dd cash 1k, 16k online` | Stages two income rows: cash amount to Cash flow, online amount to Bank flow |
 
 ### 1.1 Relative date resolution
 
@@ -147,6 +149,22 @@ total are ignored for import (e.g. stray headers/titles). They may still
 appear in the review payload as context but produce no row unless the user
 adds one.
 
+### 2.7 Transfer notes
+
+Lines such as `transfer to cash 150`, `transfer cash 150`, or
+`transfer to bank 150` stage a transfer entry instead of a normal
+income/expense row. The parser infers the target flow from the word after
+`transfer`; the review screen still requires confirmation and lets the
+user change the direction before commit.
+
+### 2.8 Mixed cash/online income
+
+When a single income note names both `cash` and `online` amounts, the
+parser creates separate staged rows so neither amount is dropped:
+`by dd cash 1k, 16k online` becomes Cash income `1000` and Bank income
+`16000`. These rows remain editable in the review screen like any other
+parsed entry.
+
 ## 3. Category & module assignment
 
 Each parsed entry is assigned a **target module** (Share / Bank /
@@ -158,6 +176,7 @@ Personal bank / Cash expense) and a **category**. Mapping defaults
 | Registration fee | `registration fee` | Personal | Bank / Cash expense → **education** |
 | Session / sessior | `sessior`, `session` | Personal | **utility** if the utility category exists, else **other** (ask user to confirm, see §5) |
 | SIP / share keywords | `sip`, `share`, `ipo`, `buy`, `sell`, `dividend`, `investment` | Share | Share category |
+| Transfer keyword | `transfer to cash`, `transfer to bank` | Transfer | Transfer direction |
 | Known bank categories | e.g. `interest earned`, charges | Bank | Bank category |
 | A named rate context | `50curd` | Personal | treat the leading word as the label/expense name → **curd** expense at amount `50` (`rate name = that amount`) |
 | Nothing matched | — | Personal | **Uncategorized** (default editable) |
@@ -178,11 +197,12 @@ What the user sees is **a list of each parsed item together with the
 module/category it was assigned to** — one row per entry, each showing:
 - resolved date + label/description
 - amount
-- target module (Share / Bank / Personal bank / Cash expense)
+- target module (Share / Bank / Personal bank / Cash expense / Transfer)
 - category
 
 Per row the user can:
 - **Edit** — change date, label, amount, module, category, description.
+  Transfer rows replace flow/type/category with a direction selector.
 - **Split** — for lump `Uncategorized` rows (from §2.3), break one row into
   multiple entries and edit each.
 - **Delete** — drop the row from the import (see below).
@@ -227,6 +247,9 @@ required so the write path:
 
 The import must not bypass the service layer by writing SQL directly. The
 staging list is UI state only; the service layer is the only writer.
+Transfer rows commit through the same transfer repository as the manual
+Transfer screen, including the same validation and timestamp/device
+stamping.
 
 ## 7. Out of scope for v1.0.0
 

@@ -16,6 +16,10 @@ export const appState = {
   homeMode: "expense" as "expense" | "income",
   homeRange: "week" as ChartRange,
   bankRange: "month" as ChartRange,
+  homeFilterOpen: false,
+  transferDirection: "cash-to-bank" as "cash-to-bank" | "bank-to-cash",
+  bankAddDraft: {} as Record<string, string>,
+  expensesAddDraft: {} as Record<string, string>,
   selectedHomeCategories: new Set<string>(),
   categorySelectionTouched: false,
   customStart: toDateKey(new Date(today().getFullYear(), today().getMonth(), 1)),
@@ -24,6 +28,8 @@ export const appState = {
   dashSearchQuery: {} as Record<string, string>,
   // Personal Expenses dashboard tab: "combined" | "bank" | "cash"
   expensesDashTab: "combined" as "combined" | "bank" | "cash",
+  expensesHistoryFilter: "all" as "all" | "bank-manual" | "cash-manual" | "transfers",
+  expensesFilterOpen: false,
   // Shares add-entry form: current entry type selection
   sharesEntryType: "ipo" as string,
   sharesDividendType: "cash" as string,
@@ -32,6 +38,10 @@ export const appState = {
   importPasteDraft: "",
   importEntries: [] as StagedEntry[],
   importReviewQuery: "",
+  // Undo buffer for "Clear" on the paste screen — holds the cleared text
+  // + the ms timestamp it was cleared. Expires after 5 minutes.
+  importClearUndo: null as string | null,
+  importClearTime: 0,
   // Row currently being edited via the entry-edit screen
   editingEntry: null as { table: string; id: number } | null,
   // Shares add-entry: keyed draft of field values so changing the entry type
@@ -77,7 +87,8 @@ export function showToast(message: string): void {
   toast.className = "toast";
   toast.textContent = message;
   document.body.appendChild(toast);
-  window.setTimeout(() => toast.remove(), 1600);
+  const duration = Math.min(9000, Math.max(3200, message.length * 70));
+  window.setTimeout(() => toast.remove(), duration);
 }
 
 export function exitApp(): void {

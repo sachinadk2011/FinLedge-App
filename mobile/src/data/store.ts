@@ -41,6 +41,8 @@ export type TransferRow = {
   to_flow?: string | null;
   amount?: number | string | null;
   description?: string | null;
+  created_timestamp?: string | null;
+  last_updated_timestamp?: string | null;
 };
 
 type DbRow = Record<string, unknown>;
@@ -101,6 +103,7 @@ function buildDemoSeed(): {
       { date: "2026-08-07", share_name: "NIBL", category: "sip", per_unit_price: 1000, allotted: 20, buy_sell: "installment", total_amount: 1000 },
     ],
     personal: [
+      { date: "2026-08-01", flow_type: "cash", direction: "income", category: "Gift", amount: 5000, description: "Cash opening" },
       { date: "2026-08-20", flow_type: "cash", direction: "expense", category: "Food", amount: 560, description: "Grocery top-up" },
       { date: "2026-08-01", flow_type: "bank", direction: "income", category: "Salary", amount: 45000, description: "Salary" },
       { date: "2026-08-18", flow_type: "cash", direction: "expense", category: "Entertainment", amount: 900, description: "Movie night" },
@@ -151,6 +154,8 @@ function mapBank(row: DbRow): BankRecord {
     amount: toNumber(row.amount),
     description: row.description == null ? null : String(row.description),
     timestamp: row.created_timestamp == null ? null : String(row.created_timestamp),
+    created_timestamp: row.created_timestamp == null ? null : String(row.created_timestamp),
+    last_updated_timestamp: row.last_updated_timestamp == null ? null : String(row.last_updated_timestamp),
   };
 }
 
@@ -168,6 +173,8 @@ function mapShare(row: DbRow): ShareRecord {
     profit_loss: toNumber(row.profit_loss),
     cumulative_profit: toNumber(row.cumulative_profit),
     timestamp: row.created_timestamp == null ? null : String(row.created_timestamp),
+    created_timestamp: row.created_timestamp == null ? null : String(row.created_timestamp),
+    last_updated_timestamp: row.last_updated_timestamp == null ? null : String(row.last_updated_timestamp),
   };
 }
 
@@ -186,6 +193,8 @@ function mapPersonal(flow: "bank" | "cash", row: DbRow): PersonalFinanceRecord {
     description: row.description == null ? null : String(row.description),
     source: "manual",
     timestamp: row.created_timestamp == null ? null : String(row.created_timestamp),
+    created_timestamp: row.created_timestamp == null ? null : String(row.created_timestamp),
+    last_updated_timestamp: row.last_updated_timestamp == null ? null : String(row.last_updated_timestamp),
   };
 }
 
@@ -197,6 +206,8 @@ function mapTransfer(row: DbRow): TransferRow {
     to_flow: row.to_flow == null ? null : String(row.to_flow),
     amount: toNumber(row.amount),
     description: row.description == null ? null : String(row.description),
+    created_timestamp: row.created_timestamp == null ? null : String(row.created_timestamp),
+    last_updated_timestamp: row.last_updated_timestamp == null ? null : String(row.last_updated_timestamp),
   };
 }
 
@@ -256,6 +267,7 @@ export async function hydrateDemoStore(): Promise<void> {
     seed.personal.map((row) => ({
       id: undefined,
       display_id: `${row.flow_type === "bank" ? "B" : "C"}-demo`,
+      date: row.date,
       flow_type: row.flow_type,
       direction: row.direction,
       category: row.category,
@@ -264,6 +276,8 @@ export async function hydrateDemoStore(): Promise<void> {
       description: row.description,
       source: "manual",
       timestamp: `${row.date}T00:00:00`,
+      created_timestamp: `${row.date}T00:00:00`,
+      last_updated_timestamp: `${row.date}T00:00:00`,
     })),
   );
   replaceInPlace(transferRows, seed.transfers.map((row) => ({ id: undefined, ...row })));

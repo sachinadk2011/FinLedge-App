@@ -282,12 +282,11 @@ Session 2026-09-05 (SQLite data layer finalization + on-device backup):
   VITE_FINLEDGE_MODE=production.
 
 Session 2026-09-06 (functional fixes round 1 — transfers, updates, edits, filters):
-- Transfers now MOVE money: data/mobile-data.ts transferAdjustments() nets
-  the cash ⇄ bank shift; expenses-dash Bank balance / Cash balance stats
-  include it (replacing the misleading old "transfer chip" card). Transfer
-  rows show in the expenses history (Combined all, Bank/Cash tabs scoped by
-  involved flow) as neutral (sign-less) rows tagged _table:"transfers" +
-  _id, so they get delete + edit buttons.
+- Transfers now MOVE money: data/mobile-data.ts shapes transfer rows per
+  Bank/Cash flow so dashboard totals include the cash ⇄ bank shift (replacing
+  the misleading old "transfer chip" card). Transfer rows show in the expenses
+  history (Combined all, Bank/Cash tabs scoped by involved flow) tagged
+  _table:"transfers" + _id, so they get delete + edit buttons.
 - time default: transfer screen date defaults to today; field() now honors a
   provided date value for draft/edit rehydration instead of always today.
 - Shares quick updates write for real: "Update IPO allotment" →
@@ -315,3 +314,176 @@ Session 2026-09-06 (functional fixes round 1 — transfers, updates, edits, filt
   (entry-edit now reuses it instead of a local select helper).
 - Verify: tsc + vite build clean, 22/22 tests pass, cap sync + gradle
   assembleDebug → BUILD SUCCESSFUL, APK rebuilt.
+
+Session 2026-10-04 (mobile transfer replay validation):
+- mobile/services/transfer-running-balance.ts: added a reusable full
+  chronological replay validator for transfer mutations. It collects manual
+  Bank/Cash income and expenses plus proposed transfer rows, orders by date
+  then timestamp, and reports the first transaction that would push either
+  flow below zero.
+- mobile/src/data/repositories.ts: transfer create, update, and delete now
+  validate the complete proposed post-change sequence across both Bank and
+  Cash before writing. Plain manual expense entries are unchanged and can
+  still make a flow negative.
+- mobile/tests/sqlite-schema.test.ts: added regression coverage for direct
+  delete breakage, indirect downstream delete breakage, edit breakage, and a
+  delete that remains valid.
+
+Session 2026-10-04 (mobile transfer + dashboard follow-up):
+- transfer-running-balance.ts: refined replay validation to use income capacity
+  rather than net after manual expenses. Manual income and prior transfer-in
+  rows fund later transfer-out rows; manual expenses do not consume transfer
+  capacity. Negative/insufficient source-flow income capacity still blocks the
+  transfer.
+- repositories.ts/sqlite-schema.test.ts: Personal Finance income writes now
+  reject negative amounts on add and edit, keeping income totals non-negative.
+- mobile/package.json: `npm run mobile:build` now runs the mobile test suite
+  after the web build, so transfer/business-logic regressions fail the same
+  command used for release checks.
+- app-state.ts/styles.css: validation toasts now stay visible longer and wrap
+  cleanly, so detailed "would leave Cash/Bank..." messages are readable.
+- mobile-data.ts/expenses.ts: Personal Expenses now uses only manual Bank/Cash
+  rows plus recorded Cash/Bank transfers. Bank Services and Share Portfolio are
+  no longer shown inside the Personal Expenses Bank tab; they remain available
+  through their own modules and the Financial Summary.
+- summary.ts/history.ts: Financial Summary now ends with a read-only All history
+  list spanning Bank Services, Share Portfolio, Personal Expenses, and
+  transfers, ordered by Date, Created Timestamp, Last Updated Timestamp, then
+  row identity.
+- shell.ts and module screens: drawer version text shows `mobile-v1.0.0` only,
+  and main mobile module screens drop explanatory description copy in favor of
+  titles and actions.
+
+Session 2026-10-04 (mobile dependency security pass):
+- `npm audit` in mobile/ reported 3 findings (2 high, 1 critical — 8 advisory
+  instances), all dev-tool-only; runtime app deps were never affected.
+  Root cause: `@capacitor/assets@3.0.5` (icon generator) pins outdated
+  transitive deps: nested `@capacitor/cli@5.7.8 → tar@6.2.1` (critical DoS /
+  path-traversal cluster), `sharp@0.32.6` (libvips CVEs), `xcode → uuid@7.0.3`,
+  and `brace-expansion@2.1.4` + top-level `brace-expansion@5.0.9` (quadratic
+  expansion DoS GHSA-q2hr-2g5m-vwhr) under cli's glob/minimatch.
+- Fix (mobile/package.json `overrides`, applied via a clean lockfile
+  re-resolution): force `tar@7.5.22` inside assets' nested cli,
+  `sharp@^0.35.4`, `uuid@^11.1.1` under `@trapezedev/project → xcode`, and
+  `brace-expansion@^5.0.12` tree-wide. Removed the stale non-standard
+  `allowScripts` field (it pinned sharp@0.32.6).
+- Verified the overrides preserve behavior: `@capacitor/assets` never imports
+  `@capacitor/cli` at runtime (grep of its dist), so aligning its nested cli
+  was unnecessary — only its transitive deps were patched. `npm audit` → 0
+  vulnerabilities; npm ls clean (tar 7.5.22 deduped, sharp 0.35.5 + libvips
+  8.18.7, uuid 11.1.1, brace-expansion 5.0.12).
+- No breakage: `tsc` clean, 30/30 tests pass, vite build clean (66 modules),
+  `npx cap sync android` clean (4 plugins), `gradlew :app:assembleDebug` →
+  BUILD SUCCESSFUL, APK rebuilt; `@capacitor/assets --help` boots and sharp
+  resize smoke test passes.
+- Note for future agents: do not remove these `overrides` — `@capacitor/assets`
+  is unmaintained upstream (3.0.5 is latest) and its vulnerable transitive
+  tree is reinstated on any plain `npm install` that drops them.
+
+Session 2026-10-04 (mobile UX + Keep Notes import fixes):
+- transfer-running-balance.ts: simplified transfer rejection copy so the toast
+  says only the relevant source flow and available income, without exposing
+  replay internals to the user.
+- main.ts/app-state.ts/forms.ts: successful Add-entry submits stay on the same
+  Add screen and preserve selected fields for repeat entry. Bank and Personal
+  Expenses keep date/category/type/flow selections; Transfer keeps the chosen
+  direction chip after saving.
+- home.ts/mobile-data.ts: Home category analysis now uses the active Week/
+  Month/Year/Custom range instead of current-month-only data, with a filter
+  sheet for selecting specific categories.
+- main.ts/store.ts: browser preview now falls back immediately to demo data
+  instead of waiting on unavailable web SQLite, and demo Personal Expense rows
+  include their dates so time-range category filters can be visually verified.
+- keep-notes-parser.ts/keep-notes-commit.ts/review.ts: Keep Notes parsing still
+  stages only; commit now respects edited review values, supports Transfer rows
+  through the transfer repository, and parses mixed `cash ... online` income
+  lines into separate Cash/Bank income rows.
+- tests: added parser and repository coverage for staged transfer rows, mixed
+  cash/online income splitting, edited Cash→Bank review rows committing to Bank
+  history, and confirmed transfer rows committing through `transfers`.
+
+Session 2026-10-04 (mobile polish — signs, tap states, compact totals):
+- home.ts/styles.css: Home's three balance totals now use a compact
+  three-column row even on narrow phones, instead of collapsing into a tall
+  single column when there is still enough horizontal space.
+- expenses.ts: removed redundant Bank/Cash "Total income" and "Total expense"
+  stat cards from the Personal Expenses dashboard; the useful Income, Expense,
+  transfer movement, and Net cards remain.
+- history.ts/bank.ts/shares.ts: history row signs and colors now follow the
+  business meaning of the transaction. Bank Services treats only Interest
+  Earned as income; charges render as red negative rows. Share Portfolio treats
+  sell, cash dividend, and SIP redeem as income; IPO/buy/SIP installment render
+  as red negative rows.
+- styles.css: disabled mobile tap-highlight rectangles, kept keyboard
+  `:focus-visible` feedback, and added reduced-motion handling to cut visual
+  churn on devices that request it.
+
+Session 2026-10-04 (Home totals row — flexible auto-fit, supersedes the
+"compact totals" bullet in the mobile polish session above):
+- styles.css: `.home-total-row` no longer hard-forces three equal columns.
+  It now uses `repeat(auto-fit, minmax(96px, 1fr))`, and `minmax(92px, 1fr)`
+  inside the `≤338px` media query — that override also runs *after* the
+  `.split-3 { grid-template-columns: 1fr }` rule there, so the row is never
+  forced into a single tall column on small screens.
+- Resulting behavior, per the user's rule: all three totals sit in one row
+  whenever content width is enough (≥ ~308px, ~296px on small screens);
+  column count drops to 2+1 by grid auto-fit when values/labels are too wide,
+  and only goes single-column below ~194px of content space (never on real
+  phones). Large amounts wrap via existing `overflow-wrap: anywhere` instead
+  of crushing text.
+- home.ts markup unchanged (`split split-3 home-total-row`); only the CSS
+  grid was loosened.
+- Verify: `npm run mobile:build` exit 0, mobile tests green (34/34), 360px
+  preview measurement showed the row laying out 2+1 instead of squeezing
+  three tiny cells; preview server stopped afterwards.
+
+Session 2026-10-04 (UX bug fixes — home category filter, import add-row, history amounts):
+- screens/home.ts: `manualRowsForSelectedRange()` now uses proper period windows
+  for the category bars and stats. Previously it passed ALL 90 daily buckets
+  (the chart's scroll-depth history) to the filter, so "Week" showed 90 days of
+  category totals instead of 7. Fixed per range: week -> rolling 7 days, month ->
+  rolling 30 days, year -> last 12 calendar months, custom -> exact custom range.
+  The scrollable bar chart is unaffected (it still generates its own 90 buckets).
+  Imports: added addDays and toDateKey from utils/date.ts.
+- main.ts: data-import-add-row handler now captures the new entry reference
+  before pushing it so scrollIntoView can target the new card by its id after
+  render(). Uses requestAnimationFrame to wait for the DOM repaint. The user
+  now sees the newly created card immediately instead of wondering if the button
+  did anything.
+- styles.css: split .history-row / .settings-row shared block so .history-row
+  uses align-items: flex-start (top-align for multi-line descriptions) while
+  .settings-row keeps align-items: center. Added .history-row .meta
+  (flex:1; min-width:0) so the left-side text can shrink, and .history-row .money
+  (flex-shrink:0; white-space:nowrap) so the amount never wraps mid-token
+  (no more "-Rs" on one line and "1,000" on the next). Left-side text uses
+  overflow-wrap: break-word to wrap at word boundaries when it is long.
+- Verify: npm run build exit 0, 34/34 tests pass.
+- Docs touched: TASKS-mobile.md (this entry).
+- Static source/HTML check only -- rendered-in-browser verification was NOT performed.
+
+Session 2026-10-04 (Home category compact header + Import clear/undo):
+- screens/home.ts: Replaced the two-element section-title + separate period-controls
+  blocks with a single .cat-header container. .cat-header-top holds the title,
+  filter chip, and "View dashboard" link all in one flex row. inlinePeriodTabs()
+  renders the Week/Month/Year/Custom segmented tabs directly beneath it — no
+  wrapper card or extra padding between them. Removed the now-unused periodControls
+  import from charts.ts.
+- screens/keep-notes/paste.ts: Added a red "Clear" button (data-import-clear)
+  next to the textarea label — only visible when there is text to clear. Clicking
+  it saves the text to appState.importClearUndo + importClearTime, then wipes
+  importPasteDraft. An "Undo" pill bar (data-import-undo-clear) appears above
+  the textarea while the 5-minute window is open; it disappears after the window
+  expires (next render checks Date.now() - importClearTime). After 5 minutes the
+  cleared text is permanently gone. Also wired textarea input -> importPasteDraft
+  sync so the draft stays current as the user types.
+- app-state.ts: Added importClearUndo (string | null) and importClearTime (number)
+  fields to hold the clear undo buffer.
+- main.ts (bindImportEvents): Added data-import-clear handler (saves+clears),
+  data-import-undo-clear handler (restores if within 5 min, then nulls the buffer),
+  and data-import-note input handler (keeps importPasteDraft in sync while typing).
+- styles.css: Added .cat-header, .cat-header-top, .cat-period-tabs, .cat-dash-btn
+  rules for the compact category header; added .import-paste-head, .import-paste-label,
+  .import-clear-btn, .import-undo-bar, .import-undo-label for the paste screen.
+- Verify: npm run build exit 0, 34/34 tests pass.
+- Docs touched: TASKS-mobile.md (this entry).
+- Static source/HTML check only -- rendered-in-browser verification was NOT performed.

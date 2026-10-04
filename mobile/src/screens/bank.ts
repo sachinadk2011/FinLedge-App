@@ -11,12 +11,13 @@ import { getPeriodBuckets, matchesPeriod } from "../utils/periods.js";
 import type { ChartBucket } from "../types.js";
 
 export function bankAddScreen(): string {
+  const draft = appState.bankAddDraft;
   return addFormScreen(
     "Bank Services",
     "Add bank entry",
     [
-      ["Date", "date", "", "date"],
-      ["Category", "select", "Interest Earned", "category"],
+      ["Date", "date", draft.date ?? "", "date"],
+      ["Category", "select", draft.category ?? "Interest Earned", "category"],
       ["Amount", "number", "", "amount"],
       ["Description (optional)", "text", "", "description"],
     ],
@@ -39,8 +40,8 @@ export function bankDashboardScreen(): string {
 
   const rows = bankRecords.map((row) => ({
     ...row,
-    amount: Number(row.amount),
-    direction: Number(row.amount) >= 0 ? "income" : "expense",
+    amount: Math.abs(Number(row.amount)),
+    direction: isIncomeCategory(String(row.category ?? "")) ? "income" : "expense",
     flow_type: "bank",
     _table: "bank_transactions",
     _id: row.id,
@@ -49,7 +50,6 @@ export function bankDashboardScreen(): string {
   return `
     <p class="eyebrow">Bank Services</p>
     <h1 class="pagehead">Bank services dashboard</h1>
-    <p class="sub">Interest, charges, and net balance across your accounts.</p>
 
     ${statGrid(
       [

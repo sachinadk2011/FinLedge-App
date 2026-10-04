@@ -70,7 +70,6 @@ export function sharesAddScreen(): string {
   return `
     <p class="eyebrow">Share Portfolio</p>
     <h1 class="pagehead">Add share entry</h1>
-    <p class="sub">Track IPO, secondary, SIP and dividend activity.</p>
 
     <section class="card">
       <h3>Portfolio (remaining)</h3>
@@ -106,7 +105,6 @@ export function sharesAddScreen(): string {
       ${isSecondary ? `
         ${field("Total Amount", "number", draft("total_amount"), "total_amount")}
         ${field("Quantity", "number", draft("quantity"), "quantity")}
-        <p class="sub" style="margin:0;font-size:11px;color:var(--text-3);">Per unit price is calculated from total amount ÷ quantity.</p>
       ` : ""}
 
       ${isDividend ? `
@@ -155,10 +153,12 @@ export function sharesDashboardScreen(): string {
   const rows = shareRecords.map((row) => ({
     description: shareHistoryDescription(row),
     category: String(row.category ?? ""),
-    amount: Number(row.total_amount),
-    direction: Number(row.profit_loss ?? 0) >= 0 ? "income" : "expense",
+    amount: Math.abs(Number(row.total_amount)),
+    direction: shareFlowDirection(row),
     flow_type: "shares",
     date: row.date,
+    created_timestamp: row.created_timestamp,
+    last_updated_timestamp: row.last_updated_timestamp,
     _table: "share_transactions",
     _id: row.id,
   }));
@@ -166,7 +166,6 @@ export function sharesDashboardScreen(): string {
   return `
     <p class="eyebrow">Share Portfolio</p>
     <h1 class="pagehead">Share portfolio dashboard</h1>
-    <p class="sub">IPO, secondary, SIP position and summary.</p>
 
     <section class="card">
       <h3>IPO &amp; secondary position</h3>
@@ -213,7 +212,6 @@ export function sharesDashboardScreen(): string {
 
     <section class="card" data-quick-update="ipo">
       <h3>Update IPO allotment</h3>
-      <p class="sub">Search an IPO share and update its allotted quantity — saved to the database with FIFO recompute.</p>
       ${shareNameFieldWithSuggestions("mobile-ipo-name-suggestions", "Type IPO share name", ipoOnlyNames(), "ipo_share")}
       ${field("New allotment", "number", "", "ipo_allotment")}
       <button class="btn-secondary" type="button" data-ipo-update>Update</button>
@@ -221,7 +219,6 @@ export function sharesDashboardScreen(): string {
 
     <section class="card" data-quick-update="sip">
       <h3>Update SIP shares</h3>
-      <p class="sub">Search a SIP share and set the total SIP share quantity — saved to the database with FIFO recompute.</p>
       ${shareNameFieldWithSuggestions("mobile-sip-name-suggestions", "Type SIP share name", sipOnlyNames(), "sip_share")}
       ${field("Total SIP shares", "number", "", "sip_total")}
       <button class="btn-secondary" type="button" data-sip-update>Update SIP</button>
@@ -282,5 +279,12 @@ function shareFlowSign(r: { category?: string | null; buy_sell?: string | null }
   if (cat === "dividend") return bs === "cash" ? 1 : 0;
   if (cat === "ipo" || cat === "buy") return -1;
   return 0;
+}
+
+function shareFlowDirection(r: { category?: string | null; buy_sell?: string | null }): "income" | "expense" | "neutral" {
+  const sign = shareFlowSign(r);
+  if (sign > 0) return "income";
+  if (sign < 0) return "expense";
+  return "neutral";
 }
 
