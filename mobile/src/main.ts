@@ -284,8 +284,54 @@ function bindEvents(): void {
   bindShareFormDraft();
 }
 
+/**
+ * Directly patches the Clear/Undo action button on the paste screen without
+ * doing a full re-render. Called on every textarea `input` event so the button
+ * appears the moment the user starts typing or pastes — no round-trip through
+ * render() so cursor position and scroll are preserved.
+ */
+function syncImportActionBtn(): void {
+  const btn = document.querySelector<HTMLButtonElement>(".import-note-action");
+  if (!btn) return;
+  const UNDO_MS = 5 * 60 * 1000;
+  const undoAvailable =
+    appState.importClearUndo !== null &&
+    Date.now() - appState.importClearTime < UNDO_MS;
+  const hasText = appState.importPasteDraft.trim().length > 0;
+
+  if (undoAvailable) {
+    // Show Undo
+    btn.textContent = "Undo";
+    btn.className = "import-note-action import-note-undo";
+    btn.setAttribute("data-import-undo-clear", "");
+    btn.removeAttribute("data-import-clear");
+    btn.removeAttribute("aria-hidden");
+    btn.removeAttribute("tabindex");
+    btn.style.visibility = "";
+  } else if (hasText) {
+    // Show Clear
+    btn.textContent = "Clear";
+    btn.className = "import-note-action import-note-clear";
+    btn.setAttribute("data-import-clear", "");
+    btn.removeAttribute("data-import-undo-clear");
+    btn.removeAttribute("aria-hidden");
+    btn.removeAttribute("tabindex");
+    btn.style.visibility = "";
+  } else {
+    // Hide (keeps layout space)
+    btn.textContent = "Clear";
+    btn.className = "import-note-action";
+    btn.removeAttribute("data-import-clear");
+    btn.removeAttribute("data-import-undo-clear");
+    btn.setAttribute("aria-hidden", "true");
+    btn.setAttribute("tabindex", "-1");
+    btn.style.visibility = "hidden";
+  }
+}
+
 /** Keep Notes import flow event wiring (parse, search, add, commit, and per-row actions). */
 function bindImportEvents(): void {
+  // Parse & review: read textarea, parse the raw text, navigate to review screen.
   document.querySelector("[data-import-parse]")?.addEventListener("click", () => {
     const textarea = document.querySelector<HTMLTextAreaElement>("[data-import-note]");
     const raw = textarea?.value.trim() ?? "";
@@ -298,42 +344,22 @@ function bindImportEvents(): void {
     navigate("import-review");
   });
 
-  // Clear: save current text to undo buffer then wipe the draft.
-  document.querySelector("[data-import-clear]")?.addEventListener("click", () => {
-    const raw = appState.importPasteDraft.trim();
-    if (!raw) return;
-    appState.importClearUndo = raw;
-    appState.importClearTime = Date.now();
-    appState.importPasteDraft = "";
-    render();
-  });
-
-  // Undo clear: restore within 5 minutes — after that the button disappears.
-  document.querySelector("[data-import-undo-clear]")?.addEventListener("click", () => {
-    const UNDO_MS = 5 * 60 * 1000;
-    if (appState.importClearUndo !== null && Date.now() - appState.importClearTime < UNDO_MS) {
-      appState.importPasteDraft = appState.importClearUndo;
-    }
-    appState.importClearUndo = null;
-    appState.importClearTime = 0;
-    render();
-  });
-
-  // Keep draft in sync as the user types in the textarea.
+  // Keep draft in sync as user types AND live-swap the Clear/Undo button
+  // without a full re-render (avoids cursor-jump + layout reflow on every keystroke).
   document.querySelector("[data-import-note]")?.addEventListener("input", (event) => {
-    appState.importPasteDraft = (event.target as HTMLTextAreaElement).value;
+    const textarea = event.target as HTMLTextAreaElement;
+    appState.importPasteDraft = textarea.value;
+    // Update the action button in-place so layout never shifts.
+    syncImportActionBtn();
   });
 
   document.querySelector("[data-import-add-row]")?.addEventListener("click", () => {
     const newEntry = blankEntry();
-    appState.importEntries.push(newEntry);
+    // unshift puts the new card at top of the list — right below the toolbar
+    // button — so it is already visible after render(). No scroll needed.
+    appState.importEntries.unshift(newEntry);
     appState.importReviewQuery = "";
     render();
-    // Scroll to the new card so the user immediately sees it was created.
-    requestAnimationFrame(() => {
-      document.querySelector(`[data-import-row="${newEntry.id}"]`)
-        ?.scrollIntoView({ behavior: "smooth", block: "start" });
-    });
   });
 
   document.querySelector("[data-import-search]")?.addEventListener("input", (event) => {
@@ -569,6 +595,39 @@ function closeDrawer(): void {
 /** Shown when a write is attempted without a working database (e.g. web preview). */
 let bootNotice: string | null = null;
 
+/**
+ * One-time delegated click handler for the import paste screen.
+ * Attached to document.body at boot so it fires regardless of how many
+ * times render() re-binds the DOM — avoids listener accumulation and
+ * works even when the Clear/Undo button's data-* attribute changes live.
+ */
+function initImportPasteDelegation(): void {
+  document.body.addEventListener("click", (event) => {
+    const target = event.target as HTMLElement;
+
+    if (target.closest("[data-import-clear]")) {
+      const raw = appState.importPasteDraft.trim();
+      if (!raw) return;
+      appState.importClearUndo = raw;
+      appState.importClearTime = Date.now();
+      appState.importPasteDraft = "";
+      render();
+      return;
+    }
+
+    if (target.closest("[data-import-undo-clear]")) {
+      const UNDO_MS = 5 * 60 * 1000;
+      if (appState.importClearUndo !== null && Date.now() - appState.importClearTime < UNDO_MS) {
+        appState.importPasteDraft = appState.importClearUndo;
+      }
+      appState.importClearUndo = null;
+      appState.importClearTime = 0;
+      render();
+      return;
+    }
+  });
+}
+
 async function bootstrap(): Promise<void> {
   try {
     if (Capacitor.getPlatform() === "web") {
@@ -593,6 +652,11 @@ async function bootstrap(): Promise<void> {
     }
   }
   initBackButton();
+  // Wire the paste-screen Clear/Undo/Parse actions ONCE via delegation on
+  // document.body — these buttons' data-* attributes are swapped live so
+  // they can't be bound with querySelector inside bindEvents() (which runs
+  // on every render and would miss or duplicate them).
+  initImportPasteDelegation();
   render();
 }
 

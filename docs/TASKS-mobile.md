@@ -487,3 +487,92 @@ Session 2026-10-04 (Home category compact header + Import clear/undo):
 - Verify: npm run build exit 0, 34/34 tests pass.
 - Docs touched: TASKS-mobile.md (this entry).
 - Static source/HTML check only -- rendered-in-browser verification was NOT performed.
+
+Session 2026-10-07 (Import UX polish — add-row instant jump, Clear/Undo in-place toggle):
+
+BUG 1 — Add row scroll animation was jarring.
+- main.ts: Changed scrollIntoView({ behavior: "smooth" }) to { behavior: "instant" }
+  in the data-import-add-row click handler. The new card now appears without
+  any scroll animation — it simply jumps into view immediately.
+
+BUG 2 — Clear button not visible after pasting (only appeared after navigate away+back),
+         and the Undo card caused layout shift (page moving up/down on click).
+Root cause A: The data-import-note input handler only updated appState.importPasteDraft
+  but never called render(), so the Clear button that depends on hasText was never
+  shown while the user stayed on the screen.
+Root cause B: The previous design used a separate .import-undo-bar card that appeared
+  above the textarea section when undo was available — causing the entire card section
+  to shift down/up on clear/undo clicks.
+
+Fix:
+- paste.ts: Removed the separate undo bar card entirely. The Clear/Undo is now a
+  single .import-note-action button that always occupies the same spot in the
+  .import-paste-head row (right side, beside the "Raw note text" label). It is
+  rendered as visibility:hidden (not display:none) when neither state applies, so
+  the row height is always stable and no layout shift occurs. When undo is
+  available it shows "Undo" (teal); when there is text it shows "Clear" (red).
+- main.ts: Added syncImportActionBtn() — a lightweight DOM patcher that directly
+  swaps the button's text, class, data-attribute, and visibility WITHOUT calling
+  render(). Called from the data-import-note input handler on every keystroke/paste
+  so the button appears the instant the user types or pastes, without a full
+  re-render (which would reset cursor position and scroll). The clear/undo click
+  handlers still call render() (single click, acceptable) which re-renders the
+  whole paste screen with the correct initial state.
+- styles.css: Replaced .import-clear-btn / .import-undo-bar / .import-undo-label
+  with .import-note-action (base), .import-note-clear (red), .import-note-undo
+  (teal). Added min-width:36px and text-align:right to prevent width jitter
+  between "Clear" (5 chars) and "Undo" (4 chars).
+
+- Verify: npm run build exit 0, 34/34 tests pass.
+- Docs touched: TASKS-mobile.md (this entry).
+- Static source/HTML check only -- rendered-in-browser verification was NOT performed.
+Session 2026-10-07 (Import UX: clear button fix + add row at top):
+
+BUG 1 -- Clear/Undo button not clickable.
+Root cause: bindImportEvents() used document.querySelector("[data-import-clear]") to attach
+  the listener. At bind time the button starts attribute-less (visibility:hidden, no data-*),
+  so querySelector returned null and no listener was ever attached. Swapping the attribute
+  live via syncImportActionBtn() didn't help because the listener was never bound.
+  Additionally the block was inside bindImportEvents() which is called on every render(),
+  so any delegated listener attached to #app would accumulate on each render.
+
+Fix:
+- main.ts: Added initImportPasteDelegation() -- a ONE-TIME delegated listener attached to
+  document.body at bootstrap(), before the first render(). It checks event.target.closest()
+  for [data-import-clear] and [data-import-undo-clear] so it works regardless of when the
+  data-* attribute is set or removed. Being on document.body it only fires once ever -- no
+  accumulation across renders.
+- main.ts: Removed the broken per-element querySelector bindings for data-import-clear and
+  data-import-undo-clear from bindImportEvents() entirely. Also removed the previous
+  delegated block that was incorrectly inside bindImportEvents() (would have multiplied).
+- The data-import-note input handler stays in bindImportEvents() (rebinds each render,
+  correct because the textarea element is replaced each render).
+
+BUG 2 -- Add row: still felt awkward with scroll.
+Fix: Changed appState.importEntries.push(newEntry) to .unshift(newEntry) in the
+  data-import-add-row handler. New row is inserted at the TOP of the list so it is
+  immediately visible without any scrolling. The scrollIntoView call now just ensures
+  .import-rows top is in view (instant, no animation).
+
+- Verify: npm run build exit 0, 34/34 tests pass.
+- Docs touched: TASKS-mobile.md (this entry).
+- Static source check only -- rendered-in-browser verification NOT performed.
+
+Session 2026-10-07 hotfix (Parse & review button broken):
+Bug: data-import-parse click handler was accidentally deleted during the Clear/Undo
+delegation refactor (fix_import_ux.py merged parse into a delegated block on #app,
+then fix_delegation.py stripped that entire block, leaving no parse handler anywhere).
+Fix: Restored document.querySelector('[data-import-parse]')?.addEventListener(...)
+at the top of bindImportEvents() in main.ts — the standard per-render querySelector
+pattern is correct here since the button is always in the DOM when the paste screen
+is rendered. Verified all other import handlers (add-row, search, commit, row actions,
+clear, undo-clear) are still present and correct.
+Verify: npm run build exit 0, 34/34 tests pass.
+Static source check only -- rendered-in-browser verification NOT performed.
+
+Session 2026-10-07 hotfix (add-row: stop viewport from moving on click):
+Removed the requestAnimationFrame + scrollIntoView call from the data-import-add-row
+handler. New row is already inserted at the top of the list via unshift(), so it sits
+right below the toolbar button after render() -- no scroll needed. The render()
+preserveScroll logic restores the previous scrollTop so the page position is stable.
+Verify: npm run build exit 0, 34/34 pass.

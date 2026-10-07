@@ -553,7 +553,7 @@ button {
   100% { border-color: var(--border); }
 }
 
-/* ── Keep Notes import: paste screen — header row + clear button ── */
+/* ── Keep Notes import: paste screen — header row + Clear/Undo toggle ── */
 .import-paste-head {
   align-items: center;
   display: flex;
@@ -567,27 +567,24 @@ button {
   font-weight: 700;
 }
 
-.import-clear-btn {
+/* Single action button that toggles between Clear and Undo in-place.
+   Always occupies the same space so the layout never shifts. */
+.import-note-action {
   background: none;
   border: 0;
-  color: var(--accent-red);
   font-size: 12px;
   font-weight: 700;
   padding: 0;
+  min-width: 36px; /* keeps width stable between "Clear" and "Undo" */
+  text-align: right;
 }
 
-/* ── Undo bar: appears above the textarea after a Clear ── */
-.import-undo-bar {
-  align-items: center;
-  display: flex;
-  gap: 10px;
-  justify-content: space-between;
-  padding: 10px 14px;
+.import-note-clear {
+  color: var(--accent-red);
 }
 
-.import-undo-label {
-  color: var(--text-2);
-  font-size: 13px;
+.import-note-undo {
+  color: var(--brand-teal);
 }
 
 
