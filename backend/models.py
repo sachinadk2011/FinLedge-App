@@ -49,9 +49,6 @@ class PersonalFinanceCategory(str, Enum):
     rent = "Rent"
     travel = "Travel"
     insurance = "Insurance"
-    investment = "Investment"
-    sip = "SIP"
-    share_market = "Share Market"
     other = "Other"
     salary = "Salary"
     freelance = "Freelance"
@@ -59,9 +56,6 @@ class PersonalFinanceCategory(str, Enum):
     prize_lottery = "Prize/Lottery"
     gift = "Gift"
     refund = "Refund"
-    investment_income = "Investment Income"
-    investment_return = "Investment Return"
-    dividend = "Dividend"
     other_income = "Other Income"
 
 

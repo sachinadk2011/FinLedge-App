@@ -3,7 +3,22 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 
 import { addShareEntry, getShareData, updateShareEntry } from "../api/shareApi";
 import ShareForm from "../components/ShareForm";
+import StatusNotice from "../components/StatusNotice";
 import { getTodayInputValue } from "../utils/date";
+
+function clearShareAmountFields(current) {
+  const category = String(current.category || "").toLowerCase();
+  const dividendType = String(current._dividendType || "cash").toLowerCase();
+  return {
+    ...current,
+    per_unit_price: "",
+    total_amount: "",
+    amount: "",
+    bonus_shares: "",
+    allotted: category === "sip" || (category === "dividend" && dividendType === "cash") ? "0" : "",
+    _totalAmount: "",
+  };
+}
 
 function SharePage() {
   const navigate = useNavigate();
@@ -18,6 +33,7 @@ function SharePage() {
     allotted: "",
   });
   const [error, setError] = useState("");
+  const [warning, setWarning] = useState("");
   const [success, setSuccess] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -30,6 +46,7 @@ function SharePage() {
     setError("");
     return getShareData()
       .then((response) => {
+        if (response?.warnings?.length) setWarning(response.warnings.join(" "));
         const records = response?.records || [];
 
         const regularShareNames = records
@@ -113,13 +130,12 @@ function SharePage() {
   }, [editId]);
 
   useEffect(() => {
-    if (!success && !error) return;
-    const timer = window.setTimeout(() => {
-      setSuccess("");
-      setError("");
-    }, 5000);
-    return () => window.clearTimeout(timer);
-  }, [success, error]);
+    if (!editId || loading) return;
+    const section = document.querySelector(".entry-form-section");
+    if (!section) return;
+    section.scrollIntoView({ behavior: "smooth", block: "start" });
+    window.requestAnimationFrame(() => section.querySelector("input:not([type='hidden']), select, textarea")?.focus({ preventScroll: true }));
+  }, [editId, loading]);
 
   async function handleSubmit(event) {
     event.preventDefault();
@@ -144,37 +160,17 @@ function SharePage() {
       if (editId) {
         setSuccess("Entry updated successfully.");
         navigate("/share", { replace: true });
-        setForm({
-          dates: getTodayInputValue(),
-          share_name: "",
-          category: "ipo",
-          per_unit_price: "",
-          total_amount: "",
-          amount: "",
-          bonus_shares: "",
-          allotted: "",
-          _dividendType: undefined,
-          _sipType: undefined,
-          _totalAmount: "",
-        });
+        setForm((prev) => clearShareAmountFields(prev));
       } else {
         setSuccess("Entry saved successfully.");
-        setForm((prev) => ({
-          ...prev,
-          share_name: "",
-          per_unit_price: "",
-          total_amount: "",
-          amount: "",
-          bonus_shares: "",
-          allotted: prev.category === "dividend" || prev.category === "sip" ? "0" : "",
-          _totalAmount: "",
-        }));
+        setForm((prev) => clearShareAmountFields(prev));
       }
 
       // Refresh suggestions + portfolio panel after saving.
       loadShareMeta();
     } catch (err) {
       setError(err.message || "Unable to save share entry.");
+      setForm((prev) => clearShareAmountFields(prev));
     } finally {
       setSubmitting(false);
     }
@@ -203,6 +199,7 @@ function SharePage() {
 
       <div className="split-layout">
         <div>
+          <div className="entry-form-section">
           <ShareForm
             value={form}
             onChange={setForm}
@@ -211,8 +208,10 @@ function SharePage() {
             submitLabel={editId ? "Update Share Portfolio Entry" : "Add Share Portfolio Entry"}
             suggestions={form.category === "sip" ? sipShares : knownShares}
           />
-          {success ? <p className="success">{success}</p> : null}
-          {error ? <pre className="error-pre">{error}</pre> : null}
+          </div>
+          <StatusNotice message={success} kind="success" onDismiss={() => setSuccess("")} />
+          <StatusNotice message={error} onDismiss={() => setError("")} />
+          <StatusNotice message={warning} kind="warning" onDismiss={() => setWarning("")} />
         </div>
 
         <aside className="card sticky-panel">

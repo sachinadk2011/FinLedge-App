@@ -38,22 +38,22 @@ function Layout() {
       <UpdateNotice />
       {/* <OnboardingTour /> */}{/* Tour guide disabled for now — code is ready, will be enabled later */}
       <header className="sticky top-0 z-20 bg-white/70 supports-[backdrop-filter]:bg-white/40 supports-[backdrop-filter]:backdrop-blur-xl border-b border-slate-200/60">
-        <div className="flex flex-col gap-3 px-6 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-6 xl:px-10 2xl:px-16">
+        <div className="app-topbar-inner flex items-center justify-between gap-2 px-3 py-2 sm:gap-3 sm:px-4 xl:px-10 2xl:px-16">
           <div className="brand-cluster">
-            <Link className="group flex items-center gap-3 no-underline" to="/">
+            <Link className="app-brand-link group flex items-center gap-3 no-underline" to="/">
               <img
                 src="./finledge-icon.png"
                 alt="FinLedge logo"
                 className="h-11 w-11 rounded-[13px] object-cover shadow-soft transition-transform duration-200 group-hover:scale-[1.03]"
               />
-              <span className="grid leading-tight">
+              <span className="app-brand-copy grid leading-tight">
                 <span className="text-base font-extrabold tracking-tight text-slate-900">FinLedge</span>
-                <span className="text-sm font-semibold text-slate-500">{label}</span>
+                <span className="app-route-label text-sm font-semibold text-slate-500">{label}</span>
               </span>
             </Link>
           </div>
 
-          <nav className="flex flex-wrap items-center justify-center gap-2 sm:justify-end sm:gap-1">
+          <nav className="app-main-nav flex items-center justify-end gap-1" aria-label="Main navigation">
             <Link
               className="no-underline rounded-full px-3 py-2 text-sm font-bold text-slate-700 transition hover:-translate-y-0.5 hover:bg-white/70 hover:text-slate-900 hover:shadow-soft"
               to="/bank"

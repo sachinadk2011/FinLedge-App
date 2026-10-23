@@ -3,6 +3,7 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 
 import { addBankEntry, getBankData, updateBankEntry } from "../api/bankApi";
 import BankForm from "../components/BankForm";
+import StatusNotice from "../components/StatusNotice";
 import { BANK_CATEGORIES } from "../constants/options";
 import { getTodayInputValue } from "../utils/date";
 
@@ -29,6 +30,7 @@ function BankPage() {
     description: "",
   });
   const [error, setError] = useState("");
+  const [warning, setWarning] = useState("");
   const [success, setSuccess] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -40,6 +42,7 @@ function BankPage() {
     setError("");
     getBankData()
       .then((response) => {
+        if (response?.warnings?.length) setWarning(response.warnings.join(" "));
         const record = (response?.records || []).find((r) => Number(r.id) === Number(editId));
         if (!record) {
           throw new Error("Bank service record not found for editing.");
@@ -58,13 +61,12 @@ function BankPage() {
   }, [editId]);
 
   useEffect(() => {
-    if (!success && !error) return;
-    const timer = window.setTimeout(() => {
-      setSuccess("");
-      setError("");
-    }, 5000);
-    return () => window.clearTimeout(timer);
-  }, [success, error]);
+    if (!editId || loading) return;
+    const section = document.querySelector(".entry-form-section");
+    if (!section) return;
+    section.scrollIntoView({ behavior: "smooth", block: "start" });
+    window.requestAnimationFrame(() => section.querySelector("input:not([type='hidden']), select, textarea")?.focus({ preventScroll: true }));
+  }, [editId, loading]);
 
   async function handleSubmit(event) {
     event.preventDefault();
@@ -77,12 +79,7 @@ function BankPage() {
         setSuccess("Entry updated successfully.");
         // Clear edit mode but keep the user on the same page.
         navigate("/bank", { replace: true });
-        setForm({
-          dates: getTodayInputValue(),
-          category: DEFAULT_BANK_CATEGORY,
-          amount: "",
-          description: "",
-        });
+        setForm((prev) => ({ ...prev, amount: "", description: "" }));
       } else {
         await addBankEntry(form);
         setSuccess("Entry saved successfully.");
@@ -95,6 +92,7 @@ function BankPage() {
       }
     } catch (err) {
       setError(err.message || "Unable to save bank entry.");
+      setForm((prev) => ({ ...prev, amount: "", description: "" }));
     } finally {
       setSubmitting(false);
     }
@@ -120,6 +118,7 @@ function BankPage() {
         </div>
       </header>
       {loading ? <p>Loading entry...</p> : null}
+      <div className="entry-form-section">
       <BankForm
         value={form}
         onChange={setForm}
@@ -127,8 +126,10 @@ function BankPage() {
         submitting={submitting}
         submitLabel={editId ? "Update Bank Service Entry" : "Add Bank Service Entry"}
       />
-      {success ? <p className="success">{success}</p> : null}
-      {error ? <pre className="error-pre">{error}</pre> : null}
+      </div>
+      <StatusNotice message={success} kind="success" onDismiss={() => setSuccess("")} />
+      <StatusNotice message={error} onDismiss={() => setError("")} />
+      <StatusNotice message={warning} kind="warning" onDismiss={() => setWarning("")} />
     </main>
   );
 }

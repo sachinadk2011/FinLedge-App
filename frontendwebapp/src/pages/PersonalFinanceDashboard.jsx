@@ -6,41 +6,44 @@ import BarChart from "../components/BarChart";
 import ConfirmDialog from "../components/ConfirmDialog";
 import InteractiveTimelineChart from "../components/InteractiveTimelineChart";
 import StatGrid from "../components/StatGrid";
+import StatusNotice from "../components/StatusNotice";
 import TransactionsTable from "../components/TransactionsTable";
+import DashboardPeriodFilter from "../components/DashboardPeriodFilter";
+import TransactionFilters from "../components/TransactionFilters";
+import useDashboardPeriod from "../hooks/useDashboardPeriod";
 
 import { formatCurrency } from "../utils/format";
-import { parseDate, isoMonthKey, monthLabelFormatter } from "../utils/date";
+import { parseDate, isoDayKey, isoMonthKey } from "../utils/date";
+import { buildDashboardBuckets } from "../utils/dashboardPeriod";
 
 const formatter = {
   format: (val) => formatCurrency(val)
 };
 
-function buildBreakdownRows(values = {}) {
+function buildBreakdownRows(values = {}, color) {
   return Object.entries(values)
-    .map(([label, value]) => ({ label, value: Number(value || 0) }))
+    .map(([label, value]) => ({ label, value: Number(value || 0), color }))
     .filter((item) => item.value > 0)
     .sort((a, b) => b.value - a.value);
 }
 
-function buildMonthlyFlowOverview(records, flowType) {
-  const byMonth = new Map();
+function buildFlowOverview(records, flowType, buckets, monthly) {
+  const byKey = new Map(buckets.map((bucket) => [bucket.key, { ...bucket, income: 0, expenses: 0, netDisplay: 0, netRaw: 0 }]));
   for (const record of records) {
     if (flowType !== "combined" && record.flow_type !== flowType) continue;
+    if (flowType === "combined" && record.source === "transfer") continue;
     const parsed = parseDate(record.date);
     if (!parsed) continue;
-    const key = isoMonthKey(parsed);
-    if (!byMonth.has(key)) {
-      byMonth.set(key, {
-        label: monthLabelFormatter.format(new Date(`${key}-01T00:00:00`)),
-        income: 0,
-        expenses: 0,
-        netDisplay: 0,
-        netRaw: 0,
-      });
-    }
-    const entry = byMonth.get(key);
+    const key = monthly ? isoMonthKey(parsed) : isoDayKey(parsed);
+    const entry = byKey.get(key);
+    if (!entry) continue;
     const amount = Number(record.amount || 0);
-    if (record.direction === "income") {
+    if (record.source === "transfer") {
+      const signedAmount = Number(record.signed_amount || 0);
+      if (signedAmount >= 0) entry.income += signedAmount;
+      else entry.expenses += Math.abs(signedAmount);
+      entry.netRaw += signedAmount;
+    } else if (record.direction === "income") {
       entry.income += amount;
       entry.netRaw += amount;
     } else {
@@ -50,14 +53,59 @@ function buildMonthlyFlowOverview(records, flowType) {
     entry.netDisplay = Math.abs(entry.netRaw);
   }
 
-  return Array.from(byMonth.entries())
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([, entry]) => entry);
+  return Array.from(byKey.values());
+}
+
+function summarizeFlowRecords(records) {
+  const flow = () => ({ income: 0, expenses: 0, transfer_in: 0, transfer_out: 0, total_income: 0, total_expenses: 0, net: 0, income_breakdown: {}, expense_breakdown: {} });
+  const result = { bank: flow(), cash: flow(), combined: { overall_income: 0, overall_expenses: 0, overall_net: 0 } };
+  records.forEach((record) => {
+    const current = result[record.flow_type];
+    if (!current) return;
+    const amount = Number(record.amount || 0);
+    if (record.source === "transfer") {
+      const signed = Number(record.signed_amount || 0);
+      if (signed < 0) current.transfer_out += Math.abs(signed);
+      else current.transfer_in += signed;
+      current.total_income += signed;
+    } else if (record.direction === "income") {
+      current.income += amount;
+      current.income_breakdown[record.category] = (current.income_breakdown[record.category] || 0) + amount;
+    } else {
+      current.expenses += amount;
+      current.expense_breakdown[record.category] = (current.expense_breakdown[record.category] || 0) + amount;
+    }
+  });
+  ["bank", "cash"].forEach((name) => {
+    const current = result[name];
+    current.total_income += current.income;
+    current.total_expenses = current.expenses;
+    current.net = current.total_income - current.total_expenses;
+  });
+  result.combined.overall_income = result.bank.income + result.cash.income;
+  result.combined.overall_expenses = result.bank.expenses + result.cash.expenses;
+  result.combined.overall_net = result.combined.overall_income - result.combined.overall_expenses;
+  return result;
+}
+
+function addTransferReceivers(records) {
+  const receiverRecords = records.flatMap((record) => {
+    if (record.source !== "transfer") return [];
+    const receiverFlow = record.transfer_direction === "bank_to_cash"
+      ? "cash"
+      : record.transfer_direction === "cash_to_bank" ? "bank" : null;
+    if (!receiverFlow) return [];
+    return [{
+      ...record,
+      flow_type: receiverFlow,
+      signed_amount: Math.abs(Number(record.amount || 0)),
+      description: record.transfer_direction === "bank_to_cash" ? "Received from Bank" : "Received from Cash",
+    }];
+  });
+  return [...records, ...receiverRecords];
 }
 
 function getSourceLabel(source) {
-  if (source === "share-sync") return "Share Portfolio";
-  if (source === "bank-services-sync") return "Bank Services";
   if (source === "transfer") return "Transfer";
   return "Manual";
 }
@@ -67,8 +115,10 @@ function getDirectionLabel(record) {
   return record.direction === "income" ? "Income" : "Expense";
 }
 
-function FlowDashboard({ title, netLabel, summary, records, flowType, navigate, deletingId, setPendingDeleteRow }) {
-  const monthlyOverview = useMemo(() => buildMonthlyFlowOverview(records, flowType), [records, flowType]);
+function FlowDashboard({ title, netLabel, summary, records, flowType, navigate, deletingId, setPendingDeleteRow, bounds, range, search, onSearchChange, category, onCategoryChange }) {
+  const monthly = range === "year" || range === "all_time" || (range === "custom" && bounds && (bounds.end - bounds.start) / 86400000 > 60);
+  const buckets = useMemo(() => buildDashboardBuckets(records, bounds, { monthly }), [records, bounds, monthly]);
+  const overview = useMemo(() => buildFlowOverview(records, flowType, buckets, monthly), [records, flowType, buckets, monthly]);
   const flowRows = useMemo(
     () =>
       records
@@ -87,14 +137,12 @@ function FlowDashboard({ title, netLabel, summary, records, flowType, navigate, 
         })),
     [records, flowType],
   );
+  const filteredRows = flowRows.filter((row) => (category === "all" || row.category === category)
+    && (!search.trim() || `${row.category} ${row.description}`.toLowerCase().includes(search.trim().toLowerCase())));
   const stats = flowType === "bank"
     ? [
         { label: "Income", value: formatter.format(summary.income || 0) },
         { label: "Expense", value: formatter.format(summary.expenses || 0) },
-        { label: "Investment expense", value: formatter.format(summary.investment_expense || 0) },
-        { label: "Investment income", value: formatter.format(summary.investment_income || 0) },
-        { label: "Interest earned", value: formatter.format(summary.interest_earned || 0) },
-        { label: "Service cost", value: formatter.format(summary.service_cost || 0) },
         ...(summary.transfer_out > 0 ? [{ label: "Transferred to Cash", value: formatter.format(summary.transfer_out || 0) }] : []),
         ...(summary.transfer_in > 0 ? [{ label: "Received from Cash", value: formatter.format(summary.transfer_in || 0) }] : []),
         { label: "Total income", value: formatter.format(summary.total_income || 0) },
@@ -126,32 +174,39 @@ function FlowDashboard({ title, netLabel, summary, records, flowType, navigate, 
         <StatGrid items={stats} />
       </section>
       <div className="graph-grid">
-        <BarChart title={`${title} expense breakdown`} data={buildBreakdownRows(summary.expense_breakdown)} />
-        <BarChart title={`${title} income breakdown`} data={buildBreakdownRows(summary.income_breakdown)} />
+        {buildBreakdownRows(summary.expense_breakdown, "#f2555f").length ? <BarChart title={`${title} expense breakdown`} data={buildBreakdownRows(summary.expense_breakdown, "#f2555f")} /> : null}
+        {buildBreakdownRows(summary.income_breakdown, "#22c55e").length ? <BarChart title={`${title} income breakdown`} data={buildBreakdownRows(summary.income_breakdown, "#22c55e")} /> : null}
       </div>
       <section className="card">
         <div className="page-header" style={{ marginBottom: 12 }}>
           <div>
             <h3>{title} trend</h3>
-            <p className="subtitle">Month-wise income, expenses, and net movement.</p>
           </div>
         </div>
         <InteractiveTimelineChart
-          title={`Monthly ${title} Overview`}
-          data={monthlyOverview}
+          title={`${title} Overview`}
+          data={overview}
           windowSize={12}
           bars={[
-            { dataKey: "income", name: "Income", color: "#16a34a" },
-            { dataKey: "expenses", name: "Expenses", color: "#ef4444" },
-            { dataKey: "netDisplay", rawDataKey: "netRaw", name: netLabel, color: "#0f766e", negativeColor: "#f59e0b" },
+            { dataKey: "income", name: "Income", color: "#22c55e" },
+            { dataKey: "expenses", name: "Expense", color: "#f2555f" },
+            { dataKey: "netDisplay", rawDataKey: "netRaw", name: "Net", color: "#14b8a6", negativeColor: "#f5a524" },
+          ]}
+          moduleDashboard
+          legendItems={[
+            { label: "Income", color: "#22c55e" },
+            { label: "Expense", color: "#f2555f" },
+            { label: "Net ≥0", color: "#14b8a6" },
+            { label: "Net <0", color: "#f5a524" },
           ]}
         />
       </section>
       <section className="card">
         <h3>All {title} transactions</h3>
+        <TransactionFilters search={search} onSearchChange={onSearchChange} category={category} onCategoryChange={onCategoryChange} categories={Array.from(new Set(flowRows.map((row) => row.category))).map((value) => ({ value, label: value }))} />
         <TransactionsTable
           columns={columns}
-          rows={flowRows}
+          rows={filteredRows}
           actions={(row) =>
             row.raw?.source !== "manual" ? (
               <span className="muted-text">Read-only</span>
@@ -194,9 +249,13 @@ function PersonalFinanceDashboard() {
   const [data, setData] = useState(null);
   const [activeView, setActiveView] = useState(initialView);
   const [error, setError] = useState("");
+  const [warning, setWarning] = useState("");
   const [loading, setLoading] = useState(true);
   const [deletingId, setDeletingId] = useState(null);
   const [pendingDeleteRow, setPendingDeleteRow] = useState(null);
+  const [tableSearch, setTableSearch] = useState("");
+  const [tableCategory, setTableCategory] = useState("all");
+  const period = useDashboardPeriod("week");
 
   useEffect(() => {
     setActiveView(initialView);
@@ -205,7 +264,10 @@ function PersonalFinanceDashboard() {
   function loadData(background = false) {
     if (!background) setLoading(true);
     getPersonalFinanceData()
-      .then((response) => setData(response))
+      .then((response) => {
+        setData(response);
+        if (response?.warnings?.length) setWarning(response.warnings.join(" "));
+      })
       .catch((err) => setError(err.message || "Unable to load Personal Expenses data."))
       .finally(() => { if (!background) setLoading(false); });
   }
@@ -228,12 +290,10 @@ function PersonalFinanceDashboard() {
   }
 
   const records = data?.records || [];
-  const summary = data?.summary || {
-    bank: { total_income: 0, total_expenses: 0, net: 0, income_breakdown: {}, expense_breakdown: {} },
-    cash: { total_income: 0, total_expenses: 0, net: 0, income_breakdown: {}, expense_breakdown: {} },
-    combined: { overall_income: 0, overall_expenses: 0, overall_net: 0 },
-  };
-
+  const periodRecords = useMemo(() => period.filterRecords(records), [records, period.bounds]);
+  const periodBounds = useMemo(() => period.boundsForRecords(records), [records, period.range, period.bounds]);
+  const flowRecords = useMemo(() => addTransferReceivers(periodRecords), [periodRecords]);
+  const summary = useMemo(() => summarizeFlowRecords(flowRecords), [flowRecords]);
   const combinedStats = [
     { label: "Overall income", value: formatter.format(summary.combined?.overall_income || 0) },
     { label: "Overall expenses", value: formatter.format(summary.combined?.overall_expenses || 0) },
@@ -241,10 +301,22 @@ function PersonalFinanceDashboard() {
     { label: "Bank net", value: formatter.format(summary.bank?.net || 0) },
     { label: "Cash net", value: formatter.format(summary.cash?.net || 0) },
   ];
+  const bankAnalytics = [
+    { label: "Bank income", value: Number(summary.bank?.income || 0), color: "#22c55e" },
+    { label: "Bank expenses", value: Number(summary.bank?.total_expenses || 0), color: "#f2555f" },
+    { label: "Bank net", value: Number(summary.bank?.net || 0), color: Number(summary.bank?.net || 0) < 0 ? "#f5a524" : "#14b8a6" },
+  ].filter((item) => item.value !== 0);
+  const cashAnalytics = [
+    { label: "Cash income", value: Number(summary.cash?.income || 0), color: "#22c55e" },
+    { label: "Cash expenses", value: Number(summary.cash?.total_expenses || 0), color: "#f2555f" },
+    { label: "Cash net", value: Number(summary.cash?.net || 0), color: Number(summary.cash?.net || 0) < 0 ? "#f5a524" : "#14b8a6" },
+  ].filter((item) => item.value !== 0);
 
-  const combinedOverview = useMemo(() => buildMonthlyFlowOverview(records, "combined"), [records]);
+  const isMonthly = period.range === "year" || period.range === "all_time" || (period.range === "custom" && periodBounds && (periodBounds.end - periodBounds.start) / 86400000 > 60);
+  const periodBuckets = useMemo(() => buildDashboardBuckets(periodRecords, periodBounds, { monthly: isMonthly }), [periodRecords, periodBounds, isMonthly]);
+  const combinedOverview = useMemo(() => buildFlowOverview(periodRecords, "combined", periodBuckets, isMonthly), [periodRecords, periodBuckets, isMonthly]);
 
-  const recentRows = [...records]
+  const recentRows = [...periodRecords]
     .reverse()
     .map((record) => ({
       id: record.id,
@@ -270,7 +342,7 @@ function PersonalFinanceDashboard() {
   ];
 
   return (
-    <main className="page">
+    <main className="page wide-dashboard personal-finance-dashboard-page">
       <header className="page-header">
         <div>
           <p className="eyebrow">Personal Expenses</p>
@@ -303,54 +375,50 @@ function PersonalFinanceDashboard() {
           Cash Flow
         </button>
       </div>
+      <DashboardPeriodFilter {...period} />
 
       {loading ? <p>Loading Personal Expenses dashboard...</p> : null}
-      {error ? <pre className="error-pre">{error}</pre> : null}
+      <StatusNotice message={error} onDismiss={() => setError("")} />
+      <StatusNotice message={warning} kind="warning" onDismiss={() => setWarning("")} />
 
-      {!loading && !error ? (
+      {!loading ? (
         <>
           {activeView === "combined" ? (
             <>
               <section className="card">
                 <h3>Combined Overview</h3>
-                <p className="subtitle">Combines manual Personal Expenses entries with live Bank Services and Share Portfolio activity in Bank Flow.</p>
                 <StatGrid items={combinedStats} />
               </section>
+              <div className="graph-grid">
+                {bankAnalytics.length ? <BarChart title="Bank flow breakdown" data={bankAnalytics} /> : null}
+                {cashAnalytics.length ? <BarChart title="Cash flow breakdown" data={cashAnalytics} /> : null}
+              </div>
               <section className="card">
-                <div className="page-header" style={{ marginBottom: 12 }}>
-                  <div>
-                    <h3>Combined trend</h3>
-                    <p className="subtitle">Month-wise Personal Expenses income, expenses, and net movement.</p>
-                  </div>
-                </div>
+                <h3>Combined trend</h3>
                 <InteractiveTimelineChart
-                  title="Monthly Personal Expenses Overview"
+                  title="Personal Expenses Overview"
                   data={combinedOverview}
                   windowSize={12}
                   bars={[
-                    { dataKey: "income", name: "Income", color: "#16a34a" },
-                    { dataKey: "expenses", name: "Expenses", color: "#ef4444" },
-                    { dataKey: "netDisplay", rawDataKey: "netRaw", name: "Overall net/savings", color: "#0f766e", negativeColor: "#f59e0b" },
+                    { dataKey: "income", name: "Income", color: "#22c55e" },
+                    { dataKey: "expenses", name: "Expense", color: "#f2555f" },
+                    { dataKey: "netDisplay", rawDataKey: "netRaw", name: "Net", color: "#14b8a6", negativeColor: "#f5a524" },
+                  ]}
+                  moduleDashboard
+                  legendItems={[
+                    { label: "Income", color: "#22c55e" },
+                    { label: "Expense", color: "#f2555f" },
+                    { label: "Net ≥0", color: "#14b8a6" },
+                    { label: "Net <0", color: "#f5a524" },
                   ]}
                 />
               </section>
-              <div className="graph-grid">
-                <BarChart title="Bank-only analytics" data={[
-                  { label: "Bank income", value: Number(summary.bank?.total_income || 0) },
-                  { label: "Bank expenses", value: Number(summary.bank?.total_expenses || 0) },
-                  { label: "Bank net", value: Number(summary.bank?.net || 0) },
-                ]} />
-                <BarChart title="Cash-only analytics" data={[
-                  { label: "Cash income", value: Number(summary.cash?.total_income || 0) },
-                  { label: "Cash expenses", value: Number(summary.cash?.total_expenses || 0) },
-                  { label: "Cash net", value: Number(summary.cash?.net || 0) },
-                ]} />
-              </div>
               <section className="card">
                 <h3>All Personal Expenses transactions</h3>
+                <TransactionFilters search={tableSearch} onSearchChange={setTableSearch} category={tableCategory} onCategoryChange={setTableCategory} categories={Array.from(new Set(recentRows.map((row) => row.category))).map((value) => ({ value, label: value }))} placeholder="Search by category or description" />
                 <TransactionsTable
                   columns={combinedColumns}
-                  rows={recentRows}
+                  rows={recentRows.filter((row) => (tableCategory === "all" || row.category === tableCategory) && (!tableSearch.trim() || `${row.category} ${row.description} ${row.flow}`.toLowerCase().includes(tableSearch.trim().toLowerCase())))}
                   actions={(row) =>
                     row.raw?.source !== "manual" ? (
                       <span className="muted-text">Read-only</span>
@@ -388,11 +456,17 @@ function PersonalFinanceDashboard() {
               title="Bank Flow"
               netLabel="Bank Net"
               summary={summary.bank}
-              records={records}
+              records={flowRecords}
               flowType="bank"
               navigate={navigate}
               deletingId={deletingId}
               setPendingDeleteRow={setPendingDeleteRow}
+              bounds={periodBounds}
+              range={period.range}
+              search={tableSearch}
+              onSearchChange={setTableSearch}
+              category={tableCategory}
+              onCategoryChange={setTableCategory}
             />
           ) : null}
 
@@ -401,11 +475,17 @@ function PersonalFinanceDashboard() {
               title="Cash Flow"
               netLabel="Cash Net"
               summary={summary.cash}
-              records={records}
+              records={flowRecords}
               flowType="cash"
               navigate={navigate}
               deletingId={deletingId}
               setPendingDeleteRow={setPendingDeleteRow}
+              bounds={periodBounds}
+              range={period.range}
+              search={tableSearch}
+              onSearchChange={setTableSearch}
+              category={tableCategory}
+              onCategoryChange={setTableCategory}
             />
           ) : null}
         </>

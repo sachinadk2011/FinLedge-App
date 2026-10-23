@@ -5,7 +5,7 @@ from typing import Optional
 from openpyxl import Workbook, load_workbook
 
 from ..models import BankCategory
-from .excel_utils import safe_load_workbook, to_float as _to_float, current_timestamp_us as _current_timestamp
+from .excel_utils import safe_load_workbook, snapshot_before_write, to_float as _to_float, current_timestamp_us as _current_timestamp
 from .path_utils import get_data_dir
 
 DATA_DIR = get_data_dir()
@@ -105,6 +105,7 @@ def append_bank_record(entry_date: Optional[date], category: str, amount: float,
                 "desktop",
             ]
         )
+        snapshot_before_write(FILE_PATH)
         workbook.save(FILE_PATH)
         workbook.close()
 
@@ -208,6 +209,7 @@ def delete_bank_record(record_id: int) -> dict:
 
         sheet.delete_rows(excel_row, 1)
         _recompute_bank_sheet(sheet)
+        snapshot_before_write(FILE_PATH)
         workbook.save(FILE_PATH)
         workbook.close()
 
@@ -251,6 +253,7 @@ def update_bank_record(
         sheet.cell(row=excel_row, column=8).value = "desktop"
 
         _recompute_bank_sheet(sheet)
+        snapshot_before_write(FILE_PATH)
         workbook.save(FILE_PATH)
         workbook.close()
 

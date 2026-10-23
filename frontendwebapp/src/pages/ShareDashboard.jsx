@@ -6,99 +6,47 @@ import BarChart from "../components/BarChart";
 import ConfirmDialog from "../components/ConfirmDialog";
 import InteractiveTimelineChart from "../components/InteractiveTimelineChart";
 import StatGrid from "../components/StatGrid";
+import StatusNotice from "../components/StatusNotice";
 import TransactionsTable from "../components/TransactionsTable";
+import DashboardPeriodFilter from "../components/DashboardPeriodFilter";
+import TransactionFilters from "../components/TransactionFilters";
+import useDashboardPeriod from "../hooks/useDashboardPeriod";
 
 import { formatCurrency } from "../utils/format";
-import { parseDate, isoDayKey, isoMonthKey, dayLabelFormatter, monthLabelFormatter } from "../utils/date";
+import { parseDate, isoDayKey, isoMonthKey } from "../utils/date";
+import { buildDashboardBuckets } from "../utils/dashboardPeriod";
 
 const formatter = {
   format: (val) => formatCurrency(val)
 };
 
-function createShareTimelineEntry(label) {
-  return {
-    label,
-    regularInvestment: 0,
-    sipInvestment: 0,
-    sipRedeemed: 0,
-    sellAmount: 0,
-    profitLossDisplay: 0,
-    profitLossRaw: 0,
-  };
-}
-
-function addShareRecordToEntry(entry, record) {
+function shareFlowSign(record) {
   const category = String(record.category || "").trim().toLowerCase();
   const buySell = String(record.buy_sell || "").trim().toLowerCase();
-  const totalAmount = Number(record.total_amount || 0);
-  const profitLoss = Number(record.profit_loss || 0);
-
-  if (category === "ipo" || category === "buy") {
-    entry.regularInvestment += totalAmount;
-  } else if (category === "sip") {
-    if (buySell === "redeem") {
-      entry.sipRedeemed += totalAmount;
-      entry.profitLossRaw += profitLoss;
-    } else {
-      entry.sipInvestment += totalAmount;
-    }
-  } else if (category === "sell") {
-    entry.sellAmount += totalAmount;
-    entry.profitLossRaw += profitLoss;
-  } else if (category === "dividend" && buySell === "cash") {
-    entry.profitLossRaw += totalAmount;
-  }
-
-  entry.profitLossDisplay = Math.abs(entry.profitLossRaw);
+  if (category === "ipo" || category === "buy") return -1;
+  if (category === "sip") return ["redeem", "redeemed"].includes(buySell) ? 1 : -1;
+  if (category === "sell" || (category === "dividend" && buySell === "cash")) return 1;
+  return 0;
 }
 
-function buildDailyShareOverview(records) {
-  const datedItems = records.map((record) => parseDate(record.date)).filter(Boolean);
-  if (datedItems.length === 0) return [];
-
-  const start = new Date(Math.min(...datedItems.map((item) => item.getTime())));
-  const end = new Date(Math.max(...datedItems.map((item) => item.getTime())));
-  const byDay = new Map();
-
-  const cursor = new Date(start);
-  while (cursor <= end) {
-    const key = isoDayKey(cursor);
-    byDay.set(key, createShareTimelineEntry(dayLabelFormatter.format(cursor)));
-    cursor.setDate(cursor.getDate() + 1);
-  }
-
-  for (const record of records) {
-    const parsed = parseDate(record.date);
-    if (!parsed) continue;
-    const entry = byDay.get(isoDayKey(parsed));
-    if (entry) addShareRecordToEntry(entry, record);
-  }
-
-  return Array.from(byDay.values());
-}
-
-function buildMonthlyShareOverview(records) {
-  const byMonth = new Map();
-
-  for (const record of records) {
-    const parsed = parseDate(record.date);
-    if (!parsed) continue;
-    const key = isoMonthKey(parsed);
-    if (!byMonth.has(key)) {
-      byMonth.set(key, createShareTimelineEntry(monthLabelFormatter.format(new Date(`${key}-01T00:00:00`))));
-    }
-    addShareRecordToEntry(byMonth.get(key), record);
-  }
-
-  return Array.from(byMonth.entries())
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([, entry]) => entry);
+function buildShareOverview(records, buckets, monthly) {
+  const byKey = new Map(buckets.map((bucket) => [bucket.key, { ...bucket, flowRaw: 0, flowDisplay: 0 }]));
+  records.forEach((record) => {
+    const date = parseDate(record.date);
+    if (!date) return;
+    const key = monthly ? isoMonthKey(date) : isoDayKey(date);
+    const entry = byKey.get(key);
+    if (entry) entry.flowRaw += Math.abs(Number(record.total_amount || 0)) * shareFlowSign(record);
+  });
+  byKey.forEach((entry) => { entry.flowDisplay = Math.abs(entry.flowRaw); });
+  return [...byKey.values()];
 }
 
 function ShareDashboard() {
   const navigate = useNavigate();
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
+  const [warning, setWarning] = useState("");
   const [loading, setLoading] = useState(true);
   const [tableSearch, setTableSearch] = useState("");
   const [searchName, setSearchName] = useState("");
@@ -113,6 +61,8 @@ function ShareDashboard() {
   const [sipUpdateError, setSipUpdateError] = useState("");
   const [deletingId, setDeletingId] = useState(null);
   const [pendingDeleteRow, setPendingDeleteRow] = useState(null);
+  const [tableCategory, setTableCategory] = useState("all");
+  const period = useDashboardPeriod("week");
 
   const loadData = ({ background = false } = {}) => {
     if (!background) {
@@ -122,6 +72,7 @@ function ShareDashboard() {
     getShareData()
       .then((response) => {
         setData(response);
+        if (response?.warnings?.length) setWarning(response.warnings.join(" "));
       })
       .catch((err) => {
         setError(err.message || "Unable to load share data.");
@@ -137,24 +88,11 @@ function ShareDashboard() {
     loadData();
   }, []);
 
-  useEffect(() => {
-    if (!updateMessage && !updateError && !sipUpdateMessage && !sipUpdateError && !error) {
-      return undefined;
-    }
-
-    const timer = window.setTimeout(() => {
-      setUpdateMessage("");
-      setUpdateError("");
-      setSipUpdateMessage("");
-      setSipUpdateError("");
-      setError("");
-    }, 5000);
-
-    return () => window.clearTimeout(timer);
-  }, [updateMessage, updateError, sipUpdateMessage, sipUpdateError, error]);
-
   const records = data?.records || [];
-  const summary = data?.summary || {
+  const periodRecords = useMemo(() => period.filterRecords(records), [records, period.bounds]);
+  const periodBounds = useMemo(() => period.boundsForRecords(records), [records, period.range, period.bounds]);
+  const summary = useMemo(() => {
+    const totals = {
     total_ipo_investment: 0,
     total_sip_investment: 0,
     total_sip_redeemed: 0,
@@ -167,7 +105,25 @@ function ShareDashboard() {
     overall_profit_loss: 0,
     grand_total_investment: 0,
     grand_profit_loss: 0,
-  };
+    };
+    periodRecords.forEach((record) => {
+      const category = String(record.category || "").toLowerCase();
+      const action = String(record.buy_sell || "").toLowerCase();
+      const amount = Number(record.total_amount || 0);
+      const profit = Number(record.profit_loss || 0);
+      if (category === "ipo") totals.total_ipo_investment += amount;
+      else if (category === "buy") totals.total_buy_amount += amount;
+      else if (category === "sell") { totals.total_sell_amount += amount; totals.total_profit += profit; }
+      else if (category === "sip" && ["redeem", "redeemed"].includes(action)) { totals.total_sip_redeemed += amount; totals.sip_profit_loss += profit; }
+      else if (category === "sip") totals.total_sip_investment += amount;
+      else if (category === "dividend" && action === "cash") totals.total_dividend += amount;
+    });
+    totals.overall_investment = totals.total_ipo_investment + totals.total_buy_amount;
+    totals.overall_profit_loss = totals.total_profit + totals.total_dividend - totals.overall_investment;
+    totals.grand_total_investment = totals.overall_investment + totals.total_sip_investment;
+    totals.grand_profit_loss = totals.overall_profit_loss + totals.sip_profit_loss;
+    return totals;
+  }, [periodRecords]);
   const totalIpoInvestment = Number(summary.total_ipo_investment || 0);
   const totalSipInvestment = Number(summary.total_sip_investment || 0);
   const totalSipRedeemed = Number(summary.total_sip_redeemed || 0);
@@ -203,16 +159,17 @@ function ShareDashboard() {
   ];
 
   const chartData = [
-    { label: "IPO + secondary", value: normalInvestment },
-    { label: "SIP", value: totalSipInvestment },
-    { label: "SIP redeemed", value: totalSipRedeemed },
-    { label: "Grand investment", value: grandTotalInvestment },
-    { label: "Sell", value: totalSellAmount },
-    { label: "Grand profit/loss", value: grandProfitLoss },
-  ];
+    { label: "IPO + secondary", value: normalInvestment, color: "#f2555f" },
+    { label: "SIP", value: totalSipInvestment, color: "#f2555f" },
+    { label: "SIP redeemed", value: totalSipRedeemed, color: "#22c55e" },
+    { label: "Grand investment", value: grandTotalInvestment, color: "#f2555f" },
+    { label: "Sell", value: totalSellAmount, color: "#22c55e" },
+    { label: "Grand profit/loss", value: grandProfitLoss, color: grandProfitLoss < 0 ? "#f2555f" : "#22c55e" },
+  ].filter((item) => item.value !== 0);
 
-  const dailyOverview = useMemo(() => buildDailyShareOverview(records), [records]);
-  const monthlyOverview = useMemo(() => buildMonthlyShareOverview(records), [records]);
+  const isMonthly = period.range === "year" || period.range === "all_time" || (period.range === "custom" && periodBounds && (periodBounds.end - periodBounds.start) / 86400000 > 60);
+  const periodBuckets = useMemo(() => buildDashboardBuckets(periodRecords, periodBounds, { monthly: isMonthly }), [periodRecords, periodBounds, isMonthly]);
+  const overview = useMemo(() => buildShareOverview(periodRecords, periodBuckets, isMonthly), [periodRecords, periodBuckets, isMonthly]);
 
   const columns = [
     { key: "date", label: "Date" },
@@ -225,7 +182,7 @@ function ShareDashboard() {
     { key: "profit_loss", label: "Profit/Loss" },
   ];
 
-  const tableRows = [...records].reverse().map((record) => {
+  const tableRows = [...periodRecords].reverse().map((record) => {
     let catDisplay = record.category;
     if (record.category === "dividend") {
       catDisplay = `Dividend (${record.buy_sell === "bonus" ? "Bonus" : "Cash"})`;
@@ -266,12 +223,9 @@ function ShareDashboard() {
 
   const filteredTableRows = useMemo(() => {
     const term = tableSearch.trim().toLowerCase();
-    if (!term) {
-      return tableRows;
-    }
-
-    return tableRows.filter((row) => String(row.share_name || "").toLowerCase().includes(term));
-  }, [tableRows, tableSearch]);
+    return tableRows.filter((row) => (tableCategory === "all" || row.category === tableCategory)
+      && (!term || `${row.share_name} ${row.category}`.toLowerCase().includes(term)));
+  }, [tableRows, tableSearch, tableCategory]);
 
   const ipoRecords = useMemo(() => {
     return records
@@ -423,7 +377,7 @@ function ShareDashboard() {
   }
 
   return (
-    <main className="page">
+    <main className="page wide-dashboard">
       <header className="page-header">
         <div>
           <p className="eyebrow">Share Portfolio</p>
@@ -443,74 +397,50 @@ function ShareDashboard() {
       </header>
 
       {loading && !data ? <p>Loading share data...</p> : null}
-      {error ? <pre className="error-pre">{error}</pre> : null}
+      <StatusNotice message={error} onDismiss={() => setError("")} />
+      <StatusNotice message={warning} kind="warning" onDismiss={() => setWarning("")} />
 
       {data ? (
         <>
+          <DashboardPeriodFilter {...period} />
           <section className="card">
             <h3>IPO and secondary position</h3>
-            <p className="subtitle">This block shows money invested through IPO entries and secondary buy/sell activity.</p>
             <StatGrid items={normalStats} />
           </section>
           <section className="card">
             <h3>SIP position</h3>
-            <p className="subtitle">This block stays separate from IPO and secondary transactions.</p>
             <StatGrid items={sipStats} />
           </section>
           <section className="card">
             <h3>Grand total</h3>
-            <p className="subtitle">Combined view of IPO, secondary, and SIP investment.</p>
             <StatGrid items={grandStats} />
           </section>
-          <BarChart title="Investment, sell, and profit/loss breakdown" data={chartData} />
+          {chartData.length ? <BarChart title="Investment, sell, and profit/loss breakdown" data={chartData} /> : null}
           <section className="card">
             <div className="page-header" style={{ marginBottom: 12 }}>
               <div>
                 <h3>Share portfolio trends</h3>
-                <p className="subtitle">Hover bars to see exact values. Drag the lower scrubber to move through history.</p>
               </div>
             </div>
             <div className="graph-grid">
               <InteractiveTimelineChart
-                title="Daily Share Portfolio Overview"
-                subtitle="IPO/secondary investment, SIP investment, sell amount, and profit/loss by date."
-                data={dailyOverview}
+                title="Share Portfolio Overview"
+                data={overview}
                 windowSize={12}
                 bars={[
-                  { dataKey: "regularInvestment", name: "IPO + secondary", color: "#2563eb" },
-                  { dataKey: "sipInvestment", name: "SIP investment", color: "#0f766e" },
-                  { dataKey: "sipRedeemed", name: "SIP redeemed", color: "#14b8a6" },
-                  { dataKey: "sellAmount", name: "Sell amount", color: "#f59e0b" },
-                  { dataKey: "profitLossDisplay", rawDataKey: "profitLossRaw", name: "Profit/loss", color: "#a855f7", negativeColor: "#ef4444" },
+                  { dataKey: "flowDisplay", rawDataKey: "flowRaw", name: "Portfolio net flow", color: "#22c55e", negativeColor: "#f2555f", signColor: true },
                 ]}
-              />
-              <InteractiveTimelineChart
-                title="Monthly Share Portfolio Overview"
-                subtitle="Month-wise summary of normal share activity and SIP investment."
-                data={monthlyOverview}
-                windowSize={12}
-                bars={[
-                  { dataKey: "regularInvestment", name: "IPO + secondary", color: "#2563eb" },
-                  { dataKey: "sipInvestment", name: "SIP investment", color: "#0f766e" },
-                  { dataKey: "sipRedeemed", name: "SIP redeemed", color: "#14b8a6" },
-                  { dataKey: "sellAmount", name: "Sell amount", color: "#f59e0b" },
-                  { dataKey: "profitLossDisplay", rawDataKey: "profitLossRaw", name: "Profit/loss", color: "#a855f7", negativeColor: "#ef4444" },
+                moduleDashboard
+                legendItems={[
+                  { label: "Money in / positive", color: "#22c55e" },
+                  { label: "Money out / negative", color: "#f2555f" },
                 ]}
               />
             </div>
           </section>
           <section className="card">
             <h3>All share transactions</h3>
-            <label className="field" style={{ maxWidth: 360, marginBottom: 12 }}>
-              <span>Search by share name</span>
-              <input
-                type="text"
-                value={tableSearch}
-                onChange={(e) => setTableSearch(e.target.value)}
-                placeholder="Type share name to filter table"
-                autoComplete="off"
-              />
-            </label>
+            <TransactionFilters search={tableSearch} onSearchChange={setTableSearch} category={tableCategory} onCategoryChange={setTableCategory} categories={Array.from(new Set(tableRows.map((row) => row.category))).map((category) => ({ value: category, label: category }))} placeholder="Search by share name or category" />
             <TransactionsTable
               columns={columns}
               rows={filteredTableRows}
@@ -564,8 +494,8 @@ function ShareDashboard() {
                 </button>
               </form>
             )}
-            {updateError ? <p className="error">{updateError}</p> : null}
-            {updateMessage ? <p className="success">{updateMessage}</p> : null}
+            <StatusNotice message={updateError} onDismiss={() => setUpdateError("")} />
+            <StatusNotice message={updateMessage} kind="success" onDismiss={() => setUpdateMessage("")} />
             {uniqueMatches.length > 0 ? (
               <div className="match-list">
                 {uniqueMatches.map((name) => (
@@ -609,8 +539,8 @@ function ShareDashboard() {
                 </button>
               </form>
             )}
-            {sipUpdateError ? <p className="error">{sipUpdateError}</p> : null}
-            {sipUpdateMessage ? <p className="success">{sipUpdateMessage}</p> : null}
+            <StatusNotice message={sipUpdateError} onDismiss={() => setSipUpdateError("")} />
+            <StatusNotice message={sipUpdateMessage} kind="success" onDismiss={() => setSipUpdateMessage("")} />
             {uniqueSipMatches.length > 0 ? (
               <div className="match-list">
                 {uniqueSipMatches.map((name) => (

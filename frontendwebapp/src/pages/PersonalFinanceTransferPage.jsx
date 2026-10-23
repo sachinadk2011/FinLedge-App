@@ -3,6 +3,7 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 
 import { createTransfer, getPersonalFinanceData, updateTransfer } from "../api/personalFinanceApi";
 import TransactionsTable from "../components/TransactionsTable";
+import StatusNotice from "../components/StatusNotice";
 import { getTodayInputValue } from "../utils/date";
 
 const TRANSFER_DIRECTIONS = [
@@ -82,20 +83,12 @@ function PersonalFinanceTransferPage() {
     });
   }, [editId]);
 
-  useEffect(() => {
-    if (!success && !error) return;
-    const timer = window.setTimeout(() => {
-      setSuccess("");
-      setError("");
-    }, 6000);
-    return () => window.clearTimeout(timer);
-  }, [success, error]);
-
   async function handleSubmit(e) {
     e.preventDefault();
     const amt = Number(form.amount);
     if (!form.amount || amt <= 0) {
       setError("Please enter a valid amount greater than 0.");
+      setForm((prev) => ({ ...prev, amount: "", description: "" }));
       return;
     }
     setError("");
@@ -107,17 +100,19 @@ function PersonalFinanceTransferPage() {
         const dirLabel =
           form.direction === "bank_to_cash" ? "Bank to Cash withdrawal" : "Cash to Bank deposit";
         setSuccess(`Transfer updated: ${dirLabel} of ${fmt.format(amt)}.`);
+        setForm((prev) => ({ ...prev, amount: "", description: "" }));
         navigate("/personal-finance-transfer", { replace: true });
       } else {
         await createTransfer(form);
         const dirLabel =
           form.direction === "bank_to_cash" ? "Bank to Cash withdrawal" : "Cash to Bank deposit";
         setSuccess(`${dirLabel} of ${fmt.format(amt)} recorded successfully.`);
-        setForm(getDefaultForm());
+        setForm((prev) => ({ ...prev, amount: "", description: "" }));
         loadHistory();
       }
     } catch (err) {
       setError(err.message || "Unable to record transfer.");
+      setForm((prev) => ({ ...prev, amount: "", description: "" }));
     } finally {
       setSubmitting(false);
     }
@@ -179,13 +174,6 @@ function PersonalFinanceTransferPage() {
 
       <section className="card">
         <h2>{isEditing ? "Edit Transfer" : "Bank ↔ Cash Transfer"}</h2>
-        {!isEditing && (
-          <p style={{ marginBottom: "1.1rem", color: "#64748b", fontSize: "0.93rem" }}>
-            Move money between your bank account and cash. The originating side&apos;s income is
-            reduced and the receiving side&apos;s income is increased by the same amount. Transfer
-            cannot exceed available income on the originating side.
-          </p>
-        )}
 
         <form onSubmit={handleSubmit}>
           <label className="field">
@@ -252,16 +240,8 @@ function PersonalFinanceTransferPage() {
           </div>
         </form>
 
-        {success ? (
-          <p className="success" style={{ marginTop: "1rem" }}>
-            {success}
-          </p>
-        ) : null}
-        {error ? (
-          <pre className="error-pre" style={{ marginTop: "1rem" }}>
-            {error}
-          </pre>
-        ) : null}
+        <StatusNotice message={success} kind="success" onDismiss={() => setSuccess("")} />
+        <StatusNotice message={error} onDismiss={() => setError("")} />
       </section>
 
       {!isEditing && (

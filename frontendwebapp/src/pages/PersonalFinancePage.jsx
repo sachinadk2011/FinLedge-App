@@ -9,6 +9,7 @@ import {
 } from "../api/personalFinanceApi";
 import ConfirmDialog from "../components/ConfirmDialog";
 import PersonalFinanceForm from "../components/PersonalFinanceForm";
+import StatusNotice from "../components/StatusNotice";
 import TransactionsTable from "../components/TransactionsTable";
 import {
   PERSONAL_FINANCE_EXPENSE_CATEGORIES,
@@ -44,8 +45,7 @@ function normalizeEditCategory(record) {
 }
 
 function getSourceLabel(source) {
-  if (source === "share-sync") return "Share Portfolio";
-  if (source === "bank-services-sync") return "Bank Services";
+  if (source === "transfer") return "Transfer";
   return "Manual";
 }
 
@@ -61,6 +61,7 @@ function PersonalFinancePage() {
   const [form, setForm] = useState(() => getDefaultForm(requestedFlow));
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
+  const [warning, setWarning] = useState("");
   const [success, setSuccess] = useState("");
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -73,6 +74,7 @@ function PersonalFinancePage() {
     return getPersonalFinanceData()
       .then((response) => {
         setData(response);
+        if (response?.warnings?.length) setWarning(response.warnings.join(" "));
         return response?.records || [];
       })
       .catch((err) => {
@@ -111,18 +113,17 @@ function PersonalFinancePage() {
   }, [editId, recordFlow, requestedFlow]);
 
   useEffect(() => {
+    if (!editId || loading) return;
+    const section = document.querySelector(".entry-form-section");
+    if (!section) return;
+    section.scrollIntoView({ behavior: "smooth", block: "start" });
+    window.requestAnimationFrame(() => section.querySelector("input:not([type='hidden']), select, textarea")?.focus({ preventScroll: true }));
+  }, [editId, loading]);
+
+  useEffect(() => {
     if (editId) return;
     setForm((prev) => ({ ...prev, flow_type: requestedFlow === "cash" ? "cash" : "bank" }));
   }, [editId, requestedFlow]);
-
-  useEffect(() => {
-    if (!success && !error) return;
-    const timer = window.setTimeout(() => {
-      setSuccess("");
-      setError("");
-    }, 5000);
-    return () => window.clearTimeout(timer);
-  }, [success, error]);
 
   async function handleSubmit(event) {
     event.preventDefault();
@@ -139,15 +140,11 @@ function PersonalFinancePage() {
         await addPersonalFinanceEntry(form);
         setSuccess("Entry saved successfully.");
       }
-      setForm((prev) => ({
-        ...getDefaultForm(prev.flow_type),
-        flow_type: prev.flow_type,
-        direction: prev.direction,
-        category: prev.direction === "income" ? PERSONAL_FINANCE_INCOME_CATEGORIES[0] : PERSONAL_FINANCE_EXPENSE_CATEGORIES[0],
-      }));
+      setForm((prev) => ({ ...prev, amount: "", description: "" }));
       loadData({ background: true });
     } catch (err) {
       setError(err.message || "Unable to save Personal Expenses entry.");
+      setForm((prev) => ({ ...prev, amount: "", description: "" }));
     } finally {
       setSubmitting(false);
     }
@@ -224,6 +221,7 @@ function PersonalFinancePage() {
       </header>
 
       {loading ? <p>Loading Personal Expenses data...</p> : null}
+      <div className="entry-form-section">
       <PersonalFinanceForm
         value={form}
         onChange={setForm}
@@ -231,6 +229,7 @@ function PersonalFinancePage() {
         submitting={submitting}
         submitLabel={editId ? "Update Personal Expenses Entry" : "Add Personal Expenses Entry"}
       />
+      </div>
 
       {/* Transfer banner */}
       <Link
@@ -266,8 +265,9 @@ function PersonalFinancePage() {
         <span style={{ fontWeight: 700, fontSize: "0.88rem", opacity: 0.85 }}>Transfer →</span>
       </Link>
 
-      {success ? <p className="success">{success}</p> : null}
-      {error ? <pre className="error-pre">{error}</pre> : null}
+      <StatusNotice message={success} kind="success" onDismiss={() => setSuccess("")} />
+      <StatusNotice message={error} onDismiss={() => setError("")} />
+      <StatusNotice message={warning} kind="warning" onDismiss={() => setWarning("")} />
 
 
       <section className="card">

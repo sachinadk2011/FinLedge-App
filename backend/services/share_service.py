@@ -1,12 +1,19 @@
 import threading
-from datetime import date, datetime
+from datetime import date
 from decimal import Decimal, InvalidOperation
 from typing import Optional
 
 from openpyxl import Workbook, load_workbook
 
-from .excel_utils import safe_load_workbook
+from .excel_utils import (
+    current_timestamp as _current_timestamp,
+    safe_load_workbook,
+    snapshot_before_write,
+    to_float as _to_float,
+    to_int as _to_int,
+)
 from .path_utils import get_data_dir
+from .share_lot_calculations import _build_open_lots, _consume_lots, _cost_basis_for_sell
 
 DATA_DIR = get_data_dir()
 FILE_PATH = DATA_DIR / "share_transactions.xlsx"
@@ -28,24 +35,6 @@ HEADERS = [
 ]
 
 _file_lock = threading.Lock()
-
-
-def _to_float(value: object) -> float:
-    try:
-        return float(value or 0.0)
-    except (TypeError, ValueError):
-        return 0.0
-
-
-def _to_int(value: object) -> int:
-    try:
-        return int(float(value or 0))
-    except (TypeError, ValueError):
-        return 0
-
-
-def _current_timestamp() -> str:
-    return datetime.now().isoformat(timespec="seconds")
 
 
 def _ensure_workbook_exists() -> None:
@@ -89,101 +78,6 @@ def _ensure_workbook_exists() -> None:
     if modified:
         workbook.save(FILE_PATH)
     workbook.close()
-
-
-def _build_open_lots(sheet, share_name: str) -> list[dict]:
-    lots: list[dict] = []
-    target = share_name.strip().lower()
-
-    for row in sheet.iter_rows(min_row=2, values_only=True):
-        row_share_name = str(row[1] or "").strip().lower()
-        if row_share_name != target:
-            continue
-
-        category = str(row[2] or "").strip().lower()
-        qty = _to_int(row[5])
-        price = _to_float(row[3])
-        asba_charge = _to_float(row[4])
-        buy_sell = str(row[6] or "").strip().lower()
-
-        if qty <= 0:
-            continue
-
-        if category in {"ipo", "buy"} or (category == "dividend" and buy_sell == "bonus"):
-            lots.append(
-                {
-                    "qty": qty,
-                    "price": price,
-                    # ASBA is part of IPO investment. Secondary buys have 0 ASBA.
-                    "asba": asba_charge if category == "ipo" else 0.0,
-                }
-            )
-            continue
-
-        if category == "sell":
-            remaining = qty
-            for lot in lots:
-                if remaining <= 0:
-                    break
-                qty_before = lot["qty"]
-                consumed = min(qty_before, remaining)
-                # Consume ASBA proportionally from the remaining lot.
-                if qty_before > 0 and lot.get("asba", 0.0) != 0.0:
-                    lot["asba"] -= lot["asba"] * (consumed / qty_before)
-                lot["qty"] = qty_before - consumed
-                remaining -= consumed
-            lots = [lot for lot in lots if lot["qty"] > 0]
-
-    return lots
-
-
-def _cost_basis_for_sell(lots: list[dict], sell_qty: int) -> float:
-    remaining = sell_qty
-    cost_basis = 0.0
-
-    for lot in lots:
-        if remaining <= 0:
-            break
-        qty_available = lot["qty"]
-        consumed = min(qty_available, remaining)
-        cost_basis += consumed * lot["price"]
-
-        # Include remaining IPO ASBA as part of cost basis, proportional to shares sold.
-        asba_remaining = float(lot.get("asba", 0.0) or 0.0)
-        if qty_available > 0 and asba_remaining != 0.0:
-            cost_basis += asba_remaining * (consumed / qty_available)
-        remaining -= consumed
-
-    if remaining > 0:
-        raise ValueError("Not enough available quantity to sell for this share.")
-
-    return cost_basis
-
-
-def _consume_lots(lots: list[dict], sell_qty: int) -> float:
-    remaining = sell_qty
-    cost_basis = 0.0
-
-    for lot in lots:
-        if remaining <= 0:
-            break
-        qty_before = lot["qty"]
-        consumed = min(qty_before, remaining)
-        cost_basis += consumed * lot["price"]
-
-        asba_remaining = float(lot.get("asba", 0.0) or 0.0)
-        if qty_before > 0 and asba_remaining != 0.0:
-            consumed_asba = asba_remaining * (consumed / qty_before)
-            cost_basis += consumed_asba
-            lot["asba"] = asba_remaining - consumed_asba
-
-        lot["qty"] = qty_before - consumed
-        remaining -= consumed
-
-    if remaining > 0:
-        raise ValueError("Not enough available quantity to sell for this share.")
-
-    return cost_basis
 
 
 def _sip_outstanding_investment(sheet, share_name: str, before_row: int | None = None) -> float:
@@ -318,6 +212,7 @@ def append_share_record(
                 "desktop",
             ]
         )
+        snapshot_before_write(FILE_PATH)
         workbook.save(FILE_PATH)
         workbook.close()
 
@@ -535,6 +430,7 @@ def update_share_allotment(share_name: str, allotted: int) -> dict:
         sheet.cell(row=target_row, column=12).value = timestamp
         sheet.cell(row=target_row, column=13).value = "desktop"
         _recompute_sheet(sheet)
+        snapshot_before_write(FILE_PATH)
         workbook.save(FILE_PATH)
         workbook.close()
 
@@ -591,6 +487,7 @@ def update_sip_allotment(share_name: str, allotted: int) -> dict:
         sheet.cell(row=target_row, column=13).value = "desktop"
         _recompute_sheet(sheet)
         average_price = _to_float(sheet.cell(row=target_row, column=4).value)
+        snapshot_before_write(FILE_PATH)
         workbook.save(FILE_PATH)
         workbook.close()
 
@@ -629,6 +526,7 @@ def delete_share_record(record_id: int) -> dict:
 
         sheet.delete_rows(excel_row, 1)
         _recompute_sheet(sheet)
+        snapshot_before_write(FILE_PATH)
         workbook.save(FILE_PATH)
         workbook.close()
 
@@ -715,6 +613,7 @@ def update_share_record(
         sheet.cell(row=excel_row, column=13).value = "desktop"
 
         _recompute_sheet(sheet)
+        snapshot_before_write(FILE_PATH)
         workbook.save(FILE_PATH)
         workbook.close()
 

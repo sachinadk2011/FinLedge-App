@@ -16,33 +16,24 @@ Personal Financial Operating System.
 5. Migration must never destroy user data.
 6. Financial Summary is analytics-only, no data entry.
 
-## Modules (v1.2.0)
-- Bank → Bank Services: category list replaced entirely with Interest
-  Earned, Interest Tax, Mobile Banking Charge, Debit Card Charge, Cheque
-  Book, Locker, Demat Renewal, Demat & MeroShare Renewal, Broker
-  Renewal, MeroShare Renewal, Other Charges. No new fields — same form
-  structure (date, category, amount, description).
-- Share → Share Portfolio: unchanged storage and primary logic, renamed
-  only. Its cash-impact events are derived live in Personal Expenses > Bank
-  Flow: IPO/Buy/SIP installment are Investment Expense; Sell/Cash Dividend/
-  SIP redeem are Investment Income. No Share data is copied into another
-  workbook.
-- Personal Expenses (NEW): own manual storage split by flow:
-  personal_finance_bank_flow.xlsx and personal_finance_cash_flow.xlsx. Three
-  sub-views: Bank Flow, Cash Flow, Combined Overview. Bank Flow derives
-  read-only Bank Services and Share Portfolio cash activity at read time,
-  while all source workbooks remain separate.
-- Summary → Financial Summary: 4 separate sections, not merged —
-  Bank Services summary, Share Portfolio summary, Personal Expenses
-  summary, Overall financial position (net worth trend).
-- Settings: only the Settings page internals get a left-nav + right-
-  content layout. App-level navigation is untouched (see Constraint 1).
-  Sections: General, Investment, Import/Export, Backup (placeholder),
-  About, How To Use, Privacy, Version.
 
-## Deferred — do not build in v1.2.0
-- v1.3.0: opportunity cost engine, bank interest rate settings, real/
-  actual profit calculation, daily interest engine (simulate via daily
-  closing balance)
-- v2.0.0: Google Sign-In, Google Drive sync, conflict resolution,
-  cross-platform desktop, Android support
+## Mobile (mobile-v1.0.0)
+
+FinLedge is also shipping a mobile app as a separate runtime. Desktop
+and mobile are diverging tracks — see AGENTS.md §0 before starting any
+task. The mobile app:
+
+- **Separate runtime via Capacitor**: a native Android app wrapping a
+  web frontend, running standalone rather than as a desktop extension.
+- **SQLite storage**: replaces the desktop Excel workbooks with a local
+  SQLite database (see docs/schema.md).
+- **Own service layer**: reimplements the desktop backend logic directly
+  in the app rather than calling Python:
+  - bank category totals
+  - share FIFO lot-matching
+  - personal-finance sync-row computation
+- **Keep Notes bulk import** is a v1.0.0 priority.
+- **Deferred from mobile-v1.0.0**: bank-flow live sync and the interest
+  engine.
+
+

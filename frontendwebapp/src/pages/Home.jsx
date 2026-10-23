@@ -46,9 +46,9 @@ function IconPersonalFinance() {
 
 function Home() {
   return (
-    <main className="min-h-[calc(100vh-84px)] px-4 py-14 sm:px-6">
-      <section className="mx-auto flex w-full max-w-6xl flex-col items-center justify-center gap-10">
-        <header className="w-full max-w-3xl text-center">
+    <main className="home-page">
+      <section className="home-content">
+        <header className="home-hero text-center">
           <p className="text-xs font-extrabold uppercase tracking-[0.22em] text-slate-600">FinLedge</p>
           <h1 className="mt-4 text-4xl font-extrabold tracking-tight text-slate-900 md:text-6xl">
             Keep your money story tidy
@@ -58,10 +58,10 @@ function Home() {
           </p>
         </header>
 
-        <div className="grid w-full grid-cols-2 gap-4 lg:grid-cols-4 lg:gap-5 xl:gap-6">
+        <div className="home-module-grid">
           <Link
             to="/bank"
-            className="group relative overflow-hidden rounded-3xl bg-gradient-to-br from-emerald-700 to-teal-500 p-[1px] shadow-soft transition duration-200 hover:-translate-y-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70 no-underline"
+            className="home-module-card group relative overflow-hidden rounded-3xl bg-gradient-to-br from-emerald-700 to-teal-500 p-[1px] shadow-soft transition duration-200 hover:-translate-y-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70 no-underline"
           >
             <div className="flex h-full flex-col items-center rounded-3xl bg-white/80 p-5 text-center sm:p-6 xl:p-8 md:supports-[backdrop-filter]:bg-white/65 md:supports-[backdrop-filter]:backdrop-blur">
               <span className="grid h-12 w-12 place-items-center rounded-2xl bg-emerald-100 text-emerald-800 transition group-hover:scale-[1.06] xl:h-14 xl:w-14">
@@ -76,7 +76,7 @@ function Home() {
 
           <Link
             to="/share"
-            className="group relative overflow-hidden rounded-3xl bg-gradient-to-br from-indigo-700 to-sky-500 p-[1px] shadow-soft transition duration-200 hover:-translate-y-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 no-underline"
+            className="home-module-card group relative overflow-hidden rounded-3xl bg-gradient-to-br from-indigo-700 to-sky-500 p-[1px] shadow-soft transition duration-200 hover:-translate-y-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 no-underline"
           >
             <div className="flex h-full flex-col items-center rounded-3xl bg-white/80 p-5 text-center sm:p-6 xl:p-8 md:supports-[backdrop-filter]:bg-white/65 md:supports-[backdrop-filter]:backdrop-blur">
               <span className="grid h-12 w-12 place-items-center rounded-2xl bg-sky-100 text-sky-800 transition group-hover:scale-[1.06] xl:h-14 xl:w-14">
@@ -89,7 +89,7 @@ function Home() {
 
           <Link
             to="/personal-finance"
-            className="group relative overflow-hidden rounded-3xl bg-gradient-to-br from-rose-700 to-amber-500 p-[1px] shadow-soft transition duration-200 hover:-translate-y-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/70 no-underline"
+            className="home-module-card group relative overflow-hidden rounded-3xl bg-gradient-to-br from-rose-700 to-amber-500 p-[1px] shadow-soft transition duration-200 hover:-translate-y-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/70 no-underline"
           >
             <div className="flex h-full flex-col items-center rounded-3xl bg-white/80 p-5 text-center sm:p-6 xl:p-8 md:supports-[backdrop-filter]:bg-white/65 md:supports-[backdrop-filter]:backdrop-blur">
               <span className="grid h-12 w-12 place-items-center rounded-2xl bg-amber-100 text-amber-800 transition group-hover:scale-[1.06] xl:h-14 xl:w-14">
@@ -104,7 +104,7 @@ function Home() {
 
           <Link
             to="/summary"
-            className="group relative overflow-hidden rounded-3xl bg-gradient-to-br from-purple-700 to-teal-500 p-[1px] shadow-soft transition duration-200 hover:-translate-y-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400/70 no-underline"
+            className="home-module-card group relative overflow-hidden rounded-3xl bg-gradient-to-br from-purple-700 to-teal-500 p-[1px] shadow-soft transition duration-200 hover:-translate-y-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400/70 no-underline"
           >
             <div className="flex h-full flex-col items-center rounded-3xl bg-white/80 p-5 text-center sm:p-6 xl:p-8 md:supports-[backdrop-filter]:bg-white/65 md:supports-[backdrop-filter]:backdrop-blur">
               <span className="grid h-12 w-12 place-items-center rounded-2xl bg-slate-200/70 text-slate-800 transition group-hover:scale-[1.06] xl:h-14 xl:w-14">

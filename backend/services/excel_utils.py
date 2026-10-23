@@ -1,8 +1,9 @@
 import logging
+import os
 import shutil
 import threading
 import zipfile
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -11,7 +12,92 @@ from openpyxl.utils.exceptions import InvalidFileException
 
 logger = logging.getLogger(__name__)
 _excel_lock = threading.Lock()
+_snapshot_lock = threading.Lock()
 LAST_RECOVERY_WARNINGS: dict[str, str] = {}
+
+
+def consume_recovery_warnings() -> list[str]:
+    """Return and clear recovery notices so the API can show them once."""
+    warnings = list(LAST_RECOVERY_WARNINGS.values())
+    LAST_RECOVERY_WARNINGS.clear()
+    return warnings
+
+
+class SnapshotError(RuntimeError):
+    """Raised when a required pre-write workbook snapshot cannot be created."""
+
+
+def _snapshot_timestamp(value: datetime) -> str:
+    return value.strftime("%Y%m%dT%H%M%S.%fZ")
+
+
+def _prune_auto_snapshots(snapshot_dir: Path, now: datetime) -> None:
+    """Keep dense recent history, then daily and monthly snapshots."""
+    snapshots = [path for path in snapshot_dir.glob("*.xlsx") if path.is_file()]
+    snapshots.sort(key=lambda path: path.stat().st_mtime, reverse=True)
+    keep: set[Path] = set()
+    daily: set[tuple[int, int, int]] = set()
+    monthly: set[tuple[int, int]] = set()
+
+    for path in snapshots:
+        try:
+            created = datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc)
+        except OSError:
+            continue
+        age = now - created
+        if age <= timedelta(hours=24):
+            keep.add(path)
+        elif age <= timedelta(days=30):
+            bucket = (created.year, created.month, created.day)
+            if bucket not in daily:
+                daily.add(bucket)
+                keep.add(path)
+        elif age <= timedelta(days=365):
+            bucket = (created.year, created.month)
+            if bucket not in monthly:
+                monthly.add(bucket)
+                keep.add(path)
+
+    for path in snapshots:
+        if path not in keep:
+            try:
+                path.unlink()
+            except OSError:
+                logger.warning("Could not prune automatic backup %s", path, exc_info=True)
+
+
+def snapshot_before_write(file_path: Path) -> Path | None:
+    """Copy an existing workbook to backups/auto before a mutation.
+
+    Missing workbooks have no prior state to preserve and return ``None``.
+    Snapshot errors raise ``SnapshotError`` so callers can abort the write.
+    """
+    file_path = Path(file_path)
+    if not file_path.exists():
+        return None
+
+    now = datetime.now(timezone.utc)
+    snapshot_dir = file_path.parent / "backups" / "auto" / file_path.stem
+    destination = snapshot_dir / f"{_snapshot_timestamp(now)}.xlsx"
+    with _snapshot_lock:
+        try:
+            snapshot_dir.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(file_path, destination)
+            os.utime(destination, (now.timestamp(), now.timestamp()))
+        except OSError as exc:
+            try:
+                destination.unlink(missing_ok=True)
+            except OSError:
+                logger.warning("Could not remove incomplete automatic backup %s", destination)
+            raise SnapshotError(
+                f"FinLedge could not back up {file_path.name}; no changes were saved. "
+                "Check that the data folder has enough space and is writable."
+            ) from exc
+        try:
+            _prune_auto_snapshots(snapshot_dir, now)
+        except OSError:
+            logger.warning("Could not apply automatic backup retention in %s", snapshot_dir, exc_info=True)
+    return destination
 
 
 # ---------------------------------------------------------------------------
@@ -89,16 +175,23 @@ def find_most_recent_valid_backup(file_path: Path) -> Path | None:
     if not backups_dir.exists():
         return None
 
-    candidates: list[Path] = []
-    for p in backups_dir.glob(f"**/{file_path.name}"):
+    candidates: list[Path] = list(backups_dir.glob(f"**/{file_path.name}"))
+    # Automatic snapshots use timestamp filenames under backups/auto/<stem>/.
+    candidates.extend((backups_dir / "auto" / file_path.stem).glob("*.xlsx"))
+    unique_candidates: list[Path] = []
+    seen: set[Path] = set()
+    for p in candidates:
         # Exclude already-broken copies in backups/corrupted/
         if "corrupted" in p.parts:
             continue
         if p.resolve() == file_path.resolve():
             continue
-        candidates.append(p)
+        resolved = p.resolve()
+        if resolved not in seen:
+            seen.add(resolved)
+            unique_candidates.append(p)
 
-    candidates.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+    candidates = sorted(unique_candidates, key=lambda p: p.stat().st_mtime, reverse=True)
 
     for candidate in candidates:
         try:
@@ -139,9 +232,15 @@ def repair_or_recover_workbook(
         try:
             file_path.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(valid_backup, file_path)
+            warning_msg = (
+                f"{file_path.name} was recovered from a backup. "
+                "Review the workbook before continuing."
+            )
+            LAST_RECOVERY_WARNINGS[file_path.name] = warning_msg
             logger.warning(
-                f"File {file_path.name} was corrupted or missing. "
-                f"Automatically restored from valid backup: {valid_backup}"
+                "%s Automatically restored from valid backup: %s",
+                warning_msg,
+                valid_backup,
             )
             return load_workbook(file_path)
         except Exception as exc:

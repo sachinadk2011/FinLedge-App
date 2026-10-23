@@ -4,6 +4,30 @@ Read this before every task. This is a checklist, not documentation.
 
 ---
 
+## 0. Which files to read before starting a task — a routing table:
+
+
+Any task → always read AGENTS.md (this file) and PLAN.md first.
+Desktop task → also read CODEBASE.md (Backend + Desktop Frontend sections), TASKS.md.
+Mobile task → also read CODEBASE.md (Mobile Repo Structure section), TASKS-mobile.md, schema.md, design.md, and finledge-mobile-design-v3.html directly if the task touches UI.
+Keep Notes import task → also read keepNotesImport.md.
+Release/versioning/CI task → also read techSpec.md and the relevant update-policy-*.json.
+Any schema or column change (e.g. new Updated Device field) → also read schema.md, update it in the same task, and check rules.md for whether the change applies to desktop, mobile, or both.
+State explicitly: this table exists because desktop and mobile are diverging tracks — reading only the old sections below is not enough once a task is mobile- or release-specific.
+
+
+
+## 0.5 When an instruction is ambiguous — the default is always the narrower one
+
+If a user instruction could reasonably mean either a narrow, safe action
+or a broader, riskier one (deleting data, rewriting a doc's existing
+content, touching a file outside today's task scope), do the narrow one
+and say what you did and why — never guess toward the broader
+interpretation "to be helpful" or "to save a round trip." This applies
+doubly to anything SAFETY.md governs: there, ambiguity always means STOP
+AND ASK, not "pick the safer-sounding option and proceed."
+
+
 ## 1. Naming Conventions (observed, do not change)
 
 | Layer | Convention | Examples |
@@ -192,3 +216,149 @@ function ModulePage() {
 - [ ] Am I adding a new route? If yes → follow the error handling pattern (§4).
 - [ ] Am I adding a new page? If yes → follow the component pattern (§5).
 - [ ] Am I renaming UI labels? Check that only text changes — no logic changes unless explicitly required.
+
+## 8. Mobile-Specific Rules:
+
+
+Logic must be ported, not shelled out to Python — mobile has no background-process story on Android.
+Every ported service needs a parity test against its backend/services/ counterpart before being marked done.
+SQLite schema changes go in docs/schema.md first, before implementation.
+Every module screen follows Add-entry ⇄ Dashboard as two screens — never combined into one page.
+UI must be tested at minimum 360px and maximum ~430px width and remain legible and visually consistent at both.
+
+
+## 9. Keeping this file current — whenever a task adds, removes, renames, or moves a file, folder, module, script, or config that is referenced anywhere in this file or in CODEBASE.md, the agent must update both files in the same task, before considering the task complete. This includes new pages, components, services, data files, scripts, docs, changed route prefixes, or changed folder structure. Do not leave AGENTS.md or CODEBASE.md stale — a future agent trusts these files completely and will not independently re-verify them against the actual repo.
+
+## 10. Code Quality & Scalability Rules (non-negotiable, every task)
+
+- **No duplicate logic.** If the same logic exists in two or more places, extract it into a shared function/module instead of writing it again. `backend/services/excel_utils.py` (see CODEBASE.md / TASKS.md Pass B) is the reference pattern for this — `to_float()`, `to_int()`, and timestamp helpers were pulled out of three duplicated copies into one shared module. Apply the same instinct everywhere, on both platforms.
+- **One responsibility per file.** No file should mix unrelated concerns (e.g. a page component that also contains business logic that belongs in a service, or a service that also does routing). Split by concern, matching the existing `routes/` → `services/` → `models.py` layering on backend, and `pages/` → `components/` → `api/` on frontend.
+- **Reusable over copy-pasted.** Before writing a new function or component, check whether an existing one already does this or can be generalized to. Prefer composition (small, combinable functions/components) over one large function that does everything.
+- **No monolithic files.** If a file is growing long enough that it's doing multiple jobs, split it into smaller, clearly-named files before continuing — don't let one file become a dumping ground.
+- **Match existing conventions exactly** (per AGENTS.md §1 Naming Conventions) — this is what "consistency" means in practice: same naming, same file layout, same patterns as the rest of the codebase, not a new personal style per task.
+- **If you find inconsistency or duplication while working nearby** (not necessarily the thing you were asked to fix), correct it as part of the task — but only if you can verify it still runs/passes tests afterward. Never leave the codebase in a broken state to "clean up" something unrelated. If fixing it safely isn't possible in scope, leave a note in the relevant TASKS.md/TASKS-mobile.md entry instead of silently skipping it.
+- **Design for scalability, not just the immediate ask.** Avoid hardcoding values or logic that will obviously need to change as new modules/platforms are added (e.g. category lists, platform-specific paths) — centralize them the way `models.py`'s enums are meant to be the source of truth (even though `bank_service.py`'s duplicate list is a known counterexample to fix, not follow).
+- **"Simplify" never means merging files.** "Simplify" or "make it easier to understand" never means merging multiple screens/components into fewer files — that is the opposite of this rule. It means splitting further: smaller, single-responsibility files with clearer names. No screen/component file should mix more than one screen's rendering logic; `main.ts` is bootstrap/render-loop/event-binding only and must never contain screen markup directly (see CODEBASE.md's Mobile Repo Structure for the correct `screens/` / `components/` / `data/` split — that structure is the answer to "simplify," not a starting point to abandon).
+
+
+## 11. Self-check before marking any task done
+
+Before finishing any task that creates, updates, or deletes code, answer these honestly — if any answer is "no," fix it before considering the task complete:
+
+- Did I duplicate logic that already exists elsewhere in the codebase? (If yes → extract it instead.)
+- Does every file I touched still do exactly one job? (If a file now does two, split it.)
+- Would another developer, unfamiliar with this codebase, understand this in under a minute? (If not, it needs clearer structure or naming, not just a comment.)
+- Did I find inconsistent or duplicated code nearby that I could safely fix? (If yes and safe → fix it. If yes but risky → note it, don't silently skip it.)
+- Is what I wrote reusable elsewhere, or is it a one-off that should have been generalized?
+- Have I verified the code still runs / existing tests still pass after any change or refactor I made?
+- Have I written the "Docs touched" line required by §9, and is it actually true?
+
+This checklist applies in addition to, not instead of, the existing ## 7. Before You Write Code — Checklist.
+
+## 12. Doc authority — do not silently rewrite user decisions
+
+These docs encode explicit user decisions, not agent scratch space. Progress trackers (TASKS.md, TASKS-mobile.md) may be freely appended to per §9. Every other doc (PLAN.md, design.md, schema.md, appflow.md, prd.md, rules.md, keepNotesImport.md, CODEBASE.md, AGENTS.md itself) may only be edited by: (a) pure additions that don't remove or reword existing content, or (b) a change the user explicitly requested in this task. If a task seems to require changing an existing requirement in one of these files, stop and show the user the exact before/after diff before applying it — never resolve a conflict by quietly rewriting the doc to match new code behavior.
+
+## 13. UI tasks are not done until the rendered output was actually looked at
+
+"The build passed" and "the code compiles" are not sufficient evidence a
+UI task is complete — they prove the syntax is valid, not that the
+rendered page is clean. Stray text leaking into the real app (a `//`
+comment that wasn't wrapped in `{/* */}` and rendered as a visible text
+node, a placeholder string that never got replaced, debug copy left where
+real copy belongs) compiles perfectly and only shows up when a human
+opens the app — which is too late.
+
+Before marking any task that touches `.jsx`/`.tsx`/`.html` done:
+
+1. Grep the touched files for leaked placeholder/debug markers:
+   `grep -rn "TODO\|FIXME\|XXX\|lorem ipsum\|placeholder text\|DEBUG:" <touched files>`
+2. Specifically check every JSX comment in the diff uses `{/* ... */}` —
+   never a bare `//` or `<!-- -->` sitting directly inside JSX children,
+   since both render as literal text in that position.
+3. If the agent's tooling can render/screenshot the page (browser preview,
+   dev server + screenshot), actually do that for the screen(s) touched —
+   don't rely on reading the JSX source as a substitute for seeing the
+   rendered output.
+4. If the agent's tooling CANNOT render/screenshot the page, say so
+   explicitly in the task's final response ("could not visually verify —
+   recommend a manual check before release") rather than silently
+   presenting the task as fully verified.
+5. Reading built/compiled HTML, JS bundle output, or JSX source is NOT
+   rendered-output verification, even when described as "checking the
+   compiled screen." It catches different bugs than actually opening the
+   page does (it cannot catch bad runtime escaping, CSS that hides
+   content, or anything that only resolves when the browser/WebView
+   actually paints it). If this is the only check available because
+   rendering tools are broken or unavailable, say so using this exact
+   phrasing in the task's final response: "Static source/HTML check only
+   — rendered-in-browser verification was NOT performed." Do not describe
+   a source-level check using language that could be read as equivalent
+   to visual verification (e.g. "validated the screen," "verified the
+   UI") — name the specific, narrower thing that was actually done.
+
+## 14. User-facing text — permanent copy vs. conditional messages
+
+Two separate rules. Violating either means the task is not done.
+
+### 14.1 Permanent/always-visible text must never explain internals
+
+Any text that renders unconditionally on a screen (labels, descriptions,
+helper paragraphs, button captions) must read like a finished product
+wrote it — never like a task description, code comment, or spec sentence
+that was left in place because it happened to be accurate.
+
+**Banned in permanent UI copy, no exceptions:**
+- Implementation vocabulary a user has no reason to know: "originating
+  side," "target workbook," "source_ref," "the validator," "the backend,"
+  "the sync layer," field/column names as they exist in code
+  (`signed_amount`, `flow_type`) instead of their on-screen labels.
+- Explaining a VALIDATION RULE as permanent descriptive text instead of
+  just enforcing it. If a form has a constraint (e.g. "can't transfer more
+  than you have"), the constraint belongs in the error message that fires
+  when it's violated (see §14.2) — not as a standing paragraph explaining
+  the rule to everyone, every time, whether or not it's relevant to them
+  right now.
+- Any sentence whose natural audience is "a developer verifying this
+  works correctly" rather than "a person trying to get something done."
+
+Test before shipping any permanent copy: if you deleted this sentence,
+would a user still be able to use the screen correctly just from the
+form's own labels and inputs? If yes, the sentence is explaining internals
+for no reason — cut it. If the screen genuinely cannot be understood
+without it, rewrite it in the plain language test from §13 point 5, not
+spec language.
+
+### 14.2 Conditional messages (errors, warnings, status) must be conditional — not pre-rendered
+
+A message that only matters when a specific condition is true (a
+validation failure, a load error, a stale-data warning, an empty state)
+must:
+
+- Not render in the DOM/component tree at all until that condition is
+  actually true — not rendered-but-hidden via CSS, not rendered with
+  empty/placeholder content waiting to be filled in. If the condition
+  isn't true, the message does not exist on the page.
+- Say exactly what went wrong and, where possible, what the user can do
+  about it — using the real numbers/values involved, not a generic
+  restatement of the rule. "Cannot transfer more than available income on
+  the originating side" is not acceptable even as an error message — it's
+  still spec language. "You have NPR 1,200 available in Cash — try a
+  smaller amount" is the standard to hit.
+- Disappear again once the condition clears (the existing
+  `useDismissibleMessage` / 5-second auto-dismiss pattern already used
+  across `BankPage.jsx`, `SharePage.jsx`, etc. is the reference
+  implementation — reuse it, don't invent a new pattern per screen).
+- Never be the mechanism for teaching the user a rule in advance. If a
+  constraint is worth knowing before attempting the action (e.g. a hard
+  limit), put it on the input itself (placeholder text, a max attribute,
+  inline helper text tied to the field) — not as a floating paragraph
+  elsewhere on the page.
+
+### 14.3 Self-check addition (applies with §11 and §13)
+
+- Does every permanently-visible string on this screen pass the "delete
+  it — does the screen still work?" test from §14.1?
+- Does every conditional message only exist in the DOM when its condition
+  is true, use real values instead of restating the rule, and clear
+  itself afterward per the existing dismiss pattern?

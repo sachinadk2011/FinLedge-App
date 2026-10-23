@@ -25,6 +25,9 @@ desktop/build/
 Thumbs.db
 
 tests/
+!backend/tests/
+!backend/tests/**
+
 .npm-cache/
 android/
 dist/

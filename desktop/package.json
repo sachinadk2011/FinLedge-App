@@ -36,6 +36,7 @@
     "files": [
       "main.js",
       "preload.js",
+      "utils/**",
       "assets/**",
       "package.json"
     ],

@@ -10,6 +10,7 @@ from backend.services.personal_finance_service import (
     update_personal_finance_record,
     update_transfer_record,
 )
+from backend.services.excel_utils import consume_recovery_warnings
 
 router = APIRouter(prefix="/personal-finance", tags=["personal-finance"])
 
@@ -53,6 +54,7 @@ def get_personal_finance_data(flow_type: str | None = None):
         return {
             "records": records,
             "summary": summary,
+            "warnings": consume_recovery_warnings(),
         }
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc

@@ -8,6 +8,7 @@ from backend.services.bank_service import (
     summarize_bank_records,
     update_bank_record,
 )
+from backend.services.excel_utils import consume_recovery_warnings
 
 router = APIRouter(prefix="/bank", tags=["bank"])
 
@@ -36,6 +37,7 @@ def get_bank_data():
         return {
             "records": records,
             "summary": summary,
+            "warnings": consume_recovery_warnings(),
         }
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc

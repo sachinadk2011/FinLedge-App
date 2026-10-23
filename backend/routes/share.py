@@ -17,6 +17,7 @@ from backend.services.share_service import (
     update_sip_allotment,
     update_share_record,
 )
+from backend.services.excel_utils import consume_recovery_warnings
 router = APIRouter(prefix="/share", tags=["share"])
 
 
@@ -73,6 +74,7 @@ def get_share_data():
         return {
             "records": records,
             "summary": summary,
+            "warnings": consume_recovery_warnings(),
         }
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc

@@ -7,6 +7,7 @@ import {
   getSettingsDataTypes,
   importSettingsDataFile,
 } from "../api/settingsApi";
+import StatusNotice from "../components/StatusNotice";
 
 // import { OPEN_TOUR_EVENT, TOUR_DISABLED_KEY, TOUR_SEEN_KEY } from "../components/OnboardingTour"; // disabled for now
 
@@ -67,11 +68,10 @@ function getDesktopBridge() {
   return window.financialTracker || null;
 }
 
-function SettingsPlaceholder({ title, detail }) {
+function SettingsPlaceholder({ title }) {
   return (
     <section className="card settings-panel">
       <h3>{title}</h3>
-      <p className="subtitle">{detail}</p>
     </section>
   );
 }
@@ -80,7 +80,7 @@ function SettingsDisabledPanel({ title, detail, actions = [] }) {
   return (
     <section className="card settings-panel settings-panel--disabled">
       <h3>{title}</h3>
-      <p className="subtitle">{detail}</p>
+      {detail ? <p className="subtitle">{detail}</p> : null}
       {actions.length ? (
         <div className="settings-actions">
           {actions.map((action) => (
@@ -179,15 +179,6 @@ function Settings() {
       active = false;
     };
   }, []);
-
-  useEffect(() => {
-    if (!success && !error) return undefined;
-    const timer = window.setTimeout(() => {
-      setSuccess("");
-      setError("");
-    }, 5000);
-    return () => window.clearTimeout(timer);
-  }, [success, error]);
 
   const openLocation = async (target) => {
     setMessage("");
@@ -311,7 +302,6 @@ function Settings() {
 
           <section className="card settings-panel">
             <h3>Excel file locations</h3>
-            <p className="subtitle">Each FinLedge workbook is stored locally. Open a file directly or browse the data folder.</p>
 
             <div className="file-location-grid">
               {GENERAL_FILE_ROWS.map((row) => (
@@ -346,11 +336,6 @@ function Settings() {
         <>
           <section className="card settings-panel">
             <h3>Import data</h3>
-            <p className="subtitle">
-              Import an Excel file to restore or update a data type. The file must contain
-              the core data columns; internal auto-generated columns (timestamps, Sync Ref)
-              are optional — they are filled in automatically if missing.
-            </p>
 
             <form className="settings-import-form" onSubmit={handleImportSubmit}>
               <label>
@@ -434,7 +419,6 @@ function Settings() {
 
           <section className="card settings-panel">
             <h3>Export data</h3>
-            <p className="subtitle">Download plain copies of the current live Excel files with no transformation.</p>
 
             <div className="settings-export-grid">
               {dataTypes.map((item) => (
@@ -463,14 +447,20 @@ function Settings() {
 
     if (activeSection === "backup") {
       return (
-        <SettingsDisabledPanel
-          title="Backup"
-          detail="Backup and restore will be available in a future update."
-          actions={[
-            { label: "Create backup" },
-            { label: "Restore backup", className: "ghost" },
-          ]}
-        />
+        <section className="card settings-panel">
+          <h3>Automatic backups</h3>
+          <div className="settings-row">
+            <div>
+              <strong>Backup folder</strong>
+              <p className="subtitle"><code>{locations?.backupDir || "Desktop app only"}</code></p>
+            </div>
+            <div className="settings-actions">
+              <button type="button" className="ghost" onClick={() => openLocation("backups")}>
+                Open backup folder
+              </button>
+            </div>
+          </div>
+        </section>
       );
     }
 
@@ -666,7 +656,6 @@ function Settings() {
       return (
         <SettingsPlaceholder
           title="Privacy"
-          detail="FinLedge stores your financial data locally on this device. No account sign-in or cloud sync is required in this version."
         />
       );
     }
@@ -675,7 +664,6 @@ function Settings() {
       return (
         <section className="card settings-panel">
           <h3>Version</h3>
-          <p className="subtitle">Installed FinLedge build information.</p>
           <div className="settings-version-row">
             <span>Current version</span>
             <strong>{appVersion || (bridge ? "—" : "Web preview")}</strong>
@@ -732,8 +720,8 @@ function Settings() {
 
         <div className="settings-content">
           {renderSectionContent()}
-          {success ? <p className="success">{success}</p> : null}
-          {error ? <pre className="error-pre">{error}</pre> : null}
+          <StatusNotice message={success} kind="success" onDismiss={() => setSuccess("")} />
+          <StatusNotice message={error} onDismiss={() => setError("")} />
         </div>
       </div>
     </main>

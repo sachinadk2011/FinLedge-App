@@ -9,6 +9,11 @@ const https = require("https");
 const zlib = require("zlib");
 const { pathToFileURL } = require("url");
 const { spawn } = require("child_process");
+const {
+  compareVersions,
+  getReleaseUrl: buildReleaseUrl,
+  normalizeReleaseNotes,
+} = require("./utils/updateMetadata");
 
 const LOG_FILE = path.join(os.tmpdir(), "finledge-electron.log");
 const WINDOW_TITLE = "FinLedge";
@@ -627,73 +632,8 @@ function navigateToFrontend(url) {
   });
 }
 
-function getUpdateVersion(info) {
-  return String(info?.version || info?.releaseName || "").trim();
-}
-
 function getReleaseUrl(info) {
-  const version = getUpdateVersion(info);
-  // version from policy may be "desktop-v1.3.1" or legacy "1.3.1" / "v1.3.1"
-  // Strip any prefix to get the bare semver, then reconstruct the desktop-v tag.
-  const bare = version.replace(/^desktop-v/i, "").replace(/^v/i, "");
-  if (bare) {
-    return `${GITHUB_RELEASES_URL}/tag/desktop-v${bare}`;
-  }
-
-  return GITHUB_RELEASES_URL;
-}
-
-function stripHtml(text) {
-  return String(text || "")
-    .replace(/<br\s*\/?>/gi, "\n")
-    .replace(/<\/(p|div|li|h[1-6])>/gi, "\n")
-    .replace(/<li[^>]*>/gi, "- ")
-    .replace(/<[^>]+>/g, "")
-    .replace(/&nbsp;/gi, " ")
-    .replace(/&lt;/gi, "<")
-    .replace(/&gt;/gi, ">")
-    .replace(/&quot;/gi, '"')
-    .replace(/&#39;/gi, "'")
-    .replace(/&amp;/gi, "&")
-    .trim();
-}
-
-
-function normalizeReleaseNotes(notes) {
-  if (!notes) return [];
-  if (Array.isArray(notes)) {
-    return notes
-      .map((item) => {
-        if (typeof item === "string") return stripHtml(item);
-        return stripHtml(item?.note || item?.text || item?.message || "");
-      })
-      .filter(Boolean)
-      .slice(0, 8);
-  }
-  return stripHtml(notes)
-    .split(/\r?\n/)
-    .map((line) => line.replace(/^[-*]\s+/, "").trim())
-    .filter(Boolean)
-    .slice(0, 8);
-}
-
-function parseVersionParts(version) {
-  return String(version || "")
-    .replace(/^desktop-v/i, "")  // strip new "desktop-v" prefix first
-    .replace(/^v/i, "")          // then strip legacy "v" prefix
-    .split(/[.-]/)
-    .slice(0, 3)
-    .map((part) => Number.parseInt(part, 10) || 0);
-}
-
-function compareVersions(a, b) {
-  const left = parseVersionParts(a);
-  const right = parseVersionParts(b);
-  for (let index = 0; index < 3; index += 1) {
-    if ((left[index] || 0) > (right[index] || 0)) return 1;
-    if ((left[index] || 0) < (right[index] || 0)) return -1;
-  }
-  return 0;
+  return buildReleaseUrl(info, GITHUB_RELEASES_URL);
 }
 
 function fetchJson(url, timeoutMs = 5000) {
@@ -942,6 +882,7 @@ ipcMain.handle("app:get-data-locations", async () => {
   const dataDir = getRuntimeDataDir();
   return {
     dataDir,
+    backupDir: path.join(dataDir, "backups", "auto"),
     bankFile: path.join(dataDir, "bank_transactions.xlsx"),
     shareFile: path.join(dataDir, "share_transactions.xlsx"),
     personalFinanceBankFile: path.join(dataDir, "personal_finance_bank_flow.xlsx"),
@@ -953,16 +894,20 @@ ipcMain.handle("app:open-data-location", async (_event, target = "folder") => {
   const dataDir = getRuntimeDataDir();
   const targetMap = {
     folder: dataDir,
+    backups: path.join(dataDir, "backups", "auto"),
     bank: path.join(dataDir, "bank_transactions.xlsx"),
     share: path.join(dataDir, "share_transactions.xlsx"),
     "pf-bank": path.join(dataDir, "personal_finance_bank_flow.xlsx"),
     "pf-cash": path.join(dataDir, "personal_finance_cash_flow.xlsx"),
   };
   const requestedPath = targetMap[String(target)] || dataDir;
-  const pathToOpen = fs.existsSync(requestedPath) ? requestedPath : dataDir;
 
   try {
     fs.mkdirSync(dataDir, { recursive: true });
+    if (String(target) === "backups") {
+      fs.mkdirSync(requestedPath, { recursive: true });
+    }
+    const pathToOpen = fs.existsSync(requestedPath) ? requestedPath : dataDir;
     if (fs.existsSync(pathToOpen) && fs.statSync(pathToOpen).isFile()) {
       // shell.openPath opens the file in the default app (e.g. Excel).
       // Do NOT fall back to showItemInFolder — that would open the folder instead.

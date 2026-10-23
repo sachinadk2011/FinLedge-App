@@ -6,8 +6,13 @@ from typing import Optional
 
 from openpyxl import Workbook, load_workbook
 
-from .excel_utils import safe_load_workbook, to_float as _to_float, current_timestamp as _current_timestamp
+from .excel_utils import safe_load_workbook, snapshot_before_write, to_float as _to_float, current_timestamp as _current_timestamp
 from .path_utils import get_data_dir
+from .personal_finance_summary import (
+    LINKED_MODULE_SOURCES,
+    SHARE_ONLY_CATEGORIES,
+    summarize_personal_finance_records,
+)
 
 DATA_DIR = get_data_dir()
 BANK_FLOW_FILE_PATH = DATA_DIR / "personal_finance_bank_flow.xlsx"
@@ -149,10 +154,7 @@ def create_transfer_record(
     available_income = origin_summary[origin_flow]["total_income"]
     if amount_float > available_income:
         side_label = "Bank" if origin_flow == "bank" else "Cash"
-        raise ValueError(
-            f"Transfer of {amount_float:,.2f} exceeds available {side_label} income "
-            f"({available_income:,.2f}). You can only transfer up to {available_income:,.2f}."
-        )
+        raise ValueError(f"Exceeds your {side_label} income.")
     # -------------------------------------------------------------------------
 
     with _file_lock:
@@ -182,6 +184,7 @@ def create_transfer_record(
                 "desktop",
             ]
         )
+        snapshot_before_write(TRANSFER_FILE_PATH)
         workbook.save(TRANSFER_FILE_PATH)
         workbook.close()
 
@@ -199,8 +202,6 @@ def create_transfer_record(
             "updated_device": "desktop",
             "file": str(TRANSFER_FILE_PATH),
         }
-
-
 
 def read_transfer_records() -> list[dict]:
     """Read all raw transfer records from personal_finance_transfer.xlsx."""
@@ -286,10 +287,7 @@ def update_transfer_record(
     effective_increase = (amount_float - old_amount) if same_direction else amount_float
     if effective_increase > available_income + (old_amount if same_direction else 0):
         side_label = "Bank" if origin_flow == "bank" else "Cash"
-        raise ValueError(
-            f"Transfer of {amount_float:,.2f} exceeds available {side_label} income "
-            f"({available_income:,.2f}). You can only transfer up to {available_income:,.2f}."
-        )
+        raise ValueError(f"Exceeds your {side_label} income.")
 
     with _file_lock:
         workbook = load_workbook(TRANSFER_FILE_PATH)
@@ -305,6 +303,7 @@ def update_transfer_record(
         sheet.cell(row=target_row, column=7).value = description_value
         sheet.cell(row=target_row, column=10).value = timestamp  # last_updated_timestamp
 
+        snapshot_before_write(TRANSFER_FILE_PATH)
         workbook.save(TRANSFER_FILE_PATH)
         workbook.close()
 
@@ -359,6 +358,7 @@ def append_personal_finance_record(
                 "desktop",
             ]
         )
+        snapshot_before_write(file_path)
         workbook.save(file_path)
         workbook.close()
 
@@ -402,10 +402,12 @@ def _read_personal_finance_records_for_flow(flow_type: str) -> list[dict]:
                 signed_amount = _signed_amount(direction, amount)
 
             source = str(row[7] or "manual") if len(row) > 7 else "manual"
-            # Share sync rows from the first implementation were physical copies.
-            # Bank Flow is now derived live from the Share Portfolio workbook, so
-            # omit those old copies to keep storage separate and prevent duplicates.
-            if source == "share-sync":
+            # Ignore legacy copied rows from modules that now own their own records.
+            if source in LINKED_MODULE_SOURCES:
+                continue
+
+            category = str(row[3] or "").strip()
+            if category.casefold() in SHARE_ONLY_CATEGORIES:
                 continue
 
             records.append(
@@ -415,7 +417,7 @@ def _read_personal_finance_records_for_flow(flow_type: str) -> list[dict]:
                     "date": str(row[0] or ""),
                     "flow_type": flow_type,
                     "direction": direction,
-                    "category": str(row[3] or ""),
+                    "category": category,
                     "amount": amount,
                     "signed_amount": signed_amount,
                     "description": str(row[6] or "") if len(row) > 6 else "",
@@ -430,103 +432,6 @@ def _read_personal_finance_records_for_flow(flow_type: str) -> list[dict]:
 
         workbook.close()
         return records
-
-
-def _share_sync_mapping(record: dict) -> tuple[str, str] | None:
-    category = str(record.get("category") or "").strip().lower()
-    buy_sell = str(record.get("buy_sell") or "").strip().lower()
-
-    if category in {"ipo", "buy"}:
-        return "expense", "Investment Expense"
-    if category == "sip" and buy_sell in {"redeem", "redeemed"}:
-        return "income", "Investment Income"
-    if category == "sip":
-        return "expense", "Investment Expense"
-    if category == "sell":
-        return "income", "Investment Income"
-    if category == "dividend" and buy_sell == "cash":
-        return "income", "Investment Income"
-    return None
-
-
-def _build_share_sync_records() -> list[dict]:
-    # Import here to avoid a service import cycle during app start-up.
-    from backend.services.share_service import read_share_records
-
-    records: list[dict] = []
-    for source_record in read_share_records():
-        mapping = _share_sync_mapping(source_record)
-        amount = abs(_to_float(source_record.get("total_amount")))
-        if not mapping or amount <= 0:
-            continue
-
-        direction, category = mapping
-        share_category = str(source_record.get("category") or "").strip().lower()
-        buy_sell = str(source_record.get("buy_sell") or "").strip().lower()
-        event_labels = {
-            ("ipo", "ipo"): "IPO",
-            ("buy", "buy"): "Secondary buy",
-            ("sell", "sell"): "Share sell",
-            ("sip", "installment"): "SIP installment",
-            ("sip", "redeem"): "SIP redeem",
-            ("sip", "redeemed"): "SIP redeem",
-            ("dividend", "cash"): "Cash dividend",
-        }
-        source_id = int(source_record.get("id") or 0)
-        records.append(
-            {
-                "id": f"share-{source_id}",
-                "display_id": f"S-{source_id}",
-                "date": str(source_record.get("date") or ""),
-                "flow_type": "bank",
-                "direction": direction,
-                "category": category,
-                "amount": amount,
-                "signed_amount": _signed_amount(direction, amount),
-                "description": f"{event_labels.get((share_category, buy_sell), share_category.title())}: {str(source_record.get('share_name') or '').strip().upper()}",
-                "source": "share-sync",
-                "timestamp": str(source_record.get("last_updated_timestamp") or source_record.get("timestamp") or ""),
-                "source_ref": str(source_record.get("sync_ref") or f"share:{source_id}"),
-            }
-        )
-    return records
-
-
-def _build_bank_services_sync_records() -> list[dict]:
-    # Bank Services remains the source of truth. Its costs are displayed in
-    # Bank Flow as Service Cost and its interest as Interest Earned.
-    from backend.services.bank_service import read_bank_records
-
-    records: list[dict] = []
-    for source_record in read_bank_records():
-        original_category = str(source_record.get("category") or "").strip()
-        amount = abs(_to_float(source_record.get("amount")))
-        if amount <= 0:
-            continue
-
-        is_interest = original_category.lower() in {"interest earned", "income"}
-        direction = "income" if is_interest else "expense"
-        category = "Interest Earned" if is_interest else "Service Cost"
-        source_id = int(source_record.get("id") or 0)
-        description = str(source_record.get("description") or "").strip()
-        label = original_category or category
-        records.append(
-            {
-                "id": f"bank-services-{source_id}",
-                "display_id": f"BS-{source_id}",
-                "date": str(source_record.get("date") or ""),
-                "flow_type": "bank",
-                "direction": direction,
-                "category": category,
-                "amount": amount,
-                "signed_amount": _signed_amount(direction, amount),
-                "description": f"{label}{': ' + description if description else ''}",
-                "source": "bank-services-sync",
-                "timestamp": str(source_record.get("timestamp") or ""),
-                "source_ref": f"bank-services:{source_id}",
-            }
-        )
-    return records
 
 
 def _build_transfer_records_for_flow(flow_type: str) -> list[dict]:
@@ -635,11 +540,7 @@ def read_personal_finance_records(flow_type: Optional[str] = None) -> list[dict]
     normalized_flow = str(flow_type or "combined").strip().lower()
 
     # Base records without transfers
-    bank_base = (
-        _read_personal_finance_records_for_flow("bank")
-        + _build_share_sync_records()
-        + _build_bank_services_sync_records()
-    )
+    bank_base = _read_personal_finance_records_for_flow("bank")
     cash_base = _read_personal_finance_records_for_flow("cash")
 
     if normalized_flow == "bank":
@@ -659,109 +560,6 @@ def read_personal_finance_records(flow_type: Optional[str] = None) -> list[dict]
         ),
     )
 
-
-
-def _empty_flow_summary() -> dict:
-    return {
-        "income": 0.0,
-        "expenses": 0.0,
-        "investment_expense": 0.0,
-        "investment_income": 0.0,
-        "interest_earned": 0.0,
-        "service_cost": 0.0,
-        "transfer_out": 0.0,
-        "transfer_in": 0.0,
-        "total_income": 0.0,
-        "total_expenses": 0.0,
-        "net": 0.0,
-        "income_breakdown": {},
-        "expense_breakdown": {},
-    }
-
-
-def summarize_personal_finance_records(records: list[dict]) -> dict:
-    flow_summaries = {
-        "bank": _empty_flow_summary(),
-        "cash": _empty_flow_summary(),
-    }
-
-    for record in records:
-        flow_type = str(record.get("flow_type") or "").strip().lower()
-        if flow_type not in flow_summaries:
-            continue
-
-        direction = str(record.get("direction") or "").strip().lower()
-        category = str(record.get("category") or "").strip() or "Uncategorized"
-        amount = abs(_to_float(record.get("amount")))
-        summary = flow_summaries[flow_type]
-
-        source = str(record.get("source") or "manual").strip().lower()
-        category_key = category.lower()
-
-        if source == "transfer":
-            # Transfers adjust income on each side.
-            # signed_amount already encodes direction for this flow:
-            #   positive  → this flow receives money  (income +, net +)
-            #   negative  → this flow sends money out (income -, net -)
-            signed = _to_float(record.get("signed_amount", 0))
-            if signed >= 0:
-                # Receiving side: money arrived → income increases
-                summary["total_income"] += amount
-                summary["income"] += amount
-                summary["transfer_in"] += amount
-                summary["income_breakdown"]["Transfer In"] = (
-                    summary["income_breakdown"].get("Transfer In", 0.0) + amount
-                )
-            else:
-                # Originating side: money left → income decreases
-                summary["total_income"] -= amount
-                summary["income"] -= amount
-                summary["transfer_out"] += amount
-                summary["income_breakdown"]["Transfer Out"] = (
-                    summary["income_breakdown"].get("Transfer Out", 0.0) + amount
-                )
-            continue
-
-        if direction == "income":
-            summary["total_income"] += amount
-            summary["income_breakdown"][category] = summary["income_breakdown"].get(category, 0.0) + amount
-            if flow_type == "bank" and source == "bank-services-sync":
-                summary["interest_earned"] += amount
-            elif flow_type == "bank" and category_key == "investment income":
-                summary["investment_income"] += amount
-            else:
-                summary["income"] += amount
-        else:
-            summary["total_expenses"] += amount
-            summary["expense_breakdown"][category] = summary["expense_breakdown"].get(category, 0.0) + amount
-            if flow_type == "bank" and source == "bank-services-sync":
-                summary["service_cost"] += amount
-            elif flow_type == "bank" and category_key in {"investment expense", "investment", "sip", "share market"}:
-                summary["investment_expense"] += amount
-            else:
-                summary["expenses"] += amount
-
-    for summary in flow_summaries.values():
-        # net = total_income (transfers already folded in) - total_expenses
-        # Per-side net correctly reflects transfer movements.
-        # Combined net is self-balancing: one side loses what the other gains.
-        summary["net"] = summary["total_income"] - summary["total_expenses"]
-
-    combined = {
-        # Transfer adjustments cancel each other out in combined totals:
-        # +amount on one side and -amount on the other → net 0 impact.
-        "overall_income": flow_summaries["bank"]["total_income"] + flow_summaries["cash"]["total_income"],
-        "overall_expenses": flow_summaries["bank"]["total_expenses"] + flow_summaries["cash"]["total_expenses"],
-        "bank": flow_summaries["bank"],
-        "cash": flow_summaries["cash"],
-    }
-    combined["overall_net"] = combined["overall_income"] - combined["overall_expenses"]
-
-    return {
-        "bank": flow_summaries["bank"],
-        "cash": flow_summaries["cash"],
-        "combined": combined,
-    }
 
 
 def delete_personal_finance_record(record_id: int, flow_type: str) -> dict:
@@ -785,6 +583,7 @@ def delete_personal_finance_record(record_id: int, flow_type: str) -> dict:
             raise ValueError("Synced Personal Expenses records are read-only.")
 
         sheet.delete_rows(excel_row, 1)
+        snapshot_before_write(file_path)
         workbook.save(file_path)
         workbook.close()
         return {"deleted_id": int(record_id), "flow_type": flow_type}
@@ -823,6 +622,7 @@ def update_personal_finance_record(
 
         if record_flow_type != flow_type:
             sheet.delete_rows(excel_row, 1)
+            snapshot_before_write(file_path)
             workbook.save(file_path)
             workbook.close()
             return append_personal_finance_record(
@@ -855,6 +655,7 @@ def update_personal_finance_record(
         sheet.cell(row=excel_row, column=11).value = ""
         sheet.cell(row=excel_row, column=12).value = "desktop"
 
+        snapshot_before_write(file_path)
         workbook.save(file_path)
         workbook.close()
         return {
@@ -874,122 +675,3 @@ def update_personal_finance_record(
             "updated_device": "desktop",
             "file": str(file_path),
         }
-
-
-def upsert_share_sync_record(
-    *,
-    source_ref: str,
-    entry_date: Optional[date] | str,
-    direction: str,
-    category: str,
-    amount: Decimal | float,
-    description: Optional[str] = None,
-) -> dict:
-    with _file_lock:
-        if not source_ref:
-            raise ValueError("source_ref is required for share sync.")
-
-        flow_type = "bank"
-        _ensure_workbook_exists(flow_type)
-        file_path = _flow_file_path(flow_type)
-        sheet_name = _flow_sheet_name(flow_type)
-        workbook = load_workbook(file_path)
-        sheet = workbook[sheet_name]
-
-        if isinstance(entry_date, date):
-            date_value = entry_date.isoformat()
-        else:
-            date_value = str(entry_date or date.today().isoformat())
-
-        timestamp = _current_timestamp()
-        amount_float = abs(float(amount))
-        signed_amount = _signed_amount(direction, amount_float)
-        description_value = (description or "").strip()
-
-        target_row = None
-        for row_idx in range(2, sheet.max_row + 1):
-            existing_source = str(sheet.cell(row=row_idx, column=8).value or "").strip()
-            existing_ref = str(sheet.cell(row=row_idx, column=11).value or "").strip()
-            if existing_source == "share-sync" and existing_ref == source_ref:
-                target_row = row_idx
-                break
-
-        if target_row is None:
-            sheet.append(
-                [
-                    date_value,
-                    flow_type,
-                    direction,
-                    category,
-                    amount_float,
-                    signed_amount,
-                    description_value,
-                    "share-sync",
-                    timestamp,
-                    timestamp,
-                    source_ref,
-                    "desktop",
-                ]
-            )
-            record_id = sheet.max_row - 1
-        else:
-            sheet.cell(row=target_row, column=1).value = date_value
-            sheet.cell(row=target_row, column=2).value = flow_type
-            sheet.cell(row=target_row, column=3).value = direction
-            sheet.cell(row=target_row, column=4).value = category
-            sheet.cell(row=target_row, column=5).value = amount_float
-            sheet.cell(row=target_row, column=6).value = signed_amount
-            sheet.cell(row=target_row, column=7).value = description_value
-            sheet.cell(row=target_row, column=8).value = "share-sync"
-            if not sheet.cell(row=target_row, column=9).value:
-                sheet.cell(row=target_row, column=9).value = timestamp
-            sheet.cell(row=target_row, column=10).value = timestamp
-            sheet.cell(row=target_row, column=11).value = source_ref
-            sheet.cell(row=target_row, column=12).value = "desktop"
-            record_id = target_row - 1
-
-        workbook.save(file_path)
-        workbook.close()
-        return {
-            "record_id": int(record_id),
-            "date": date_value,
-            "flow_type": flow_type,
-            "direction": direction,
-            "category": category,
-            "amount": amount_float,
-            "signed_amount": signed_amount,
-            "description": description_value or None,
-            "source": "share-sync",
-            "source_ref": source_ref,
-            "timestamp": timestamp,
-            "created_timestamp": timestamp,
-            "last_updated_timestamp": timestamp,
-            "updated_device": "desktop",
-            "file": str(file_path),
-        }
-
-
-def delete_share_sync_record(source_ref: str) -> dict:
-    with _file_lock:
-        if not source_ref:
-            return {"deleted": False, "source_ref": ""}
-
-        flow_type = "bank"
-        _ensure_workbook_exists(flow_type)
-        file_path = _flow_file_path(flow_type)
-        sheet_name = _flow_sheet_name(flow_type)
-        workbook = load_workbook(file_path)
-        sheet = workbook[sheet_name]
-
-        for row_idx in range(sheet.max_row, 1, -1):
-            existing_source = str(sheet.cell(row=row_idx, column=8).value or "").strip()
-            existing_ref = str(sheet.cell(row=row_idx, column=11).value or "").strip()
-            if existing_source == "share-sync" and existing_ref == source_ref:
-                sheet.delete_rows(row_idx, 1)
-                workbook.save(file_path)
-                workbook.close()
-                return {"deleted": True, "source_ref": source_ref}
-
-        workbook.close()
-        return {"deleted": False, "source_ref": source_ref}
-
