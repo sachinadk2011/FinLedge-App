@@ -1126,6 +1126,46 @@ pre {
   margin-top: 18px;
 }
 
+.shortcut-prompt-backdrop {
+  z-index: 90;
+  background: rgba(15, 23, 42, 0.38);
+}
+
+.shortcut-prompt-card {
+  text-align: center;
+  padding: 28px;
+}
+
+.shortcut-prompt-card h3 {
+  margin-top: 12px;
+  font-size: 1.2rem;
+}
+
+.shortcut-prompt-logo {
+  display: block;
+  width: 64px;
+  height: 64px;
+  object-fit: contain;
+  margin: 0 auto;
+}
+
+.shortcut-prompt-card .dialog-actions {
+  justify-content: center;
+}
+
+.shortcut-prompt-primary {
+  border: 1px solid #0f766e;
+  border-radius: 999px;
+  padding: 9px 16px;
+  background: #0f766e;
+  color: white;
+  font-weight: 700;
+}
+
+.shortcut-prompt-primary:hover:not(:disabled) {
+  background: #115e59;
+}
+
 .settings-layout {
   display: grid;
   grid-template-columns: minmax(180px, 220px) minmax(0, 1fr);

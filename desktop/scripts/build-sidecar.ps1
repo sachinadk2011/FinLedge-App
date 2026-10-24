@@ -6,6 +6,7 @@ $entryScript = Join-Path $repoRoot "backend\\engine_main.py"
 $distDir = Join-Path $repoRoot "desktop\\build\\sidecar"
 $workDir = Join-Path $repoRoot "desktop\\build\\pyinstaller-work"
 $specDir = Join-Path $repoRoot "desktop\\build\\pyinstaller-spec"
+$versionGenerator = Join-Path $PSScriptRoot "generate-sidecar-version.py"
 
 if (-not (Test-Path $pythonExe)) {
     throw "Python virtual environment not found at $pythonExe"
@@ -22,6 +23,11 @@ Remove-Item $specDir -Recurse -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force -Path $distDir | Out-Null
 New-Item -ItemType Directory -Force -Path $workDir | Out-Null
 New-Item -ItemType Directory -Force -Path $specDir | Out-Null
+$versionInfoPath = Join-Path $specDir "finledge-engine-version.txt"
+& $pythonExe $versionGenerator --project-root $repoRoot --output $versionInfoPath
+if ($LASTEXITCODE -ne 0) {
+    throw "Could not generate the FinLedge sidecar version resource."
+}
 
 & $pythonExe -m PyInstaller `
     --noconfirm `
@@ -31,8 +37,8 @@ New-Item -ItemType Directory -Force -Path $specDir | Out-Null
     --distpath $distDir `
     --workpath $workDir `
     --specpath $specDir `
+    --version-file $versionInfoPath `
     --paths $repoRoot `
-    --collect-submodules backend `
     $entryScript
 
 if ($LASTEXITCODE -ne 0) {

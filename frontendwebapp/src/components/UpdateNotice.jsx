@@ -83,7 +83,7 @@ export default function UpdateNotice() {
   const updater = getUpdaterBridge();
 
   useEffect(() => {
-    if (!updater?.onUpdateStatus) return undefined;
+    if (!updater?.onUpdateStatus || updater?.updatesManagedByWindows) return undefined;
 
     let isMounted = true;
 
@@ -122,7 +122,7 @@ export default function UpdateNotice() {
     status.state !== "idle" &&
     dismissedAt !== status.updatedAt;
 
-  if (!isVisible) return null;
+  if (updater?.updatesManagedByWindows || !isVisible) return null;
 
   const accentColor = getAccentColor(status.state);
   const icon = getStateIcon(status.state);

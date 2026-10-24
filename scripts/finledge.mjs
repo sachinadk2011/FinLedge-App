@@ -129,9 +129,15 @@ function getConfig() {
   };
 }
 
-function cleanDesktopArtifacts() {
+function getAppxApplicationId() {
+  const configPath = path.join(projectRoot, "desktop", "appx-package-config.json");
+  const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
+  return String(config.appx?.applicationId || "Finledge").trim();
+}
+
+function cleanDesktopArtifacts(outputDirectory = "dist") {
   const targets = [
-    path.join(projectRoot, "desktop", "dist"),
+    path.join(projectRoot, "desktop", outputDirectory),
     path.join(projectRoot, "desktop", "build", "sidecar"),
   ];
 
@@ -142,6 +148,32 @@ function cleanDesktopArtifacts() {
       console.warn(`Could not remove ${target}:`, error instanceof Error ? error.message : error);
     }
   }
+}
+
+async function buildDesktopRuntime(commonEnv) {
+  await runNpmWithEnv(commonEnv, "run", "build:frontend");
+  await runNpmWithEnv(commonEnv, "run", "build:sidecar");
+}
+
+function nextTestAppxBuildNumber(certPath) {
+  const statePath = path.join(path.dirname(path.resolve(certPath)), "finledge-appx-test-build-number.txt");
+  let previous = 0;
+  try {
+    const storedValue = fs.readFileSync(statePath, "utf8").trim();
+    if (!/^\d+$/.test(storedValue)) {
+      throw new Error(`Invalid AppX test build counter in ${statePath}.`);
+    }
+    previous = Number(storedValue);
+  } catch (error) {
+    if (error?.code !== "ENOENT") throw error;
+  }
+
+  const next = previous + 1;
+  if (next > 65535) {
+    throw new Error("The AppX test build revision reached 65535. Increase the app version before building again.");
+  }
+  fs.writeFileSync(statePath, `${next}\n`, "utf8");
+  return next;
 }
 
 async function main() {
@@ -204,20 +236,94 @@ async function main() {
     case "desktop-build-publish": {
       cleanDesktopArtifacts();
       const apiBase = `http://${cfg.backendHost}:${cfg.desktopProdBackendPort}`;
+      const appxApplicationId = getAppxApplicationId();
       const commonEnv = {
         FINLEDGE_MODE: "production",
+        FINLEDGE_DISTRIBUTION_CHANNEL: "microsoft-store",
+        FINLEDGE_APPX_APPLICATION_ID: appxApplicationId,
         FINLEDGE_BACKEND_HOST: cfg.backendHost,
         FINLEDGE_BACKEND_PORT: cfg.desktopProdBackendPort,
         VITE_API_BASE_URL: apiBase,
       };
 
-      await runNpmWithEnv(commonEnv, "run", "build:frontend");
-      await runNpmWithEnv(commonEnv, "run", "build:sidecar");
+      await buildDesktopRuntime(commonEnv);
 
       if (command === "desktop-build") {
         await runNpmWithEnv(commonEnv, "run", "build", "--prefix", "desktop", "--", "--publish", "never");
       } else if (command === "desktop-build-publish") {
         await runNpmWithEnv(commonEnv, "run", "build", "--prefix", "desktop", "--", "--publish", "always");
+      }
+      return;
+    }
+
+    case "desktop-test-build": {
+      if (process.platform !== "win32") {
+        throw new Error("The local Windows test packages must be built on Windows.");
+      }
+
+      const buildEnv = { ...loadEnvFile(), ...process.env };
+      const certPath = buildEnv.FINLEDGE_TEST_CERT_PATH;
+      if (!certPath || !fs.existsSync(certPath)) {
+        throw new Error("Set FINLEDGE_TEST_CERT_PATH to an existing test signing certificate (.pfx) before building both Windows test packages.");
+      }
+
+      const appxConfigPath = path.join(projectRoot, "desktop", "appx-package-config.json");
+      const appxConfig = JSON.parse(fs.readFileSync(appxConfigPath, "utf8")).appx;
+      const identityValues = [appxConfig?.identityName, appxConfig?.publisher, appxConfig?.publisherDisplayName];
+      if (identityValues.some((value) => !value || value.includes("REPLACE_WITH"))) {
+        throw new Error("Fill identityName, publisher, and publisherDisplayName in desktop/appx-package-config.json before building.");
+      }
+
+      const appxBuildNumber = nextTestAppxBuildNumber(certPath);
+      const apiBase = `http://${cfg.backendHost}:${cfg.desktopProdBackendPort}`;
+      const commonEnv = {
+        FINLEDGE_MODE: "testing",
+        FINLEDGE_APPX_APPLICATION_ID: "FinledgeTesting",
+        FINLEDGE_BACKEND_HOST: cfg.backendHost,
+        FINLEDGE_BACKEND_PORT: cfg.desktopProdBackendPort,
+        VITE_API_BASE_URL: apiBase,
+        BUILD_NUMBER: String(appxBuildNumber),
+        WIN_CSC_LINK: certPath,
+        ...(buildEnv.FINLEDGE_TEST_CERT_PASSWORD
+          ? { WIN_CSC_KEY_PASSWORD: buildEnv.FINLEDGE_TEST_CERT_PASSWORD }
+          : {}),
+      };
+
+      await buildDesktopRuntime(commonEnv);
+      await runNpmWithEnv(
+        commonEnv,
+        "run",
+        "build",
+        "--prefix",
+        "desktop",
+        "--",
+        "--win",
+        "nsis",
+        "appx",
+        "--x64",
+        "--publish",
+        "never",
+        "--config.appId=com.finledge.tracker.testing",
+        "--config.productName=Finledge-Testing",
+        "--config.win.artifactName=Finledge-Testing-EXE-Setup-${version}.${ext}",
+        `--config.appx.identityName=${appxConfig.identityName}.Testing`,
+        "--config.appx.applicationId=FinledgeTesting",
+        "--config.appx.displayName=Finledge-Testing",
+        "--config.appx.setBuildNumber=true",
+        "--config.appx.artifactName=Finledge-Testing-${version}.${ext}"
+      );
+
+      const outputDir = path.join(projectRoot, "desktop", "dist");
+      const artifacts = fs.existsSync(outputDir)
+        ? fs.readdirSync(outputDir).filter((file) => file.startsWith("Finledge-Testing-"))
+        : [];
+      if (!artifacts.some((file) => file.toLowerCase().endsWith(".appx")) ||
+          !artifacts.some((file) => file.toLowerCase().endsWith(".exe"))) {
+        throw new Error(`The combined test build did not produce both AppX and NSIS packages in ${outputDir}.`);
+      }
+      console.log(`Combined AppX and EXE test packages (AppX revision ${appxBuildNumber}):`);
+      for (const artifact of artifacts.filter((file) => /\.(appx|exe)$/i.test(file))) {
+        console.log(path.join(outputDir, artifact));
       }
       return;
     }
@@ -251,7 +357,8 @@ async function main() {
   }
 }
 
-main().catch(() => {
+main().catch((error) => {
   console.error("FinLedge command failed.");
+  console.error(error?.stack || error);
   process.exit(1);
 });

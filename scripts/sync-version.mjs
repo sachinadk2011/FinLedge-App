@@ -80,6 +80,7 @@ legacyPolicy.releaseUrl = `https://github.com/sachinadk2011/FinLedge-App/release
 writeJson(legacyPolicyPath, legacyPolicy);
 
 console.log(`Synced FinLedge version to ${nextVersion}.`);
+console.log(`  • AppX package version → ${nextVersion.split("-")[0].split("+")[0]}.0 (electron-builder appx.setBuildNumber=false)`);
 console.log(`  • package.json`);
 console.log(`  • frontendwebapp/package.json`);
 console.log(`  • desktop/package.json`);

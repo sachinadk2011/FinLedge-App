@@ -1,6 +1,6 @@
 # Desktop Codebase Map
 
-Last reviewed: 2026-10-23
+Last reviewed: 2026-10-24
 
 This is the desktop-track file map. Keep it separate from `CODEBASE.md`, which is
 shared with the mobile track. The frontend and several root scripts are consumed by
@@ -41,14 +41,24 @@ backend/
 ├── services/
 │   ├── __init__.py
 │   ├── bank_service.py
+│   ├── data_directory_service.py
 │   ├── data_migration_service.py
 │   ├── excel_utils.py
 │   ├── path_utils.py
 │   ├── personal_finance_service.py
 │   ├── personal_finance_summary.py
+│   ├── personal_finance_transfers.py
+│   ├── workbook_initialization.py
 │   ├── settings_service.py
+│   ├── settings_data/
+│   │   ├── __init__.py
+│   │   ├── config.py
+│   │   ├── normalization.py
+│   │   ├── workbook_export.py
+│   │   └── workbook_import.py
 │   ├── share_lot_calculations.py
 │   ├── share_service.py
+│   ├── share_summary.py
 │   └── summary_graph_service.py
 └── tests/
     ├── __init__.py
@@ -57,6 +67,7 @@ backend/
     ├── test_phase2_personal_finance.py
     ├── test_bank.py
     ├── test_concurrency.py
+    ├── test_data_directory_service.py
     ├── test_personal_finance.py
     ├── test_settings.py
     └── test_share.py
@@ -65,7 +76,7 @@ backend/
 | Path | Responsibility |
 |---|---|
 | `main.py` | Creates the FastAPI application, runs startup migration, and registers routes. |
-| `engine_main.py` | Starts the API server process used by the desktop runtime. |
+| `engine_main.py` | Prepares and reports data-folder migration before starting the desktop API server. |
 | `__init__.py` | Python package marker for backend imports. |
 | `models.py` | Request validation models and enums shared across API modules. |
 | `routes/__init__.py`, `services/__init__.py` | Python package markers for route and service imports. |
@@ -74,22 +85,32 @@ backend/
 | `routes/personal_finance.py` | Personal Expenses and transfer HTTP endpoints. |
 | `routes/summary.py` | Financial Summary HTTP endpoints. |
 | `routes/settings.py` | Workbook import/export HTTP endpoints. |
+| `services/settings_data/__init__.py` | Package marker for focused Settings data helpers. |
 | `services/bank_service.py` | Bank Services workbook I/O, record operations, and totals. |
-| `services/share_service.py` | Share Portfolio workbook I/O and transaction calculations. |
-| `services/personal_finance_service.py` | Personal Expenses Bank/Cash Flow and transfer workbook operations and live sync shaping. |
+| `services/share_service.py` | Share Portfolio workbook I/O and transaction recalculation, preserving the existing route-facing API. |
+| `services/share_summary.py` | Pure aggregate calculations for Share Portfolio records, shared by the Share and Financial Summary routes. |
+| `services/personal_finance_service.py` | Personal Expenses Bank/Cash workbook operations, live sync shaping, and route-facing compatibility functions for the transfer service. |
 | `services/personal_finance_summary.py` | Pure Personal Expenses summary calculations and module/category filtering rules. |
+| `services/personal_finance_transfers.py` | Transfer workbook CRUD and shaping of Bank/Cash transfer rows; the existing service file keeps its route-facing compatibility functions. |
 | `services/share_lot_calculations.py` | FIFO share-lot construction, cost basis, and lot consumption calculations. |
 | `services/summary_graph_service.py` | Builds Financial Summary chart data from module services. |
-| `services/settings_service.py` | Validates and stages workbook import/export operations. |
+| `services/settings_service.py` | Stable compatibility facade for Settings workbook operations used by API routes. |
+| `services/settings_data/config.py` | Canonical workbook paths, headers, and data-type metadata. |
+| `services/settings_data/normalization.py` | Legacy header/category aliases and import normalization rules. |
+| `services/settings_data/workbook_import.py` | Workbook validation, row mapping, backup-before-import, and import operations. |
+| `services/settings_data/workbook_export.py` | Single workbook exports and bundled ZIP export. |
 | `services/excel_utils.py` | Reusable Excel helpers, safe loading/recovery, timestamps, and pre-write snapshots. |
-| `services/path_utils.py` | Resolves the backend data directory and legacy locations. |
+| `services/path_utils.py` | Resolves the backend data directory from the Electron override or platform default. |
 | `services/data_migration_service.py` | Performs non-destructive workbook data migrations. |
+| `services/data_directory_service.py` | Copies and validates legacy Excel workbooks into the shared desktop data directory and records the one-time result. |
+| `services/workbook_initialization.py` | Creates missing Bank, Share, Personal Expenses, and transfer workbooks through their owning services during data-folder preparation. |
 | `tests/__init__.py` | Python package marker for backend tests. |
 | `tests/conftest.py` | Points backend tests at an isolated temporary data directory. |
 | `tests/test_auto_backups.py` | Isolated tests for automatic snapshots, retention, recovery, and concurrent writes. |
 | `tests/test_phase2_personal_finance.py` | Regression checks for Personal Expenses module boundaries and totals. |
 | `tests/test_bank.py` | Bank Services route and service behavior tests. |
 | `tests/test_concurrency.py` | Concurrent backend reads/writes and corrupted workbook recovery tests. |
+| `tests/test_data_directory_service.py` | Temporary-directory tests for safe workbook copying, idempotence, and non-empty destinations. |
 | `tests/test_personal_finance.py` | Personal Expenses and transfer behavior tests. |
 | `tests/test_settings.py` | Settings import/export behavior tests. |
 | `tests/test_share.py` | Share Portfolio route and service behavior tests. |
@@ -98,8 +119,8 @@ Backend layering rule: routes call services; services own workbook paths and I/O
 When a service grows across concerns, split internal helpers into focused service
 modules while preserving a clear route-facing service API.
 
-The root `.gitignore` keeps the general `tests/` ignore rule, with explicit exceptions
-for `backend/tests/` and its files so the backend suite remains visible to Git.
+The root `.gitignore` ignores test directories, including `backend/tests/` and
+`desktop/tests/`, to preserve the repository's existing policy of keeping tests local.
 
 ## Electron shell: `desktop/`
 
@@ -109,23 +130,70 @@ desktop/
 ├── preload.js
 ├── package.json
 ├── package-lock.json
+├── appx-package-config.json
+├── dist/                      Standard ignored Electron Builder output for release and test packages
+├── artifacts/                 Legacy ignored output retained from earlier packaging attempts
 ├── assets/
+│   ├── appx/                 Generated Store tile logos (build resources)
 │   ├── finledge_icon.ico
 │   └── finledge_icon.png
+├── services/
+│   ├── childProcessManager.js
+│   ├── dataDirectory.js
+│   ├── dataDirectoryRuntime.js
+│   ├── appxPaths.js
+│   ├── iconAssets.js
+│   ├── logger.js
+│   ├── desktopShortcutManager.js
+│   ├── rendererPromptManager.js
+│   ├── runtimeConfig.js
+│   ├── updatePolicyService.js
+│   └── windowManager.js
+├── ipc/
+│   ├── dataHandlers.js
+│   └── updateHandlers.js
+├── tests/
+│   ├── dataDirectory.test.cjs
+│   └── runtimeConfig.test.cjs
 ├── utils/
 │   └── updateMetadata.js
 └── scripts/
-    └── build-sidecar.ps1
+    ├── build-sidecar.ps1
+    ├── generate-sidecar-version.py
+    ├── generate-appx-assets.ps1
+    └── mark-build-channel.js
 ```
 
 | Path | Responsibility |
 |---|---|
-| `main.js` | Electron main process, window lifecycle, updater, data-location IPC, and backend process control. |
+| `main.js` | Electron composition root: creates runtime services, registers IPC groups, and coordinates app startup and shutdown. |
 | `preload.js` | Exposes the limited `financialTracker` bridge to the renderer. |
 | `package.json` / `package-lock.json` | Electron dependencies and desktop packaging configuration. |
-| `assets/` | Desktop application icons. |
+| `appx-package-config.json` | AppX identity placeholders, required capability, and four-part version setting. |
+| `dist/` | Standard Git-ignored Electron Builder output. Production and combined local test builds use this same folder; test packages are marked and named separately. |
+| `artifacts/` and `dist-*/` | Legacy Git-ignored output retained from earlier packaging attempts; new builds do not use these folders. |
+| `assets/` | Desktop application icons and generated AppX tile assets. |
+| `assets/appx/` | StoreLogo and tile-logo PNGs generated from the existing FinLedge icon during desktop builds. |
+| `services/dataDirectory.js` | Resolves development and isolated test data to app-specific Electron user-data folders and production data to Documents, with explicit overrides, write checks, saved folder preference, build labels, and cross-build lock. |
+| `services/dataDirectoryRuntime.js` | Owns runtime data-directory selection, safe legacy migration sources, backend migration preparation, fallback handling, and lock lifecycle. |
+| `services/appxPaths.js` | Resolves AppX package family/AUMID identity and translates app-container user-data paths to physical LocalCache paths when Windows Explorer opens files or reads shortcut icons. |
+| `services/runtimeConfig.js` | Loads environment settings and the packaged build-channel marker, then resolves desktop hosts, ports, mode, update policy, and Python executable. |
+| `services/childProcessManager.js` | Starts and stops the Python sidecar and Vite development server, waits for local HTTP readiness, and selects the renderer URL. |
+| `services/windowManager.js` | Creates the Electron window and build-labeled startup splash and handles renderer navigation. |
+| `services/iconAssets.js` | Creates the branded fallback PNG when the desktop icon asset is unavailable. |
+| `services/logger.js` | Writes desktop process logs to the operating-system temporary directory and console. |
+| `services/desktopShortcutManager.js` | Offers a per-AppX-version optional desktop shortcut, checks for an existing link before asking, remembers a decline until the next package version, and refreshes shortcuts with an Explorer-accessible icon path. |
+| `services/rendererPromptManager.js` | Sends first-run shortcut prompts to the React window and resolves the user's response over IPC. |
+| `services/updatePolicyService.js` | Fetches and evaluates the update policy, tracks update status, and provides development update simulations. |
+| `ipc/dataHandlers.js` | Registers IPC actions for data folder selection, data file locations, opening data, and saving exports. |
+| `ipc/updateHandlers.js` | Registers IPC actions for refresh, version and update status, and release links. |
+| `tests/dataDirectory.test.cjs` | Isolated tests for data-folder defaults, write failures, and lock behavior. |
+| `tests/runtimeConfig.test.cjs` | Isolated tests for packaged build-channel markers, runtime mode, and legacy AppX marker compatibility. |
 | `utils/updateMetadata.js` | Pure helpers for release notes, version comparison, and release URLs. |
-| `scripts/build-sidecar.ps1` | Packages the Python backend sidecar for desktop releases. |
+| `scripts/build-sidecar.ps1` | Packages the Python backend sidecar using statically discovered backend imports without recursively bundling the ignored test suite. |
+| `scripts/generate-sidecar-version.py` | Generates Python sidecar Windows version resources from the root FinLedge version and publisher metadata. |
+| `scripts/generate-appx-assets.ps1` | Generates Store tile logos and transparent 16/32/48/256px EXE icon frames from canonical `assets/finledge_icon.png`. |
+| `scripts/mark-build-channel.js` | Writes the packaged build-channel marker for Testing packages and Store-targeted production AppX packages. |
 
 ## Renderer: `frontendwebapp/src/`
 
@@ -148,6 +216,7 @@ frontendwebapp/src/
 │   ├── BankForm.jsx
 │   ├── BarChart.jsx
 │   ├── ConfirmDialog.jsx
+│   ├── ShortcutPrompt.jsx
 │   ├── DashboardPeriodFilter.jsx
 │   ├── InteractiveTimelineChart.jsx
 │   ├── OnboardingTour.jsx
@@ -172,6 +241,17 @@ frontendwebapp/src/
 │   ├── PersonalFinancePage.jsx
 │   ├── PersonalFinanceTransferPage.jsx
 │   ├── Settings.jsx
+│   ├── settings/
+│   │   ├── AboutSettingsSection.jsx
+│   │   ├── BackupSettingsSection.jsx
+│   │   ├── GeneralSettingsSection.jsx
+│   │   ├── HowToUseSettingsSection.jsx
+│   │   ├── ImportExportSettingsSection.jsx
+│   │   ├── InvestmentSettingsSection.jsx
+│   │   ├── PrivacySettingsSection.jsx
+│   │   ├── SettingsPanels.jsx
+│   │   ├── VersionSettingsSection.jsx
+│   │   └── settingsConstants.js
 │   ├── ShareDashboard.jsx
 │   ├── SharePage.jsx
 │   └── Summary.jsx
@@ -198,6 +278,7 @@ frontendwebapp/src/
 | `components/TransactionFilters.jsx` | Reusable transaction search and category selector. |
 | `components/StatGrid.jsx`, `TransactionsTable.jsx` | Shared summary metrics and transaction history. |
 | `components/ConfirmDialog.jsx` | Reusable destructive-action confirmation dialog. |
+| `components/ShortcutPrompt.jsx` | Desktop-bridge-only in-app shortcut prompt; it renders nothing in the mobile runtime. |
 | `components/ResultPanel.jsx` | Reusable result/status panel. |
 | `components/OnboardingTour.jsx` | Onboarding tour UI (currently disabled in app routing). |
 | `components/UpdateNotice.jsx` | Desktop update notification UI. |
@@ -212,7 +293,17 @@ frontendwebapp/src/
 | `pages/PersonalFinancePage.jsx`, `PersonalFinanceDashboard.jsx` | Personal Expenses entry and dashboard screens. |
 | `pages/PersonalFinanceTransferPage.jsx` | Bank/Cash transfer entry and history screen. |
 | `pages/Summary.jsx` | Financial Summary analytics screen. |
-| `pages/Settings.jsx` | Data locations, backup, import/export, and app settings. |
+| `pages/Settings.jsx` | Settings navigation and state orchestration. |
+| `pages/settings/` | Focused Settings sections for general data paths, import/export, backup, about/help, and version panels; keeps each view independently maintainable. |
+| `pages/settings/settingsConstants.js` | Settings navigation labels and reusable file-location row definitions. |
+| `pages/settings/GeneralSettingsSection.jsx` | Shows data paths, build type, folder selection errors, and first-run setup status. |
+| `pages/settings/ImportExportSettingsSection.jsx` | Workbook selection, validation feedback, merge/replace choice, and export actions. |
+| `pages/settings/BackupSettingsSection.jsx` | Automatic backup folder location and open-folder action. |
+| `pages/settings/AboutSettingsSection.jsx` | Product/module information and current version details. |
+| `pages/settings/HowToUseSettingsSection.jsx` | Usage guidance and import/export help. |
+| `pages/settings/VersionSettingsSection.jsx` | Current version display and update check action. |
+| `pages/settings/InvestmentSettingsSection.jsx`, `PrivacySettingsSection.jsx` | Placeholder panels for Settings sections not yet available. |
+| `pages/settings/SettingsPanels.jsx` | Shared placeholder and disabled Settings panel components. |
 | `utils/date.js`, `utils/format.js` | Shared date and display formatting helpers. |
 | `utils/dashboardPeriod.js` | Dashboard range boundaries, period filtering, and daily/monthly chart buckets. |
 
@@ -221,6 +312,7 @@ frontendwebapp/src/
 | Path | Responsibility |
 |---|---|
 | `scripts/finledge.mjs` | Root command runner for backend, frontend, and desktop build flows. |
+| Root npm aliases `desktop-build`, `desktop-build:test` | Build production packages or both separately identified local test packages in one run. |
 | `scripts/migrate_v1_2_0.py` | CLI for the legacy workbook migration. |
 | `scripts/refresh-latest-yml.mjs` | Refreshes desktop updater metadata. |
 | `scripts/start-release.mjs` | Prepares a release using the repository's release workflow. |
@@ -237,6 +329,8 @@ frontendwebapp/src/
 |---|---|
 | `docs/desktop-tasks.md` | Desktop phase checklist and dated progress log. |
 | `docs/desktop-codebase.md` | This desktop-specific architecture and file map. |
+| `docs/desktop-appx-testing.md` | Certificate setup, test identities, the combined AppX/NSIS test build, and install instructions. |
+| `docs/desktop-appx-audit.md` | Desktop-only AppX findings, root cause, changes, validation, and Windows limitations. |
 | `docs/desktop-backend-audit-phase0.md` | Desktop backend organization audit and Phase 1 implementation record. |
 
 `AGENTS.md`, `CODEBASE.md`, `PLAN.md`, and `TASKS.md` are shared with the mobile

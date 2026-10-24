@@ -1,0 +1,15 @@
+{
+  "appx": {
+    "identityName": "SachinAdhikari.Finledge",
+    "publisher": "CN=04B7EFDA-1874-497C-B85C-1F445510CE20",
+    "publisherDisplayName": "Sachin Adhikari",
+    "displayName": "FinLedge",
+    "backgroundColor": "transparent",
+    "applicationId": "Finledge",
+    "capabilities": [
+      "runFullTrust"
+    ],
+    "setBuildNumber": false,
+    "artifactName": "Finledge-${version}.${ext}"
+  }
+}

@@ -1,5 +1,4 @@
 import os
-import shutil
 import sys
 from functools import lru_cache
 from pathlib import Path
@@ -49,49 +48,13 @@ def get_data_dir() -> Path:
         data_dir = Path(explicit_data_dir).expanduser().resolve()
     elif mode == "production":
         if os.name == "nt":
-            roaming = Path(os.getenv("APPDATA") or (Path.home() / "AppData" / "Roaming"))
-            data_dir = roaming / "Finledge"
+            profile = Path(os.getenv("USERPROFILE") or Path.home())
+            data_dir = profile / "Documents" / "FinLedge"
         else:
             data_dir = Path.home() / ".finledge"
     else:
         data_dir = project_root / ".finledge-dev-data"
 
     data_dir.mkdir(parents=True, exist_ok=True)
-
-    legacy_dirs: list[Path] = []
-    if mode == "production":
-        # Only one production home going forward. If it's empty, restore once from the
-        # user's older desktop data folder, not from backend/data test files.
-        legacy_dirs.append(project_root.parent / "FinancialTrackerData")
-        if os.name == "nt":
-            legacy_dirs.append(Path(os.getenv("APPDATA") or (Path.home() / "AppData" / "Roaming")) / "FinancialTracker")
-        else:
-            legacy_dirs.append(Path.home() / ".financial_tracker")
-    else:
-        # Development stays isolated inside the project.
-        legacy_dirs.append(project_root / "backend" / "data")
-
-    targets = {
-        "bank_transactions.xlsx": ["bank_transactions.xlsx", "bank.xlsx"],
-        "share_transactions.xlsx": ["share_transactions.xlsx", "share.xlsx"],
-    }
-
-    for target_name, candidates in targets.items():
-        target = data_dir / target_name
-        if target.exists():
-            continue
-
-        found = None
-        for legacy_dir in legacy_dirs:
-            for name in candidates:
-                candidate = legacy_dir / name
-                if candidate.exists():
-                    found = candidate
-                    break
-            if found:
-                break
-
-        if found:
-            shutil.copy2(found, target)
 
     return data_dir

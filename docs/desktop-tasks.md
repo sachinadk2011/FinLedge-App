@@ -70,41 +70,53 @@ AGENTS.md §0.5: ambiguous = narrower action. PLAN.md Hard Constraints still app
 
 ## Phase 3 — Shared data folder + running both builds safely
 
-- [ ] 3.1 Default data dir for BOTH builds: `%USERPROFILE%\Documents\FinLedge`.
-  `FINLEDGE_DATA_DIR` override keeps working.
-- [ ] 3.2 One-time startup migration (same pattern as `data_migration_service.py`): if the new
-  dir has no workbooks and `%APPDATA%\Finledge\` does, COPY workbooks over, open-validate
-  each, write a JSON report, leave originals untouched. Never overwrite a non-empty dest.
-  Re-running is a no-op.
-- [ ] 3.3 If the folder isn't writable: plain error + let the user pick a folder in Settings.
+- [x] 3.1 Packaged data dir: `%USERPROFILE%\Documents\FinLedge`; development defaults to
+  `%APPDATA%\Finledge Development`. `FINLEDGE_DATA_DIR` overrides either location.
+  Startup preparation creates any missing module workbook files after migration.
+- [x] 3.2 One-time startup migration (same pattern as `data_migration_service.py`): packaged
+  builds look for prior data in `%APPDATA%\Finledge`; development copies prior data from
+  the project `.finledge-dev-data` folder into `%APPDATA%\Finledge Development`. Migration
+  validates workbooks, writes a JSON report, leaves originals untouched, never overwrites a
+  non-empty destination, and is a no-op after completion. If default-folder migration fails,
+  startup falls back to the original data folder and reports that choice in Settings.
+- [x] 3.3 If the folder isn't writable: plain error + let the user pick a folder in Settings.
   No silent fallback elsewhere.
-- [ ] 3.4 Cross-instance lock: `.finledge.lock` in the data dir (pid, build type, heartbeat).
+- [x] 3.4 Cross-instance lock: `.finledge.lock` in the data dir (pid, build type, heartbeat).
   A second instance (exe or MSIX) doesn't write; it shows "FinLedge is already open in the
   other version." Stale locks (dead pid / old heartbeat) are taken over.
   `requestSingleInstanceLock()` alone is not enough (different identities).
-- [ ] 3.5 Settings → General shows data folder path and build type (Installer / Store).
-- [ ] 3.6 Tests (tmp dirs): copy leaves source intact; rerun no-op; lock blocks second
+- [x] 3.5 Settings → General shows data folder path and build type (Development / Testing / Installer / Microsoft Store).
+- [x] 3.6 Tests (tmp dirs): copy leaves source intact; rerun no-op; lock blocks second
   writer; stale lock taken over; unwritable folder handled.
 
 ## Phase 4 — MSIX packaging
 
-- [ ] 4.1 Add the MSIX target to the Electron build next to nsis. Use electron-builder's
+- [x] 4.1 Add the MSIX-family target to the Electron build next to nsis. Use electron-builder's
   `appx` target, or `msix` if the installed version offers it; check the version in use.
-- [ ] 4.2 Packaging config file with placeholder identity values (Name, Publisher,
+- [x] 4.2 Packaging config file with placeholder identity values (Name, Publisher,
   PublisherDisplayName) for the user to fill in.
-- [ ] 4.3 Version mapping in `sync-version.mjs`: 4-part, last part `0` (`1.3.0` → `1.3.0.0`).
-- [ ] 4.4 Generate Store logo sizes from the existing FinLedge icon into a build assets folder.
-- [ ] 4.5 Capability `runFullTrust`; no extra capabilities.
-- [ ] 4.6 Make the Python sidecar work inside the package: package files are read-only, so all
+- [x] 4.3 Version mapping in `sync-version.mjs`: 4-part, last part `0` (`1.3.0` → `1.3.0.0`).
+- [x] 4.4 Generate Store logo sizes from the existing FinLedge icon into a build assets folder.
+- [x] 4.5 Capability `runFullTrust`; no extra capabilities.
+- [x] 4.6 Make the Python sidecar work inside the package: package files are read-only, so all
   writes go to the Phase 3 data dir or a temp/cache dir.
-- [ ] 4.7 Add a documented root command that builds a locally installable test package
+- [x] 4.7 Add a documented root command that builds a locally installable test package
   (self-signed, using a user-supplied test cert path from env var) so the user can test.
+- [x] AppX installation UX audit: verify manifest registration, keep package updates Windows-managed,
+  and offer a per-version optional desktop shortcut from the app on first launch.
+- [x] AppX follow-up: correct the shortcut package identity lookup, generate the EXE icon
+  from the canonical PNG used by AppX assets, and build/inspect separate Testing packages.
+- [x] AppX runtime follow-up: use an in-app shortcut prompt, bind the taskbar window to the
+  package AUMID, use Explorer-accessible AppX data/icon paths, and distinguish preparation
+  failures from folders that actually need user selection.
 
 ## Phase 5 — Store-aware behaviour
 
-- [ ] 5.1 Detect Store build (`process.windowsStore`) and expose via preload bridge.
-- [ ] 5.2 Store build: disable the update checker and update prompts. `.exe` flow unchanged.
-- [ ] 5.3 Version panel shows the same version in both builds.
+- [x] 5.1 Detect AppX using `process.windowsStore`, expose package-managed updates via preload,
+  and keep the Store distribution marker for production channel labeling.
+- [x] 5.2 Disable automatic/manual update checks and renderer update prompts for all AppX builds;
+  NSIS update behavior remains available.
+- [x] 5.3 Version panel reads the packaged Electron version for both AppX and NSIS builds.
 
 ## Phase 6 — Root commands, scripts, workflow
 
@@ -142,6 +154,144 @@ AGENTS.md §0.5: ambiguous = narrower action. PLAN.md Hard Constraints still app
 ## Notes / log
 
 (append dated entries; include a "Docs touched" line per AGENTS.md §11)
+
+### 2026-10-24 — AppX packaging and launch UX audit
+
+- **Root cause:** Windows App Installer owns the install/update progress screen and its
+  post-install action. Electron has only a short “Starting up…” splash; the React
+  `UpdateNotice` and manual updater controls were a separate policy-update path. There
+  was no app code that reinstalled or relaunched AppX. The AppX update path is now
+  disabled at startup, IPC, preload/UI, and notice levels.
+- **Manifest and metadata:** Confirmed AppX manifest configuration provides the package
+  identity, `Windows.FullTrustApplication` entry point, packaged executable, Start menu
+  visual assets, publisher display name, and version mapping. Kept the production Store
+  identity and publisher unchanged and the local `.Testing` package identity separate.
+  Changed the visual background to transparent and aligned executable product metadata
+  to `FinLedge`; the existing NSIS artifact filename pattern remains unchanged.
+- **Shortcut and icon:** The in-app prompt checks for the desktop link before asking,
+  records “Not now” for the current package version, and asks again only when an update
+  changes that version and no link exists. Links use Windows `shell:AppsFolder` identity
+  activation; the ICO cache lives in the writable user-data directory. BrowserWindow now
+  uses the ICO, and the splash logo no longer draws a rounded square/shadow.
+- **Data and startup:** Existing data preparation is idempotent, the workbook marker
+  prevents repeated fresh-workbook creation, and data files remain outside the package.
+  Shortcut prompting waits for backend health. Package updates remain Windows-managed.
+- **Verification:** Desktop data tests passed (9/9); frontend production build passed;
+  config JSON and JS syntax checks passed. NSIS x64 installer build passed in a
+  temporary output folder; its FinLedge product/version metadata was inspected. A
+  clean AppX install, second launch, data upgrade, Start menu/shortcut behavior, and
+  packaged sidecar shutdown need an actual signed install smoke test. The test
+  certificate is not configured in this session.
+- **Docs touched:** `desktop/services/desktopShortcutManager.js`, `desktop/main.js`,
+  `desktop/services/windowManager.js`, `desktop/package.json`,
+  `desktop/appx-package-config.json`, `desktop/preload.js`,
+  `desktop/ipc/updateHandlers.js`, `frontendwebapp/src/components/UpdateNotice.jsx`,
+  `frontendwebapp/src/pages/settings/VersionSettingsSection.jsx`,
+  `docs/desktop-appx-testing.md`, `docs/desktop-appx-audit.md`,
+  `docs/desktop-codebase.md`, `docs/desktop-tasks.md`.
+
+### 2026-10-23 — Desktop main-process modularization and ignored test folders
+
+- **What changed:** Reduced `desktop/main.js` from a monolithic file to an Electron composition root. Moved runtime configuration, data-directory lifecycle, child-process management, icon fallback generation, window creation, update-policy behavior, and data/update IPC handlers into focused desktop modules. The behavior is composed through small service factories and IPC registration functions.
+- **Test ignore policy:** Restored the repository's broad `tests/` ignore behavior by removing the `!` exceptions for backend and desktop test directories. Existing local test files were left untouched and remain ignored, consistent with the user's policy.
+- **Other files:** Split Personal Expenses transfer workbook operations and row shaping into `backend/services/personal_finance_transfers.py`, while preserving route-facing functions. Moved pure Share Portfolio totals into `backend/services/share_summary.py`; FIFO lot logic already lives in `share_lot_calculations.py`. The remaining larger share service stays cohesive around its single workbook and mutation lock. Shared renderer/mobile files were not refactored.
+- **Verification:** JavaScript syntax and JSON configuration checks passed. Full application and test-suite execution was not performed.
+- **Docs touched:** `docs/desktop-tasks.md`, `docs/desktop-codebase.md`.
+
+### 2026-10-23 — Phase 4 AppX packaging
+
+- **What changed:** Added Electron Builder's `appx` target alongside the existing NSIS installer. Installed Electron Builder is 26.15.3 and supports `appx` but not a native `msix` target, so the generated Store-family artifact has the `.appx` extension. Added `desktop/appx-package-config.json` with visibly marked identity placeholders; no publisher identity was invented.
+- **Version and assets:** AppX uses the four-part version with revision `0` (`1.3.0` → `1.3.0.0`). Version sync reports this mapping and version verification checks the `setBuildNumber: false` setting. Added a Windows PowerShell generator for the required Store logo sizes from `desktop/assets/finledge_icon.png`; builder resources keep these outside the app payload. The manifest declares only `runFullTrust`.
+- **Sidecar and local package:** Backend workbook/report writes resolve through `FINLEDGE_DATA_DIR` into the app's selected data folder; exports use the OS temporary directory. Added root command `npm run desktop-build:msix:test`, which requires `FINLEDGE_TEST_CERT_PATH` (and optional `FINLEDGE_TEST_CERT_PASSWORD`) and refuses unfilled identity placeholders. Its test-only package marker directs data to `%LOCALAPPDATA%\Finledge AppX Test` and disables legacy migration. Usage is in `docs/desktop-appx-testing.md`.
+- **Verification limits at the 2026-10-23 checkpoint:** At that point the identity and certificate were not configured, so no installable package had been built. The identity was configured later; see the 2026-10-24 signing-failure follow-up below.
+- **Docs touched:** `docs/desktop-tasks.md`, `docs/desktop-codebase.md`, `docs/desktop-appx-testing.md`.
+
+### 2026-10-23 — Phase 3 shared data folder
+
+- Set packaged Windows builds to `%USERPROFILE%\Documents\FinLedge`; `FINLEDGE_DATA_DIR` remains an override.
+- Added a pre-backend one-time workbook copy/validation report. It leaves legacy files intact, skips non-empty destinations, and does not overwrite existing workbooks. It also copies and validates backup history.
+- Added a write check and Settings folder picker, plus a cross-build heartbeat lock and build-type display.
+- Added Python migration tests and Node resolver/lock tests. Full backend suite passed (87 tests); desktop data tests passed (3 tests). The Windows installer build completed.
+- Docs touched: `docs/desktop-tasks.md`, `docs/desktop-codebase.md`.
+
+### 2026-10-24 — Initialize fresh-install workbooks
+
+- **What changed:** Data-folder preparation now initializes missing Bank, Share,
+  Personal Expenses Bank/Cash, and transfer workbooks after non-destructive legacy
+  migration. Each owning service creates its workbook using its canonical schema,
+  so fresh test and production installs have inspectable files before the UI is used.
+- **AppX install behavior:** Windows owns the AppX/App Installer update screen. After
+  an update succeeds, its action may return as “Reinstall”; the AppX package cannot
+  use the custom directory and shortcut wizard provided by the NSIS `.exe`. AppX
+  package files live in Windows-managed storage; FinLedge's data folder is separate.
+- **Docs touched:** `backend/services/workbook_initialization.py`,
+  `backend/engine_main.py`, `docs/desktop-codebase.md`, `docs/desktop-tasks.md`,
+  `docs/desktop-appx-testing.md`.
+
+### 2026-10-24 — AppX signing failure diagnosis and repair
+
+- **Root cause:** Electron Builder 26.15.3 selected its default legacy `winCodeSign-2.6.0` SignTool (10.0.17763.1). It reproduced `A required function is not present` while signing a disposable copy of the valid package, both with and without timestamping. The same publisher-matching certificate from the Windows certificate store failed with the legacy tool and succeeded with the newer tool, isolating the failure to the old toolset. The PFX password was not used in this reproduction.
+- **Fix:** Pin `build.toolsets.winCodeSign` to `1.1.0`, which selects Electron Builder's checksum-pinned Windows Kits 10.0.26100 bundle. No signing was disabled and the AppX identity, NSIS target, and production/test marker behavior were retained.
+- **Verification:** The bundled 10.0.26100 SignTool signed and verified a disposable AppX copy with the test publisher certificate, both with and without a DigiCert timestamp. Electron Builder's AppX target then produced a signed package in a separate validation output folder; SignTool verification passed, MakeAppx extraction succeeded, and `Add-AppxPackage` installed it with status `Ok` and the expected package family name. The embedded marker pointed to `%LOCALAPPDATA%\Finledge AppX Test` and disabled legacy migration. A separate NSIS target build also completed and its installer signature verified. The original unsigned artifact in `desktop/dist/Finledge-1.3.0.appx` was not overwritten.
+- **Security:** The verification used the test certificate's store thumbprint instead of a PFX password argument. Electron Builder's `builder-util` redacts password-style signing arguments in its logs (`removePassword`). No password was printed.
+- **Limit:** The full `npm run desktop-build:msix:test` wrapper (frontend + sidecar rebuild + AppX target) was not rerun; the Electron Builder AppX packaging/signing stage and NSIS target were verified separately against the existing packaged app. Launching the installed app and Store certification/submission remain unverified.
+- **Docs touched:** `desktop/package.json`, `docs/desktop-appx-testing.md`, `docs/desktop-tasks.md`.
+
+### 2026-10-24 — Isolated AppX test identity
+
+- **What changed:** The local test AppX uses the distinct `Finledge-Testing` display/artifact name and `SachinAdhikari.Finledge.Testing` package identity. Its new output folder is `desktop/artifacts/testing/appx/`.
+- **Test data:** AppX test packages now use a distinct Electron user-data directory and attempt a validated copy from the prior AppX test-data folder, without reading production data. The first launch creates the destination before starting the sidecar.
+- **Verification:** The earlier package under `desktop/dist-testing/` has the expected test manifest identity and embedded marker. The runtime path fix still requires a rebuild and installed-app smoke test.
+- **Docs touched:** `scripts/finledge.mjs`, `desktop/scripts/mark-test-build.js`, `desktop/services/dataDirectory.js`, `desktop/services/dataDirectoryRuntime.js`, `desktop/services/runtimeConfig.js`, `desktop/main.js`, `desktop/ipc/dataHandlers.js`, `desktop/services/windowManager.js`, `desktop/package.json`, `package.json`, `.gitignore`, `.github/workflows/desktop-release.yml`, `docs/desktop-appx-testing.md`, `docs/desktop-codebase.md`, `docs/desktop-tasks.md`.
+
+### 2026-10-24 — Isolated development and installer test builds
+
+- **What changed:** Added `npm run desktop-build:exe:test`, which makes a separately identified NSIS test installer, writes to `desktop/artifacts/testing/exe/`, and embeds a test marker so runtime mode, Settings label, window title, and data location identify it as Testing. `npm run desktop-dev` remains Development; production installer and Store data keep their existing shared production folder.
+- **Build organization:** New production builds go to `desktop/artifacts/production/`; AppX and EXE test builds go to their own folders under `desktop/artifacts/testing/`. Existing `desktop/dist*` outputs were preserved. These and generated AppX logo assets are ignored by Git.
+- **AppX startup audit:** The unavailable path in the report exactly matched the former hard-coded AppX test-data path. Packaged Windows apps can redirect AppData writes into package-specific storage, so a host-visible path can differ from the app's logical path. Test builds now use Electron's app-specific `userData` path, whose parent app name is set before path resolution. The former test folder is included only as a legacy test migration source. The Settings folder-open action now reports shell errors instead of claiming success. The visible wizard is Windows' native package UI; the only custom Electron startup UI is a short “Starting up…” splash, with no fake install progress.
+- **Distribution labels:** Packaged test markers take precedence and display Testing; unpackaged/local development displays Development; a Store-targeted channel marker together with Electron's packaged-AppX signal identifies Microsoft Store; other AppX packages display AppX Package and other packaged builds display Installer. Test mode is passed to the sidecar as `FINLEDGE_MODE=testing`; test and Store-targeted builds skip update checks.
+- **Verification:** Desktop data/runtime tests passed (7/7), the frontend production bundle completed, and PyInstaller produced the sidecar. The sidecar `--prepare-data` smoke check created a new isolated temporary folder and returned `new_install`; that temporary data was removed afterward. The NSIS test package was built successfully with a distinct output path and embedded `exe` marker. The unsigned test installer reports `NotSigned`, which is expected for this local test command. A fresh signed AppX build/install/launch was not possible because the test PFX is absent and `FINLEDGE_TEST_CERT_PATH` is unset. The incomplete `desktop/dist-appx-validation/` folder remains because Windows reports its lone `app.asar` is locked; no other existing build outputs were deleted.
+- **Docs touched:** `scripts/finledge.mjs`, `desktop/main.js`, `desktop/services/dataDirectory.js`, `desktop/services/dataDirectoryRuntime.js`, `desktop/services/runtimeConfig.js`, `desktop/services/windowManager.js`, `desktop/ipc/dataHandlers.js`, `desktop/scripts/mark-test-build.js`, `desktop/package.json`, `package.json`, `.gitignore`, `.github/workflows/desktop-release.yml`, `docs/desktop-appx-testing.md`, `docs/desktop-codebase.md`, `docs/desktop-tasks.md`.
+
+### 2026-10-24 — Combined Windows test build and release-path correction
+
+- Replaced the separate AppX and EXE test commands with `npm run desktop-build:test`. It builds the frontend and sidecar once, then builds both NSIS and AppX in one Electron Builder invocation.
+- Restored the standard Electron Builder output to `desktop/dist/` for both production and test builds. The production build and GitHub release workflow use that same directory; the release build clears and rebuilds it and selects only `Finledge-Setup-*` production packages. Test outputs use Testing names/identities and are never published by the test command.
+- The test AppX uses the `.Testing` package identity; the test EXE uses a distinct application ID. Both are marked Testing and use separate app-specific data folders. Runtime package type distinguishes the AppX test from the EXE test. Production data remains unchanged.
+- Certificate lookup now accepts `FINLEDGE_TEST_CERT_PATH` and its optional password from either the PowerShell environment or root `.env`. The current shell has no test certificate configured, so the combined signed build cannot run until that setting is available.
+- Kept historical `desktop/dist-*` and `desktop/artifacts/` outputs untouched and Git-ignored; new builds do not create separate output folders. Updated the release workflow and desktop-only build documentation. No mobile-owned files were edited.
+- Verification: `npm run desktop:test-data` passed (8/8); syntax and whitespace checks passed. A new signed combined package run and interactive install/launch remain unverified because the test signing certificate is not configured in this shell.
+- Docs touched: `desktop/package.json`, `desktop/services/runtimeConfig.js`, `desktop/scripts/mark-build-channel.js`, `scripts/finledge.mjs`, `package.json`, `.github/workflows/desktop-release.yml`, desktop runtime tests, `docs/desktop-appx-testing.md`, `docs/desktop-codebase.md`, `docs/desktop-tasks.md`.
+
+### 2026-10-23 — Legacy `.exe` migration and Settings structure
+
+- Confirmed the previous packaged `.exe` data location is included in the legacy source scan (`app.getPath("userData")`, normally `%APPDATA%\Finledge`). On first launch after an update, those workbooks and backups are copied to Documents; later `.exe` updates use the shared folder. MSIX uses that same folder, so an existing MSIX dataset is discovered directly.
+- The startup report distinguishes migrated data, data already present, and a new setup. The new-setup status remains in the backend report but is no longer shown as a notice in General Settings.
+- Split the oversized Settings page into purpose-specific section components under `frontendwebapp/src/pages/settings/`; the page now handles navigation and shared state. Reviewed the remaining largest renderer files; dashboard views already use shared chart, filter, and stat components, so no further structural changes were needed here.
+- Split the large Settings import/export service into data configuration, normalization, workbook import, and workbook export modules. `settings_service.py` remains a compatibility facade for existing routes.
+- Verification: all 87 backend tests passed, the frontend production build passed, and the Windows installer rebuilt with the final files. The production bundle reports the existing large-chunk advisory.
+- Docs touched: `docs/desktop-tasks.md`, `docs/desktop-codebase.md`.
+
+### 2026-10-23 — Separate development data folder
+
+- Development Electron now stores active workbooks under `%APPDATA%\Finledge Development`.
+  Existing `.finledge-dev-data` workbooks are copied there on first startup. Packaged
+  production remains in Documents\FinLedge and reads legacy data from `%APPDATA%\Finledge`.
+- The npm-based production-path test command remains deferred until the installer package
+  target is available, as requested.
+- Verification: `node --check desktop/main.js` passed. No real data folders were read or changed.
+- Docs touched: `docs/desktop-tasks.md`, `docs/desktop-codebase.md`.
+
+### 2026-10-23 — Keep app available when migration fails
+
+- The Electron log showed migration stopped on an invalid legacy workbook (`File is not a zip
+  file`), which prevented the backend from starting. Default startup now falls back to the
+  previous development or packaged data folder after a migration error, and Settings reports
+  that fallback. Explicit `FINLEDGE_DATA_DIR` paths and folders selected in Settings do not
+  auto-fallback.
+- Verification: JavaScript syntax and scoped whitespace checks passed. The user's workbook
+  files were not modified.
+- Docs touched: `docs/desktop-tasks.md`, `docs/desktop-codebase.md`.
 
 ### 2026-10-23 — Phase 2 task 11: Alert countdown and entry field cleanup
 

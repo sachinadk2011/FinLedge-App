@@ -4,6 +4,7 @@ import BankDashboard from "./pages/BankDashboard";
 import BankPage from "./pages/BankPage";
 // import OnboardingTour from "./components/OnboardingTour"; // disabled for now
 import UpdateNotice from "./components/UpdateNotice";
+import ShortcutPrompt from "./components/ShortcutPrompt";
 import Home from "./pages/Home";
 import PersonalFinanceDashboard from "./pages/PersonalFinanceDashboard";
 import PersonalFinanceHome from "./pages/PersonalFinanceHome";
@@ -36,6 +37,7 @@ function Layout() {
   return (
     <div className="app-shell">
       <UpdateNotice />
+      <ShortcutPrompt />
       {/* <OnboardingTour /> */}{/* Tour guide disabled for now — code is ready, will be enabled later */}
       <header className="sticky top-0 z-20 bg-white/70 supports-[backdrop-filter]:bg-white/40 supports-[backdrop-filter]:backdrop-blur-xl border-b border-slate-200/60">
         <div className="app-topbar-inner flex items-center justify-between gap-2 px-3 py-2 sm:gap-3 sm:px-4 xl:px-10 2xl:px-16">

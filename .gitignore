@@ -13,7 +13,11 @@ backend/data/
 .finledge-dev-data/
 
 desktop/dist/
+desktop/dist-*/
+desktop/artifacts/
+desktop/assets/appx/
 desktop/build/
+dist*
 # Tooling caches
 .pytest_cache/
 .mypy_cache/
@@ -24,11 +28,13 @@ desktop/build/
 .DS_Store
 Thumbs.db
 
+tests/*
 tests/
-!backend/tests/
-!backend/tests/**
+backend/tests
 
+desktop/tests
 .npm-cache/
 android/
 dist/
 finledge-mobile-design-v3.html
+%TEST*

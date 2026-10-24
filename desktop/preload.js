@@ -4,6 +4,7 @@ const backendHost = String(process.env.FINLEDGE_BACKEND_HOST || "127.0.0.1").tri
 const backendPort = String(process.env.FINLEDGE_BACKEND_PORT || "8000").trim() || "8000";
 
 contextBridge.exposeInMainWorld("financialTracker", {
+  updatesManagedByWindows: Boolean(process.windowsStore),
   ping: () => "pong",
   refreshApp: () => ipcRenderer.invoke("app:refresh"),
   checkForUpdates: () => ipcRenderer.invoke("app:check-for-updates"),
@@ -14,6 +15,14 @@ contextBridge.exposeInMainWorld("financialTracker", {
   installUpdate: () => ipcRenderer.invoke("app:install-update"),
   getDataLocations: () => ipcRenderer.invoke("app:get-data-locations"),
   openDataLocation: (target) => ipcRenderer.invoke("app:open-data-location", target),
+  chooseDataFolder: () => ipcRenderer.invoke("app:choose-data-folder"),
+  onShortcutPrompt: (callback) => {
+    if (typeof callback !== "function") return () => {};
+    const listener = (_event, payload) => callback(payload);
+    ipcRenderer.on("app:shortcut-prompt", listener);
+    return () => ipcRenderer.removeListener("app:shortcut-prompt", listener);
+  },
+  respondToShortcutPrompt: (payload) => ipcRenderer.invoke("app:shortcut-prompt-response", payload),
   saveExportFile: (payload) => ipcRenderer.invoke("app:save-export-file", payload),
   onUpdateStatus: (callback) => {
     if (typeof callback !== "function") {

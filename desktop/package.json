@@ -3,7 +3,8 @@
   "private": true,
   "version": "1.3.0",
   "author": "Sachin Adhikari",
-  "description": "Finledge - Financial Tracker desktop application",
+  "productName": "FinLedge",
+  "description": "FinLedge personal finance tracker",
   "main": "main.js",
   "repository": {
     "type": "git",
@@ -11,6 +12,7 @@
   },
   "scripts": {
     "start": "electron .",
+    "prebuild": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/generate-appx-assets.ps1",
     "build": "electron-builder"
   },
   "devDependencies": {
@@ -19,11 +21,15 @@
   },
   "build": {
     "appId": "com.finledge.tracker",
-    "productName": "Finledge",
+    "productName": "FinLedge",
     "compression": "maximum",
     "copyright": "Copyright © 2026 Sachin Adhikari",
+    "toolsets": {
+      "winCodeSign": "1.1.0"
+    },
     "directories": {
-      "output": "dist"
+      "output": "dist",
+      "buildResources": "assets"
     },
     "publish": [
       {
@@ -36,8 +42,11 @@
     "files": [
       "main.js",
       "preload.js",
+      "ipc/**",
+      "services/**",
       "utils/**",
       "assets/**",
+      "!assets/appx/**",
       "package.json"
     ],
     "extraResources": [
@@ -57,11 +66,19 @@
           "arch": [
             "x64"
           ]
+        },
+        {
+          "target": "appx",
+          "arch": [
+            "x64"
+          ]
         }
       ],
       "icon": "assets/finledge_icon.ico",
       "artifactName": "Finledge-Setup-${version}.${ext}"
     },
+    "extends": "./appx-package-config.json",
+    "afterPack": "scripts/mark-build-channel.js",
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,

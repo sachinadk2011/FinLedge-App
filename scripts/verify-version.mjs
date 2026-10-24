@@ -47,7 +47,19 @@ if (legacyPolicy.latestVersion !== expectedVersion) {
   );
 }
 
+const appxConfigPath = path.join(projectRoot, "desktop", "appx-package-config.json");
+const appxConfig = JSON.parse(fs.readFileSync(appxConfigPath, "utf8")).appx;
+if (appxConfig?.setBuildNumber !== false) {
+  throw new Error("desktop/appx-package-config.json must set appx.setBuildNumber to false so AppX uses a .0 revision.");
+}
+if (appxConfig?.capabilities?.length !== 1 || appxConfig.capabilities[0] !== "runFullTrust") {
+  throw new Error('desktop/appx-package-config.json must declare only the required "runFullTrust" capability.');
+}
+const numericVersion = expectedVersion.split("-")[0].split("+")[0];
+const expectedAppxVersion = `${numericVersion}.0`;
+
 console.log(`Version files match ${expectedVersion}.`);
+console.log(`AppX version maps to ${expectedAppxVersion} (setBuildNumber=false) ✓`);
 console.log(`  desktop-update-policy.json latestVersion = "${expectedDesktopTag}" ✓`);
 console.log(`  update-policy.json latestVersion = "${expectedVersion}" (compat shim) ✓`);
 
