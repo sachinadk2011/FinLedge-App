@@ -67,6 +67,22 @@ function createUpdatePolicyService({
       const releaseUrl = String(policy.releaseUrl || releasesUrl).trim();
       const releaseNotes = normalizeReleaseNotes(policy.releaseNotes || policy.notes);
 
+      const storeMigration = policy.exeStoreMigration || {};
+      const storeProductId = String(storeMigration.storeProductId || "").trim();
+      if (storeMigration.enabled === true && storeProductId) {
+        sendUpdateStatus({
+          state: "store-migration",
+          title: "FinLedge is available on Microsoft Store",
+          detail: String(storeMigration.message || "You can switch to the Microsoft Store version now, or keep using this version.").trim(),
+          currentVersion,
+          storeProductId,
+          releaseUrl,
+          force: false,
+          percent: null,
+        });
+        return;
+      }
+
       if (minimumSupportedVersion && compareVersions(currentVersion, minimumSupportedVersion) < 0) {
         sendUpdateStatus({
           state: "required",
@@ -123,6 +139,47 @@ function createUpdatePolicyService({
     }
   }
 
+  async function checkStoreUpdatePolicy({ silent = true } = {}) {
+    if (!updatePolicyUrl) return;
+    try {
+      const policy = await fetchJson(updatePolicyUrl);
+      const currentVersion = app.getVersion();
+      const latestVersion = String(policy.appxLatestVersion || "").trim();
+      const fallbackUrl = String(policy.appxFallbackUrl || policy.releaseUrl || releasesUrl).trim();
+      const storeProductId = String(policy.storeProductId || "").trim();
+      if (latestVersion && compareVersions(currentVersion, latestVersion) < 0) {
+        sendUpdateStatus({
+          state: "appx-available",
+          title: "FinLedge update available",
+          detail: "Open Microsoft Store to install the latest version. Store will manage the download and installation.",
+          currentVersion,
+          version: latestVersion,
+          storeProductId,
+          releaseUrl: fallbackUrl,
+          releaseNotes: normalizeReleaseNotes(policy.appxReleaseNotes || policy.releaseNotes || policy.notes),
+          percent: null,
+        });
+      } else if (!silent) {
+        sendUpdateStatus({
+          state: "not-available",
+          title: "FinLedge is up to date",
+          detail: "You already have the latest Store version.",
+          percent: null,
+        });
+      }
+    } catch (error) {
+      logLine("[updater] Store update policy check failed", String(error && error.stack ? error.stack : error));
+      if (!silent) {
+        sendUpdateStatus({
+          state: "error",
+          title: "Update check failed",
+          detail: "FinLedge could not check for updates. Try Microsoft Store or the release page.",
+          releaseUrl: releasesUrl,
+        });
+      }
+    }
+  }
+
   function simulateUpdateAvailable() {
     sendUpdateStatus({
       state: "available",
@@ -164,6 +221,7 @@ function createUpdatePolicyService({
   return {
     sendUpdateStatus,
     checkUpdatePolicy,
+    checkStoreUpdatePolicy,
     simulateUpdateAvailable,
     simulateRequiredUpdate,
     getLatestUpdateStatus: () => latestUpdateStatus,

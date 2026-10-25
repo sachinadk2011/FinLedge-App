@@ -2,12 +2,14 @@
 
 import os
 import shutil
-from datetime import datetime
+import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 from openpyxl import Workbook, load_workbook
 
+from ..excel_utils import get_backup_directory, readable_backup_timestamp
 from .config import DATA_DIR, get_data_type_config
 from .normalization import (
     _BANK_INCOME_CATEGORIES, _COLUMN_ALIASES, _migrate_bank_category,
@@ -299,14 +301,99 @@ def _remap_rows(
         return _remap_bank_rows(rows, actual_headers, full_headers, import_ts, initial_cumulative)
     elif data_type == "share":
         return _remap_share_rows(rows, actual_headers, full_headers, import_ts)
+    elif data_type == "pf-transfer":
+        return _remap_transfer_rows(rows, actual_headers, full_headers, import_ts)
     else:
         return _remap_pf_rows(rows, actual_headers, full_headers, import_ts, flow_type_override)
+
+def _validate_import_type(data_type: str, headers: list[str], rows: list[list[Any]]) -> None:
+    """Reject workbooks whose recognizable schema belongs to another module."""
+    normalized = {header.strip().lower() for header in headers}
+    if data_type == "bank":
+        if ({"direction", "flow type", "signed amount"} & normalized):
+            raise ValueError("This looks like a Personal Expenses workbook. Select Bank Flow or Cash Flow.")
+        if {"share name", "buy/sell", "per unit price"} & normalized:
+            raise ValueError("This looks like a Share Portfolio workbook. Select Share Portfolio.")
+    if data_type in {"pf-bank", "pf-cash"}:
+        if "direction" not in normalized:
+            raise ValueError("This file is missing the Personal Expenses Direction column.")
+        if {"share name", "buy/sell"} & normalized:
+            raise ValueError("This looks like a Share Portfolio workbook.")
+        flow_idx = next((i for i, value in enumerate(headers) if value.lower() == "flow type"), None)
+        expected = "bank" if data_type == "pf-bank" else "cash"
+        if flow_idx is not None:
+            observed = {
+                str(row[flow_idx]).strip().lower()
+                for row in rows if flow_idx < len(row) and row[flow_idx] not in (None, "")
+            }
+            if observed - {expected}:
+                raise ValueError(f"This file contains {', '.join(sorted(observed))} flow rows. Select the matching Personal Expenses flow.")
+    if data_type == "pf-transfer":
+        direction_idx = next((i for i, value in enumerate(headers) if value.lower() == "direction"), None)
+        allowed = {"bank_to_cash", "cash_to_bank"}
+        observed = {
+            _normalize_transfer_direction(row[direction_idx])
+            for row in rows if direction_idx is not None and direction_idx < len(row) and row[direction_idx] not in (None, "")
+        }
+        if observed - allowed:
+            raise ValueError("Transfer Direction must be Bank to Cash or Cash to Bank.")
+        flow_idx = next((i for i, value in enumerate(headers) if value.lower() == "flow type"), None)
+        flow_types = {
+            str(row[flow_idx]).strip().lower()
+            for row in rows if flow_idx is not None and flow_idx < len(row) and row[flow_idx] not in (None, "")
+        }
+        if flow_types - {"transfer"}:
+            raise ValueError("This does not look like a Bank/Cash transfer workbook.")
+        if {"share name", "buy/sell", "per unit price"} & normalized:
+            raise ValueError("This does not look like a Bank/Cash transfer workbook.")
+
+def _normalize_transfer_direction(value: Any) -> str:
+    normalized = str(value or "").strip().lower().replace("→", " to ").replace("->", " to ")
+    normalized = " ".join(normalized.replace("_", " ").split())
+    return {
+        "bank to cash": "bank_to_cash",
+        "cash to bank": "cash_to_bank",
+    }.get(normalized, normalized.replace(" ", "_"))
+
+def _remap_transfer_rows(
+    rows: list[list[Any]], actual_headers: list[str], full_headers: list[str], import_ts: str,
+) -> list[list[Any]]:
+    idx = {header.lower(): i for i, header in enumerate(actual_headers)}
+    result = []
+    for row in rows:
+        def get(col: str, default: Any = None) -> Any:
+            position = idx.get(col.lower())
+            return row[position] if position is not None and position < len(row) else default
+        date_val = get("Date", "")
+        direction = _normalize_transfer_direction(get("Direction", ""))
+        amount = abs(_to_float(get("Amount", 0)))
+        description = str(get("Description", "") or "").strip()
+        timestamp = str(get("Last Updated Timestamp", get("Timestamp", import_ts)) or import_ts)
+        created = str(get("Created Timestamp", timestamp) or timestamp)
+        transfer_ref = str(get("Source Ref", "") or "").strip() or f"transfer:{str(date_val)[:10]}:{uuid.uuid4().hex[:8]}"
+        mapped = []
+        for column in full_headers:
+            key = column.lower()
+            if key == "date": mapped.append(str(date_val).strip()[:10] if date_val else "")
+            elif key == "flow type": mapped.append("transfer")
+            elif key == "direction": mapped.append(direction)
+            elif key == "category": mapped.append("Transfer")
+            elif key in {"amount", "signed amount"}: mapped.append(amount)
+            elif key == "description": mapped.append(description)
+            elif key == "source": mapped.append("transfer")
+            elif key == "created timestamp": mapped.append(created)
+            elif key == "last updated timestamp": mapped.append(timestamp)
+            elif key == "source ref": mapped.append(transfer_ref)
+            elif key == "updated device": mapped.append(str(get("Updated Device", "desktop") or "desktop"))
+            else: mapped.append(None)
+        result.append(mapped)
+    return result
 
 def _backup_live_file(live_path: Path) -> Path | None:
     if not live_path.exists():
         return None
-    tag = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
-    backup_dir = DATA_DIR / "backups" / "import" / tag
+    tag = readable_backup_timestamp(datetime.now(timezone.utc))
+    backup_dir = get_backup_directory(live_path) / "import" / tag
     backup_dir.mkdir(parents=True, exist_ok=True)
     backup_file = backup_dir / live_path.name
     shutil.copy2(live_path, backup_file)
@@ -342,6 +429,15 @@ def _read_live_rows(live_path: Path, sheet_name: str, data_type: str = "") -> tu
         except (IndexError, TypeError, ValueError):
             last_cumulative = 0.0
     return rows, last_cumulative
+
+def _ensure_import_workbook_ready(data_type: str) -> None:
+    """Run the Personal Expenses legacy-sheet repair before checking or merging rows."""
+    if data_type == "pf-bank":
+        from ..personal_finance_service import _ensure_workbook_exists
+        _ensure_workbook_exists("bank")
+    elif data_type == "pf-cash":
+        from ..personal_finance_service import _ensure_workbook_exists
+        _ensure_workbook_exists("cash")
 
 def import_data_file(
     data_type: str,
@@ -381,6 +477,8 @@ def import_data_file(
     if not actual_headers:
         raise ValueError("The import file appears to be empty — no header row found.")
 
+    _validate_import_type(data_type, actual_headers, import_rows)
+
     # Validate that all truly required columns are present (aliases already applied)
     missing = _validate_required_headers(actual_headers, required_headers)
     if missing:
@@ -397,6 +495,7 @@ def import_data_file(
     flow_type_override = "bank" if data_type == "pf-bank" else ("cash" if data_type == "pf-cash" else "")
 
     if mode == "merge":
+        _ensure_import_workbook_ready(data_type)
         live_rows, initial_cumulative = _read_live_rows(live_path, sheet_name, data_type)
     else:
         initial_cumulative = 0.0
@@ -448,6 +547,7 @@ def import_data_file(
 def check_live_has_data(data_type: str) -> bool:
     """Return True if the live file for this data_type already has at least one data row."""
     config = get_data_type_config(data_type)
+    _ensure_import_workbook_ready(data_type)
     live_path = Path(config["path"])
     sheet_name = str(config["sheet_name"])
     return _count_live_rows(live_path, sheet_name) > 0

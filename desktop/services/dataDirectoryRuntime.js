@@ -10,6 +10,12 @@ const {
   persistDataDirectory,
   resolveDataDirectory,
 } = require("./dataDirectory");
+const {
+  DATA_FOLDER_NAME,
+  getBackupDirectoryForDataFolder,
+  getSharedDataDirectory,
+  hasKnownWorkbooks,
+} = require("./dataFolderMigration");
 
 function createDataDirectoryRuntime({
   app,
@@ -41,14 +47,23 @@ function createDataDirectoryRuntime({
 
   function getRuntimeDataDir() {
     if (runtimeDataDir) return runtimeDataDir;
-    if (isTestingBuild) return path.resolve(app.getPath("userData"));
-    return resolveDataDirectory({
-      explicitPath: process.env.FINLEDGE_DATA_DIR,
-      isDevelopment,
-      projectRoot,
-      documentsDir: app.getPath("documents"),
-      userDataDir: app.getPath("userData"),
-    });
+    const explicitPath = String(process.env.FINLEDGE_DATA_DIR || "").trim();
+    const resolved = isTestingBuild
+      ? path.resolve(app.getPath("userData"))
+      : resolveDataDirectory({
+          explicitPath: process.env.FINLEDGE_DATA_DIR,
+          isDevelopment,
+          projectRoot,
+          documentsDir: app.getPath("documents"),
+          userDataDir: app.getPath("userData"),
+        });
+    const defaultRoot = (isTestingBuild || isDevelopment)
+      ? path.resolve(app.getPath("userData"))
+      : path.resolve(app.getPath("documents"), "FinLedge");
+    if (!explicitPath && path.resolve(resolved) === defaultRoot) {
+      return getSharedDataDirectory(defaultRoot);
+    }
+    return resolved;
   }
 
   function getBackendEnv() {
@@ -57,13 +72,18 @@ function createDataDirectoryRuntime({
       : String(process.env.FINLEDGE_LEGACY_DATA_DIRS || "").trim();
     let legacyDataDirs;
     if (isTestingBuild) {
-      legacyDataDirs = testBuildType === "appx"
-        ? [path.resolve(app.getPath("appData"), "..", "Local", "Finledge Testing AppX Test")]
-        : [];
+      legacyDataDirs = [
+        path.dirname(getRuntimeDataDir()),
+        app.getPath("userData"),
+        ...(testBuildType === "appx"
+          ? [path.resolve(app.getPath("appData"), "..", "Local", "Finledge Testing AppX Test")]
+          : []),
+      ];
     } else {
       legacyDataDirs = isDevelopment
-        ? [path.join(projectRoot, ".finledge-dev-data")]
+        ? [path.dirname(getRuntimeDataDir()), path.join(projectRoot, ".finledge-dev-data")]
         : [
+            path.dirname(getRuntimeDataDir()),
             app.getPath("userData"),
             path.join(app.getPath("appData"), "Finledge"),
             path.join(app.getPath("appData"), "FinancialTracker"),
@@ -82,6 +102,7 @@ function createDataDirectoryRuntime({
       FINLEDGE_BACKEND_HOST: backendHost,
       FINLEDGE_BACKEND_PORT: String(backendPort),
       FINLEDGE_DATA_DIR: getRuntimeDataDir(),
+      FINLEDGE_BACKUP_DIR: getBackupDirectoryForDataFolder(getRuntimeDataDir()),
       FINLEDGE_LEGACY_DATA_DIRS:
         configuredLegacyDataDirs || JSON.stringify([...new Set(legacyDataDirs)]),
     };
@@ -120,17 +141,23 @@ function createDataDirectoryRuntime({
   }
 
   function getLegacyFallbackDataDir() {
-    return isDevelopment
-      ? path.join(projectRoot, ".finledge-dev-data")
-      : path.join(app.getPath("appData"), "Finledge");
+    const candidates = isDevelopment
+      ? [path.join(projectRoot, ".finledge-dev-data"), app.getPath("userData")]
+      : [
+          path.join(app.getPath("documents"), "FinLedge"),
+          path.join(app.getPath("appData"), "Finledge"),
+          app.getPath("userData"),
+        ];
+    return candidates.find(candidate => hasKnownWorkbooks(candidate)) || null;
   }
 
   function isDefaultRuntimeDataDir(dataDir) {
     if (isTestingBuild || String(process.env.FINLEDGE_DATA_DIR || "").trim()) return false;
-    const defaultDataDir = isDevelopment
+    const defaultDataDir = path.resolve(isDevelopment
       ? app.getPath("userData")
-      : path.join(app.getPath("documents"), "FinLedge");
-    return path.resolve(dataDir) === path.resolve(defaultDataDir);
+      : path.join(app.getPath("documents"), "FinLedge"));
+    return [defaultDataDir, path.join(defaultDataDir, DATA_FOLDER_NAME)]
+      .some(candidate => path.resolve(dataDir) === path.resolve(candidate));
   }
 
   function initializeDataDirectory(dataDir, { allowLegacyFallback = false } = {}) {
@@ -161,7 +188,7 @@ function createDataDirectoryRuntime({
       dataDirectoryLock = null;
       canChooseDataFolder = false;
       const fallbackDir = getLegacyFallbackDataDir();
-      if (!allowLegacyFallback || !isDefaultRuntimeDataDir(dataDir) || !fs.existsSync(fallbackDir)) {
+      if (!allowLegacyFallback || !isDefaultRuntimeDataDir(dataDir) || !fallbackDir) {
         throw error;
       }
 
@@ -198,6 +225,7 @@ function createDataDirectoryRuntime({
   return {
     getBuildTypeLabel,
     getRuntimeDataDir,
+    getBackupDirectory: () => getBackupDirectoryForDataFolder(getRuntimeDataDir()),
     getBackendEnv,
     initializeDataDirectory,
     releaseLock,

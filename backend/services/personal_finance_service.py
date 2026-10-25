@@ -83,9 +83,46 @@ def _ensure_workbook_exists(flow_type: str) -> None:
             modified = True
             sheet.cell(row=1, column=idx).value = header
 
-    if modified:
-        workbook.save(file_path)
-    workbook.close()
+    # Earlier Settings imports wrote these flow files to a generic "Personal
+    # Finance" sheet, while dashboard reads use "Bank Flow" / "Cash Flow".
+    # Preserve and copy those rows into the active sheet so existing imports
+    # become visible without removing the original sheet.
+    legacy_sheet = workbook["Personal Finance"] if "Personal Finance" in workbook.sheetnames and "Personal Finance" != sheet_name else None
+    if legacy_sheet is not None:
+        legacy_headers = [str(legacy_sheet.cell(row=1, column=idx).value or "").strip().casefold() for idx in range(1, len(HEADERS) + 1)]
+        expected_headers = [header.casefold() for header in HEADERS]
+        if legacy_headers == expected_headers:
+            expected_flow = flow_type
+            existing_rows = {
+                _personal_finance_row_key([sheet.cell(row=row_idx, column=idx).value for idx in range(1, len(HEADERS) + 1)])
+                for row_idx in range(2, sheet.max_row + 1)
+            }
+            for row_idx in range(2, legacy_sheet.max_row + 1):
+                values = [legacy_sheet.cell(row=row_idx, column=idx).value for idx in range(1, len(HEADERS) + 1)]
+                if not any(value is not None for value in values):
+                    continue
+                row_flow = str(values[1] or expected_flow).strip().lower()
+                if row_flow != expected_flow:
+                    continue
+                values[1] = expected_flow
+                row_key = _personal_finance_row_key(values)
+                if row_key in existing_rows:
+                    continue
+                sheet.append(values)
+                existing_rows.add(row_key)
+                modified = True
+
+    try:
+        if modified:
+            snapshot_before_write(file_path)
+            workbook.save(file_path)
+    finally:
+        workbook.close()
+
+
+def _personal_finance_row_key(values: list) -> tuple[str, ...]:
+    """Stable comparison key for de-duplicating legacy sheet migration rows."""
+    return tuple(value.isoformat() if hasattr(value, "isoformat") else str(value or "") for value in values)
 
 
 def _ensure_transfer_workbook_exists() -> None:

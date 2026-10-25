@@ -16,6 +16,7 @@ function registerUpdateHandlers({
   releasesUrl,
   isDevelopment,
   updatesManagedByPackage = false,
+  isStorePackage = false,
   simulateUpdates,
   simulateRequiredUpdate,
   logLine,
@@ -33,6 +34,10 @@ function registerUpdateHandlers({
   });
 
   ipcMain.handle("app:check-for-updates", async () => {
+    if (isStorePackage) {
+      await updateService.checkStoreUpdatePolicy({ silent: false });
+      return { ok: true, storeManaged: true };
+    }
     if (updatesManagedByPackage) {
       return { ok: false, reason: "updates-managed-by-windows" };
     }
@@ -74,6 +79,37 @@ function registerUpdateHandlers({
   ipcMain.handle("app:get-version", () => app.getVersion());
 
   ipcMain.handle("app:open-update-release", async (_event, releaseUrl) => {
+    if (isStorePackage) {
+      const status = updateService.getLatestUpdateStatus();
+      const productId = String(status.storeProductId || "").trim();
+      const storeUrl = productId
+        ? `ms-windows-store://pdp/?ProductId=${encodeURIComponent(productId)}`
+        : "ms-windows-store://downloadsandupdates";
+      try {
+        await shell.openExternal(storeUrl);
+        return { ok: true, storeManaged: true, url: storeUrl };
+      } catch (error) {
+        const fallback = getSafeReleaseUrl(releaseUrl || status.releaseUrl, releasesUrl);
+        try {
+          await shell.openExternal(fallback);
+          return { ok: true, fallback: true, url: fallback };
+        } catch (fallbackError) {
+          logLine("[updater] Store and fallback links failed", String(fallbackError?.stack || fallbackError || error));
+          return { ok: false, reason: "open-update-link-failed" };
+        }
+      }
+    }
+    const currentStatus = updateService.getLatestUpdateStatus();
+    if (currentStatus.state === "store-migration" && currentStatus.storeProductId) {
+      const storeUrl = `ms-windows-store://pdp/?ProductId=${encodeURIComponent(currentStatus.storeProductId)}`;
+      try {
+        await shell.openExternal(storeUrl);
+        return { ok: true, url: storeUrl };
+      } catch (error) {
+        logLine("[updater] Microsoft Store link failed", String(error?.stack || error));
+        return { ok: false, reason: "open-store-failed" };
+      }
+    }
     if (updatesManagedByPackage) return { ok: false, reason: "updates-managed-by-windows" };
     const target = getSafeReleaseUrl(
       releaseUrl || updateService.getLatestUpdateStatus().releaseUrl,
@@ -89,6 +125,17 @@ function registerUpdateHandlers({
   });
 
   ipcMain.handle("app:download-update", async () => {
+    if (isStorePackage) {
+      const status = updateService.getLatestUpdateStatus();
+      const fallback = getSafeReleaseUrl(status.releaseUrl, releasesUrl);
+      try {
+        await shell.openExternal(fallback);
+        return { ok: true, fallback: true, url: fallback };
+      } catch (error) {
+        logLine("[updater] AppX fallback link failed", String(error?.stack || error));
+        return { ok: false, reason: "open-fallback-failed" };
+      }
+    }
     if (updatesManagedByPackage) return { ok: false, reason: "updates-managed-by-windows" };
     const target = getSafeReleaseUrl(updateService.getLatestUpdateStatus().releaseUrl, releasesUrl);
     try {

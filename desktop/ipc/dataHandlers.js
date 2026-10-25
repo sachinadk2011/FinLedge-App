@@ -5,10 +5,10 @@ const path = require("path");
 const { ensureWritableDirectory } = require("../services/dataDirectory");
 const { resolveAppxExternalPath } = require("../services/appxPaths");
 
-function getFileLocations(dataDir) {
+function getFileLocations(dataDir, backupDir = path.join(dataDir, "backups")) {
   return {
     dataDir,
-    backupDir: path.join(dataDir, "backups", "auto"),
+    backupDir: path.join(backupDir, "auto"),
     bankFile: path.join(dataDir, "bank_transactions.xlsx"),
     shareFile: path.join(dataDir, "share_transactions.xlsx"),
     personalFinanceBankFile: path.join(dataDir, "personal_finance_bank_flow.xlsx"),
@@ -29,7 +29,7 @@ function registerDataHandlers({
   logLine,
 }) {
   ipcMain.handle("app:get-data-locations", async () => ({
-    ...getFileLocations(dataRuntime.getRuntimeDataDir()),
+    ...getFileLocations(dataRuntime.getRuntimeDataDir(), dataRuntime.getBackupDirectory()),
     buildType: dataRuntime.getBuildTypeLabel(),
     dataDirError: dataRuntime.getDataDirError(),
     canChooseDataFolder: dataRuntime.getCanChooseDataFolder(),
@@ -57,7 +57,7 @@ function registerDataHandlers({
       return {
         ok: true,
         locations: {
-          ...getFileLocations(selected),
+          ...getFileLocations(selected, dataRuntime.getBackupDirectory()),
           buildType: dataRuntime.getBuildTypeLabel(),
           dataSetupStatus: dataRuntime.getDataSetupStatus(),
           dataDirError: dataRuntime.getDataDirError(),
@@ -75,9 +75,10 @@ function registerDataHandlers({
 
   ipcMain.handle("app:open-data-location", async (_event, target = "folder") => {
     const dataDir = dataRuntime.getRuntimeDataDir();
+    const backupDir = dataRuntime.getBackupDirectory();
     const targetMap = {
       folder: dataDir,
-      backups: path.join(dataDir, "backups", "auto"),
+      backups: path.join(backupDir, "auto"),
       bank: path.join(dataDir, "bank_transactions.xlsx"),
       share: path.join(dataDir, "share_transactions.xlsx"),
       "pf-bank": path.join(dataDir, "personal_finance_bank_flow.xlsx"),

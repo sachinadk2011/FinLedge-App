@@ -8,8 +8,8 @@ export default function VersionSettingsSection({
             <span>Current version</span>
             <strong>{appVersion || (bridge ? "—" : "Web preview")}</strong>
           </div>
-          {bridge?.updatesManagedByWindows ? <p>Updates are managed by Windows and Microsoft Store.</p> : null}
-          {bridge && !bridge.updatesManagedByWindows ? <div className="settings-actions" style={{
+          {bridge?.updatesManagedByWindows ? <p>Microsoft Store manages installation and progress for Store updates.</p> : null}
+          {bridge && (!bridge.updatesManagedByWindows || bridge.storeAppxUpdates) ? <div className="settings-actions" style={{
       marginTop: 16
     }}>
               <button type="button" className="ghost" onClick={() => bridge.checkForUpdates?.()}>

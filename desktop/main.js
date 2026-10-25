@@ -40,6 +40,7 @@ const APPLICATION_NAME = IS_TESTING_BUILD
     : "Finledge";
 app.setName(APPLICATION_NAME);
 const IS_STORE_PACKAGE = Boolean(process.windowsStore && IS_STORE_DISTRIBUTION && !IS_TESTING_BUILD);
+process.env.FINLEDGE_STORE_DISTRIBUTION = IS_STORE_PACKAGE ? "1" : "0";
 const IS_APPX_PACKAGE = Boolean(process.windowsStore && app.isPackaged);
 const APPX_PACKAGE_IDENTITY = IS_APPX_PACKAGE
   ? getAppxPackageIdentity(process.execPath, APPX_APPLICATION_ID)
@@ -175,6 +176,7 @@ const {
 } = windowManager;
 const {
   checkUpdatePolicy,
+  checkStoreUpdatePolicy,
   simulateUpdateAvailable,
   simulateRequiredUpdate,
 } = updateService;
@@ -199,6 +201,7 @@ registerUpdateHandlers({
   releasesUrl: GITHUB_RELEASES_URL,
   isDevelopment: IS_ELECTRON_DEV || IS_TESTING_BUILD || IS_STORE_PACKAGE,
   updatesManagedByPackage: IS_APPX_PACKAGE,
+  isStorePackage: IS_STORE_PACKAGE,
   simulateUpdates: SHOULD_SIMULATE_UPDATES,
   simulateRequiredUpdate: SIMULATE_REQUIRED_UPDATE,
   logLine,
@@ -297,7 +300,10 @@ app.whenReady().then(async () => {
       }
     } else {
       navigateToFrontend(getFrontendUrl());
-      if (!IS_APPX_PACKAGE) {
+      if (IS_STORE_PACKAGE) {
+        setTimeout(() => checkStoreUpdatePolicy({ silent: true }), 5000);
+        setInterval(() => checkStoreUpdatePolicy({ silent: true }), 6 * 60 * 60 * 1000);
+      } else if (!IS_APPX_PACKAGE) {
         setTimeout(() => {
           if (SHOULD_SIMULATE_UPDATES) {
             simulateUpdateAvailable();

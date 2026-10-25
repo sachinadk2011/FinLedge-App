@@ -83,7 +83,7 @@ export default function UpdateNotice() {
   const updater = getUpdaterBridge();
 
   useEffect(() => {
-    if (!updater?.onUpdateStatus || updater?.updatesManagedByWindows) return undefined;
+    if (!updater?.onUpdateStatus || (updater?.updatesManagedByWindows && !updater?.storeAppxUpdates)) return undefined;
 
     let isMounted = true;
 
@@ -122,11 +122,12 @@ export default function UpdateNotice() {
     status.state !== "idle" &&
     dismissedAt !== status.updatedAt;
 
-  if (updater?.updatesManagedByWindows || !isVisible) return null;
+  if ((updater?.updatesManagedByWindows && !updater?.storeAppxUpdates) || !isVisible) return null;
 
   const accentColor = getAccentColor(status.state);
   const icon = getStateIcon(status.state);
   const isRequired = status.state === "required";
+  const isStoreUpdate = status.state === "appx-available";
   const hasNotes = Array.isArray(status.releaseNotes) && status.releaseNotes.length > 0;
 
   const openRelease = async () => {
@@ -144,6 +145,18 @@ export default function UpdateNotice() {
       }
     } catch {
       clearTimeout(resetTimer);
+      setIsBusy(false);
+    }
+  };
+
+  const openFallback = async () => {
+    if (!updater?.downloadUpdate) return;
+    setIsBusy(true);
+    try {
+      const result = await updater.downloadUpdate();
+      if (result?.ok === false) setIsBusy(false);
+      else setTimeout(() => setIsBusy(false), 2500);
+    } catch {
       setIsBusy(false);
     }
   };
@@ -231,7 +244,7 @@ export default function UpdateNotice() {
 
         {/* Actions */}
         <div className="update-notice2__actions">
-          {(status.state === "available" || status.state === "required") && (
+          {(status.state === "available" || status.state === "required" || isStoreUpdate || status.state === "store-migration") && (
             <button
               type="button"
               className="update-notice2__primary"
@@ -239,7 +252,17 @@ export default function UpdateNotice() {
               disabled={isBusy}
               onClick={openRelease}
             >
-              {isBusy ? "Opening…" : "⬇ View & Download Release"}
+              {isBusy ? "Opening…" : isStoreUpdate ? "Open Microsoft Store to update" : status.state === "store-migration" ? "View Microsoft Store app" : "⬇ View & Download Release"}
+            </button>
+          )}
+          {isStoreUpdate && updater?.downloadUpdate && (
+            <button
+              type="button"
+              className="update-notice2__secondary"
+              disabled={isBusy}
+              onClick={openFallback}
+            >
+              Download from GitHub instead
             </button>
           )}
           {!isRequired && status.state !== "checking" && (

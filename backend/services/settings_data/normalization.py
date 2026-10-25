@@ -13,6 +13,7 @@ _COLUMN_ALIASES: dict[str, str] = {
     # Personal Finance — alternate Direction names
     "type": "Direction",
     "transaction type": "Direction",
+    "transfer direction": "Direction",
     # Generic
     "note": "Description",
     "notes": "Description",

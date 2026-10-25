@@ -31,7 +31,7 @@ DATA_TYPE_CONFIG: dict[str, dict[str, Any]] = {
         "path": personal_finance_service.BANK_FLOW_FILE_PATH,
         "headers": personal_finance_service.HEADERS,
         "required_headers": _PF_REQUIRED,
-        "sheet_name": personal_finance_service.SHEET_NAME,
+        "sheet_name": "Bank Flow",
     },
     "pf-cash": {
         "label": "Personal Expenses — Cash Flow",
@@ -39,7 +39,15 @@ DATA_TYPE_CONFIG: dict[str, dict[str, Any]] = {
         "path": personal_finance_service.CASH_FLOW_FILE_PATH,
         "headers": personal_finance_service.HEADERS,
         "required_headers": _PF_REQUIRED,
-        "sheet_name": personal_finance_service.SHEET_NAME,
+        "sheet_name": "Cash Flow",
+    },
+    "pf-transfer": {
+        "label": "Personal Expenses — Bank/Cash Transfers",
+        "filename": "personal_finance_transfer.xlsx",
+        "path": personal_finance_service.TRANSFER_FILE_PATH,
+        "headers": personal_finance_service.HEADERS,
+        "required_headers": ["Date", "Direction", "Amount"],
+        "sheet_name": personal_finance_service.TRANSFER_SHEET_NAME,
     },
 }
 

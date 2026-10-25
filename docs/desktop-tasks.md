@@ -88,6 +88,10 @@ AGENTS.md §0.5: ambiguous = narrower action. PLAN.md Hard Constraints still app
 - [x] 3.5 Settings → General shows data folder path and build type (Development / Testing / Installer / Microsoft Store).
 - [x] 3.6 Tests (tmp dirs): copy leaves source intact; rerun no-op; lock blocks second
   writer; stale lock taken over; unwritable folder handled.
+- [x] 3.7 Default Electron user-data roots now use a dedicated `FinLedge Data` child
+  folder, with a timestamped source backup before recognized workbooks/backups are copied;
+  legacy bank/share filenames are normalized, originals remain, and explicit/saved custom
+  data locations are left as selected.
 
 ## Phase 4 — MSIX packaging
 
@@ -109,6 +113,8 @@ AGENTS.md §0.5: ambiguous = narrower action. PLAN.md Hard Constraints still app
 - [x] AppX runtime follow-up: use an in-app shortcut prompt, bind the taskbar window to the
   package AUMID, use Explorer-accessible AppX data/icon paths, and distinguish preparation
   failures from folders that actually need user selection.
+- [x] Add the target-size AppX icon resources Windows requires to avoid its system backplate;
+  correct the installed Testing build's undefined shortcut AUMID variable.
 
 ## Phase 5 — Store-aware behaviour
 
@@ -154,6 +160,36 @@ AGENTS.md §0.5: ambiguous = narrower action. PLAN.md Hard Constraints still app
 ## Notes / log
 
 (append dated entries; include a "Docs touched" line per AGENTS.md §11)
+
+### 2026-10-25 — Settings import isolation and dedicated data folder
+
+- **Import safety:** Bank Services imports now reject recognizable Personal Expenses
+  and Share Portfolio workbooks. Bank Flow/Cash Flow imports require the Personal
+  Expenses Direction column and reject files whose embedded Flow Type belongs to the
+  other flow. A failed existing-data check now stops the import instead of continuing
+  with a possible replace. The confirmation clarifies that its data check covers all
+  dates, and a successful import moves the matching dashboard to All Time for that visit.
+- **Transfers:** Added Personal Expenses Bank/Cash Transfers to Settings import/export
+  and export-all. Transfer imports validate direction and map rows into the dedicated
+  transfer workbook with generated references where needed.
+- **Data folder:** Default development, test, and packaged locations now use a
+  `FinLedge Data` child folder. On first launch, recognized workbook files and backups
+  are copied there only after timestamped copies are created under
+  `backups/migration/YYYY-MM-DD - hh-mm-ss AM-or-PM - Data Folder Migration`. Source files
+  are never deleted. Legacy `bank.xlsx`/`share.xlsx` files are copied to their current
+  canonical filenames. Explicit `FINLEDGE_DATA_DIR` and saved custom locations remain
+  untouched. Settings' existing folder-open action opens the active child folder.
+- **Backup names:** New migration, import, corruption, and automatic snapshot names use
+  `YYYY-MM-DD - hh-mm-ss ...` formatting. Recovery and retention scan by workbook and
+  file metadata, so old compact timestamp names remain usable; existing backups were
+  not renamed or removed.
+- **Dashboard import fix:** The Personal Expenses import target had been writing into a
+  generic `Personal Finance` sheet while the dashboards read `Bank Flow` or `Cash Flow`.
+  Settings now uses each flow's actual sheet name. On read/check/merge, existing rows in
+  the former sheet are backed up and copied into the correct sheet with duplicate checks;
+  the original sheet stays intact. Import success/error notices are short and no longer
+  expose full filesystem paths.
+- **Docs touched:** `docs/desktop-tasks.md` (this log), `docs/desktop-codebase.md`.
 
 ### 2026-10-24 — AppX packaging and launch UX audit
 
@@ -213,6 +249,33 @@ AGENTS.md §0.5: ambiguous = narrower action. PLAN.md Hard Constraints still app
 - Added a write check and Settings folder picker, plus a cross-build heartbeat lock and build-type display.
 - Added Python migration tests and Node resolver/lock tests. Full backend suite passed (87 tests); desktop data tests passed (3 tests). The Windows installer build completed.
 - Docs touched: `docs/desktop-tasks.md`, `docs/desktop-codebase.md`.
+
+### 2026-10-25 — Shared data migration and Store update handoff
+
+- **Data location:** Default EXE and production AppX now resolve to
+  `Documents/FinLedge/FinLedge Data`; the backup folder is its sibling at
+  `Documents/FinLedge/backups`. Development and testing remain in their own
+  per-user roots, with their backup folder beside their `FinLedge Data` child.
+- **Migration safety:** Backend startup now validates expected FinLedge columns,
+  stores a timestamped migration backup before changing or removing legacy
+  workbooks, merges nonduplicate rows when both locations contain data, restores
+  damaged workbooks from valid backups, validates the final copy, and writes a
+  migration report. Legacy source files are retained if any backup or validation
+  step fails. Existing backup history is copied to the sibling backup folder when
+  it was stored inside a legacy data folder.
+- **Updates:** Store AppX checks `appxLatestVersion` in the remote desktop policy
+  and opens Microsoft Store for installation; the configured GitHub fallback is
+  used if the Store link cannot open. `exeStoreMigration.enabled` is false by
+  default and can later offer EXE users a Store listing while allowing them to
+  dismiss and continue using EXE.
+- **Platform boundary:** Microsoft Store owns AppX package download, installation
+  progress, and relaunch. This implementation does not fake an in-app installer
+  progress bar or bypass the Store.
+- **Verification:** Python syntax, Electron JavaScript syntax, policy JSON, and
+  whitespace checks passed. Two isolated migration scenarios passed inside a
+  temporary workspace directory: merge distinct source rows, then recover a
+  corrupt legacy workbook from its backup. Full signed AppX install/update and
+  NSIS upgrade behavior still require Windows package smoke testing.
 
 ### 2026-10-24 — Initialize fresh-install workbooks
 

@@ -16,6 +16,12 @@ _snapshot_lock = threading.Lock()
 LAST_RECOVERY_WARNINGS: dict[str, str] = {}
 
 
+def get_backup_directory(file_path: Path) -> Path:
+    """Return the shared backup root, or the workbook-local legacy location."""
+    configured = str(os.getenv("FINLEDGE_BACKUP_DIR") or "").strip()
+    return Path(configured).expanduser().resolve() if configured else Path(file_path).parent / "backups"
+
+
 def consume_recovery_warnings() -> list[str]:
     """Return and clear recovery notices so the API can show them once."""
     warnings = list(LAST_RECOVERY_WARNINGS.values())
@@ -28,7 +34,12 @@ class SnapshotError(RuntimeError):
 
 
 def _snapshot_timestamp(value: datetime) -> str:
-    return value.strftime("%Y%m%dT%H%M%S.%fZ")
+    return value.strftime("%Y-%m-%d - %I-%M-%S-%f %p UTC")
+
+
+def readable_backup_timestamp(value: datetime) -> str:
+    """A Windows-safe, human-readable timestamp shared by backup directories."""
+    return value.strftime("%Y-%m-%d - %I-%M-%S-%f %p UTC")
 
 
 def _prune_auto_snapshots(snapshot_dir: Path, now: datetime) -> None:
@@ -77,7 +88,7 @@ def snapshot_before_write(file_path: Path) -> Path | None:
         return None
 
     now = datetime.now(timezone.utc)
-    snapshot_dir = file_path.parent / "backups" / "auto" / file_path.stem
+    snapshot_dir = get_backup_directory(file_path) / "auto" / file_path.stem
     destination = snapshot_dir / f"{_snapshot_timestamp(now)}.xlsx"
     with _snapshot_lock:
         try:
@@ -171,7 +182,7 @@ def find_most_recent_valid_backup(file_path: Path) -> Path | None:
     Search file_path.parent/backups/ (excluding backups/corrupted/) for the
     newest uncorrupted backup file matching file_path.name.
     """
-    backups_dir = file_path.parent / "backups"
+    backups_dir = get_backup_directory(file_path)
     if not backups_dir.exists():
         return None
 
@@ -218,8 +229,8 @@ def repair_or_recover_workbook(
     """
     if file_path.exists() and file_path.stat().st_size > 0:
         try:
-            timestamp = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
-            quarantine_dir = file_path.parent / "backups" / "corrupted" / timestamp
+            timestamp = readable_backup_timestamp(datetime.now(timezone.utc))
+            quarantine_dir = get_backup_directory(file_path) / "corrupted" / timestamp
             quarantine_dir.mkdir(parents=True, exist_ok=True)
             shutil.copy2(file_path, quarantine_dir / file_path.name)
             logger.warning(f"Corrupted file {file_path} quarantined to {quarantine_dir}")

@@ -62,7 +62,7 @@ function ShareDashboard() {
   const [deletingId, setDeletingId] = useState(null);
   const [pendingDeleteRow, setPendingDeleteRow] = useState(null);
   const [tableCategory, setTableCategory] = useState("all");
-  const period = useDashboardPeriod("week");
+  const period = useDashboardPeriod("week", { importTypes: ["share"] });
 
   const loadData = ({ background = false } = {}) => {
     if (!background) {

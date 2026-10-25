@@ -19,6 +19,15 @@ function getDesktopBridge() {
   }
   return window.financialTracker || null;
 }
+
+function getSimpleImportError(error) {
+  const message = String(error?.message || "").toLowerCase();
+  if (message.includes("fetch") || message.includes("network") || message.includes("connect")) {
+    return "Could not connect. Try again.";
+  }
+  return "Import failed. Check the selected file and try again.";
+}
+
 function Settings() {
   const navigate = useNavigate();
   const bridge = getDesktopBridge();
@@ -76,8 +85,8 @@ function Settings() {
       if (types.length) {
         setImportType(current => types.some(item => item.id === current) ? current : types[0].id);
       }
-    }).catch(exc => {
-      if (active) setError(String(exc.message || exc));
+    }).catch(() => {
+      if (active) setError("Could not load data types. Try again.");
     });
     return () => {
       active = false;
@@ -102,7 +111,7 @@ function Settings() {
     const result = await bridge.chooseDataFolder();
     if (result?.cancelled) return;
     if (!result?.ok) {
-      setError(result?.reason || "Could not use that folder. Choose a folder you can write to.");
+      setError("Could not use that folder. Choose another folder.");
       return;
     }
     setLocations(result.locations);
@@ -129,19 +138,27 @@ function Settings() {
           return;
         }
       } catch {
-        // Can't reach the backend — just proceed with replace
+        // Fail closed: without checking the target workbook, never proceed with
+        // a potentially destructive replace import.
+        setError("Could not check existing data. Try again.");
+        return;
       }
     }
     setImportSubmitting(true);
     try {
-      const result = await importSettingsDataFile(importType, importFile, importMode || "replace");
-      setSuccess(result?.message || "Data imported successfully.");
+      await importSettingsDataFile(importType, importFile, importMode || "replace");
+      try {
+        window.sessionStorage.setItem("finledge:pending-dashboard-import", importType);
+      } catch {
+        // The import still succeeds if session storage is unavailable.
+      }
+      setSuccess("Data imported successfully.");
       setImportFile(null);
       setImportMode("replace");
       setShowMergePrompt(false);
       event.target.reset();
     } catch (exc) {
-      setError(String(exc.message || exc));
+      setError(getSimpleImportError(exc));
     } finally {
       setImportSubmitting(false);
     }
@@ -157,7 +174,7 @@ function Settings() {
       }
       setSuccess(dataType ? "Data file exported successfully." : "All data files exported successfully.");
     } catch (exc) {
-      setError(String(exc.message || exc));
+      setError("Export failed. Try again.");
     } finally {
       setExportTarget("");
     }

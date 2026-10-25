@@ -255,7 +255,7 @@ function PersonalFinanceDashboard() {
   const [pendingDeleteRow, setPendingDeleteRow] = useState(null);
   const [tableSearch, setTableSearch] = useState("");
   const [tableCategory, setTableCategory] = useState("all");
-  const period = useDashboardPeriod("week");
+  const period = useDashboardPeriod("week", { importTypes: ["pf-bank", "pf-cash", "pf-transfer"] });
 
   useEffect(() => {
     setActiveView(initialView);

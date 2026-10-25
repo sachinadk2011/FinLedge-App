@@ -5,6 +5,7 @@ const backendPort = String(process.env.FINLEDGE_BACKEND_PORT || "8000").trim() |
 
 contextBridge.exposeInMainWorld("financialTracker", {
   updatesManagedByWindows: Boolean(process.windowsStore),
+  storeAppxUpdates: process.env.FINLEDGE_STORE_DISTRIBUTION === "1",
   ping: () => "pong",
   refreshApp: () => ipcRenderer.invoke("app:refresh"),
   checkForUpdates: () => ipcRenderer.invoke("app:check-for-updates"),

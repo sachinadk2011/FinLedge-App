@@ -47,6 +47,10 @@ and task documents were not changed.
   with 16/32/48/256px transparent ICO frames.
 - Added the in-app shortcut prompt, set the AppX window's registered AUMID, and map
   virtualized package data paths to LocalCache for Windows shell open actions.
+- Windows adds a system icon backplate if AppX target-size unplated resources are
+  absent. The asset generator now creates the 14 documented icon sizes in default,
+  dark unplated, and light unplated forms under the manifest's `Square44x44Logo`
+  resource name, preserving the transparent pixels around the logo.
 - The AppX startup log showed a sidecar initialization error being mislabeled as a
   folder permission problem. Folder selection is now offered only when the writable
   directory probe itself fails; other preparation failures report that existing
@@ -71,17 +75,27 @@ and task documents were not changed.
   `1.3.0.6`, application ID `FinledgeTesting`, and transparent tile background. The
   NSIS test installer reports ProductName `Finledge-Testing`, ProductVersion `1.3.0`,
   and the FinLedge description.
-- The generated ICO was validated as a PNG-backed 256px icon from the same canonical
-  image used for AppX logos. The package was built but not installed/launched during
-  this follow-up, so live shortcut prompting, Start menu behavior, and Windows icon
-  cache refresh still require installation on the target account.
-- Latest follow-up: `npm run desktop-build:test` completed with Testing AppX revision
-  `1.3.0.7` and the matching Testing EXE installer. Frontend build, JS syntax checks,
-  `git diff --check`, package contents, the four ICO frames, the sidecar `--help` and
-  isolated `--prepare-data` smoke commands, and AppX external path resolution passed.
-  PyInstaller's analysis no longer lists `backend.tests`. The test package has not yet
-  been installed/launched, so the React prompt, taskbar refresh, and Explorer open
-  actions still need confirmation in the installed build.
+- `npm run desktop-build:test` completed with Testing AppX revision `1.3.0.10` and
+  the matching Testing EXE installer. The package contains all 42 target-size AppX
+  icon variants, the manifest uses a transparent background, and the four-frame EXE
+  ICO was generated from the canonical PNG. Frontend build, JS syntax checks,
+  `git diff --check`, package contents, sidecar `--help` and isolated
+  `--prepare-data` smoke commands passed. PyInstaller's analysis no longer lists
+  `backend.tests`.
+- The installed `1.3.0.8` log records `ReferenceError: appUserModelId is not
+  defined`; corrected shortcut arguments to use the parsed package identity. A
+  renderer-prompt IPC handshake and the AppX data-path mapper were checked. Revision
+  `1.3.0.10` was built but not installed/launched, so the in-app prompt, taskbar
+  unplating, shortcut refresh, and Explorer open actions still need confirmation in
+  that installed revision.
+- Read-only workbook inventory showed 29 Bank Services and 12 Share Portfolio rows in
+  the Testing AppX folder. Its Personal Expenses workbooks are empty and the migration
+  report says that folder was first initialized as `new_install` on Oct 24. Production
+  `%APPDATA%\\Finledge` still contains its separate Bank, Share, Personal Expenses,
+  and transfer records. The installed `.8` build could not open package data via
+  Explorer because it used the app-container path; the new path mapper uses its
+  physical LocalCache location. The workbooks remain present; no data was copied,
+  moved, or deleted during this audit.
 
 ## Windows behavior and limitations
 

@@ -49,7 +49,7 @@ export default function ImportExportSettingsSection({
               {/* Merge / Replace prompt: shown when user clicks Import and data already exists */}
               {showMergePrompt ? <div className="settings-merge-prompt">
                   <p className="subtitle">
-                    <strong>Existing data found.</strong> How would you like to handle it?
+                    <strong>Records already exist in this workbook.</strong> This checks all dates, even if the dashboard's current period looks empty.
                   </p>
                   <div className="settings-merge-options">
                     <label className="settings-merge-option">

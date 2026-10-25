@@ -97,6 +97,39 @@ try {
       $bitmap.Dispose()
     }
   }
+
+  # Windows adds a system backplate when AppX has no target-size unplated assets.
+  # Supply each size/theme for the actual manifest icon name so Windows uses the
+  # transparent FinLedge mark directly in Start, taskbar, and window switchers.
+  $targetSizes = @(16, 20, 24, 30, 32, 36, 40, 48, 60, 64, 72, 80, 96, 256)
+  $iconThemes = @(
+    @{ Suffix = "" },
+    @{ Suffix = "_altform-unplated" },
+    @{ Suffix = "_altform-lightunplated" }
+  )
+  foreach ($size in $targetSizes) {
+    foreach ($theme in $iconThemes) {
+      $bitmap = [System.Drawing.Bitmap]::new($size, $size, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+      try {
+        $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
+        try {
+          $graphics.Clear([System.Drawing.Color]::Transparent)
+          $graphics.CompositingQuality = [System.Drawing.Drawing2D.CompositingQuality]::HighQuality
+          $graphics.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+          $graphics.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
+          $graphics.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+          $graphics.DrawImage($source, 0, 0, $size, $size)
+        } finally {
+          $graphics.Dispose()
+        }
+        $outputPath = Join-Path $assetRoot ("Square44x44Logo.targetsize-{0}{1}.png" -f $size, $theme.Suffix)
+        $bitmap.Save($outputPath, [System.Drawing.Imaging.ImageFormat]::Png)
+      } finally {
+        $bitmap.Dispose()
+      }
+    }
+  }
+  Write-Host "Generated $($targetSizes.Count * $iconThemes.Count) AppX app-list icons with transparent, unplated variants"
 } finally {
   $source.Dispose()
 }

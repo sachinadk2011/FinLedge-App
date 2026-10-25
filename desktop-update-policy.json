@@ -1,6 +1,15 @@
 {
   "latestVersion": "desktop-v1.3.0",
   "minimumSupportedVersion": "1.1.0",
+  "appxLatestVersion": "1.3.0",
+  "appxFallbackUrl": "https://github.com/sachinadk2011/FinLedge-App/releases/latest",
+  "appxReleaseNotes": [],
+  "storeProductId": "",
+  "exeStoreMigration": {
+    "enabled": false,
+    "storeProductId": "",
+    "message": "FinLedge is now available on Microsoft Store. You can switch now or continue using this version."
+  },
   "releaseUrl": "https://github.com/sachinadk2011/FinLedge-App/releases/tag/desktop-v1.3.0",
   "availableMessage": "FinLedge Desktop 1.3.0 is available. Install it from the release page to get the latest features.",
   "requiredMessage": "This version of FinLedge Desktop is no longer supported. Please install the latest release from GitHub.",

@@ -54,7 +54,7 @@ function createShortcutDetails({
 
   return {
     target: path.join(process.env.WINDIR || "C:\\Windows", "explorer.exe"),
-    args: `shell:AppsFolder\\${appUserModelId}`,
+    args: `shell:AppsFolder\\${packageIdentity.applicationUserModelId}`,
     description: `Launch ${displayName}`,
     icon: fs.existsSync(shellIconPath) ? shellIconPath : processExecPath,
     iconIndex: 0,

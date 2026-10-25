@@ -1,6 +1,6 @@
 # Desktop Codebase Map
 
-Last reviewed: 2026-10-24
+Last reviewed: 2026-10-25
 
 This is the desktop-track file map. Keep it separate from `CODEBASE.md`, which is
 shared with the mobile track. The frontend and several root scripts are consumed by
@@ -89,20 +89,20 @@ backend/
 | `services/bank_service.py` | Bank Services workbook I/O, record operations, and totals. |
 | `services/share_service.py` | Share Portfolio workbook I/O and transaction recalculation, preserving the existing route-facing API. |
 | `services/share_summary.py` | Pure aggregate calculations for Share Portfolio records, shared by the Share and Financial Summary routes. |
-| `services/personal_finance_service.py` | Personal Expenses Bank/Cash workbook operations, live sync shaping, and route-facing compatibility functions for the transfer service. |
+| `services/personal_finance_service.py` | Personal Expenses Bank/Cash workbook operations, live sync shaping, route-facing transfer compatibility functions, and copy-only repair of rows saved under the former generic sheet name. |
 | `services/personal_finance_summary.py` | Pure Personal Expenses summary calculations and module/category filtering rules. |
 | `services/personal_finance_transfers.py` | Transfer workbook CRUD and shaping of Bank/Cash transfer rows; the existing service file keeps its route-facing compatibility functions. |
 | `services/share_lot_calculations.py` | FIFO share-lot construction, cost basis, and lot consumption calculations. |
 | `services/summary_graph_service.py` | Builds Financial Summary chart data from module services. |
 | `services/settings_service.py` | Stable compatibility facade for Settings workbook operations used by API routes. |
-| `services/settings_data/config.py` | Canonical workbook paths, headers, and data-type metadata. |
-| `services/settings_data/normalization.py` | Legacy header/category aliases and import normalization rules. |
-| `services/settings_data/workbook_import.py` | Workbook validation, row mapping, backup-before-import, and import operations. |
-| `services/settings_data/workbook_export.py` | Single workbook exports and bundled ZIP export. |
-| `services/excel_utils.py` | Reusable Excel helpers, safe loading/recovery, timestamps, and pre-write snapshots. |
+| `services/settings_data/config.py` | Canonical workbook paths, headers, and exact sheet mappings for Bank Services, Share Portfolio, Personal Expenses Bank/Cash Flow, and transfers. |
+| `services/settings_data/normalization.py` | Legacy header/category aliases and import normalization rules, including transfer direction aliases. |
+| `services/settings_data/workbook_import.py` | Module-specific workbook validation, row mapping, backup-before-import, and import operations; rejects recognizable cross-module workbooks. |
+| `services/settings_data/workbook_export.py` | Single workbook exports and bundled ZIP export, including transfer data. |
+| `services/excel_utils.py` | Reusable Excel helpers, safe loading/recovery, readable timestamp formatting, and pre-write snapshots; recovery and retention work with legacy and current backup filenames. |
 | `services/path_utils.py` | Resolves the backend data directory from the Electron override or platform default. |
 | `services/data_migration_service.py` | Performs non-destructive workbook data migrations. |
-| `services/data_directory_service.py` | Copies and validates legacy Excel workbooks into the shared desktop data directory and records the one-time result. |
+| `services/data_directory_service.py` | Validates, backs up, merges, and recovers legacy workbooks into `FinLedge Data`; removes a legacy workbook only after its backup and destination are verified, then records a migration report. |
 | `services/workbook_initialization.py` | Creates missing Bank, Share, Personal Expenses, and transfer workbooks through their owning services during data-folder preparation. |
 | `tests/__init__.py` | Python package marker for backend tests. |
 | `tests/conftest.py` | Points backend tests at an isolated temporary data directory. |
@@ -141,6 +141,7 @@ desktop/
 │   ├── childProcessManager.js
 │   ├── dataDirectory.js
 │   ├── dataDirectoryRuntime.js
+│   ├── dataFolderMigration.js
 │   ├── appxPaths.js
 │   ├── iconAssets.js
 │   ├── logger.js
@@ -173,9 +174,10 @@ desktop/
 | `dist/` | Standard Git-ignored Electron Builder output. Production and combined local test builds use this same folder; test packages are marked and named separately. |
 | `artifacts/` and `dist-*/` | Legacy Git-ignored output retained from earlier packaging attempts; new builds do not use these folders. |
 | `assets/` | Desktop application icons and generated AppX tile assets. |
-| `assets/appx/` | StoreLogo and tile-logo PNGs generated from the existing FinLedge icon during desktop builds. |
+| `assets/appx/` | Store/tile logos plus 42 target-size AppX icons: default, dark-theme unplated, and light-theme unplated images for sizes 16 through 256px. Generated during desktop builds. |
 | `services/dataDirectory.js` | Resolves development and isolated test data to app-specific Electron user-data folders and production data to Documents, with explicit overrides, write checks, saved folder preference, build labels, and cross-build lock. |
-| `services/dataDirectoryRuntime.js` | Owns runtime data-directory selection, safe legacy migration sources, backend migration preparation, fallback handling, and lock lifecycle. |
+| `services/dataDirectoryRuntime.js` | Resolves the shared `FinLedge Data` child folder for default installs, supplies a sibling backup path, starts backend migration, and owns fallback handling and data-directory locks. |
+| `services/dataFolderMigration.js` | Copies default-root workbooks (including legacy bank/share filenames) and existing backups into the dedicated `FinLedge Data` child folder after making a timestamped source backup; never removes source files. |
 | `services/appxPaths.js` | Resolves AppX package family/AUMID identity and translates app-container user-data paths to physical LocalCache paths when Windows Explorer opens files or reads shortcut icons. |
 | `services/runtimeConfig.js` | Loads environment settings and the packaged build-channel marker, then resolves desktop hosts, ports, mode, update policy, and Python executable. |
 | `services/childProcessManager.js` | Starts and stops the Python sidecar and Vite development server, waits for local HTTP readiness, and selects the renderer URL. |
@@ -184,7 +186,7 @@ desktop/
 | `services/logger.js` | Writes desktop process logs to the operating-system temporary directory and console. |
 | `services/desktopShortcutManager.js` | Offers a per-AppX-version optional desktop shortcut, checks for an existing link before asking, remembers a decline until the next package version, and refreshes shortcuts with an Explorer-accessible icon path. |
 | `services/rendererPromptManager.js` | Sends first-run shortcut prompts to the React window and resolves the user's response over IPC. |
-| `services/updatePolicyService.js` | Fetches and evaluates the update policy, tracks update status, and provides development update simulations. |
+| `services/updatePolicyService.js` | Fetches update policy for EXE releases, optional EXE-to-Store prompts, and production Store AppX update notices; tracks update status and development simulations. |
 | `ipc/dataHandlers.js` | Registers IPC actions for data folder selection, data file locations, opening data, and saving exports. |
 | `ipc/updateHandlers.js` | Registers IPC actions for refresh, version and update status, and release links. |
 | `tests/dataDirectory.test.cjs` | Isolated tests for data-folder defaults, write failures, and lock behavior. |
@@ -192,7 +194,7 @@ desktop/
 | `utils/updateMetadata.js` | Pure helpers for release notes, version comparison, and release URLs. |
 | `scripts/build-sidecar.ps1` | Packages the Python backend sidecar using statically discovered backend imports without recursively bundling the ignored test suite. |
 | `scripts/generate-sidecar-version.py` | Generates Python sidecar Windows version resources from the root FinLedge version and publisher metadata. |
-| `scripts/generate-appx-assets.ps1` | Generates Store tile logos and transparent 16/32/48/256px EXE icon frames from canonical `assets/finledge_icon.png`. |
+| `scripts/generate-appx-assets.ps1` | Generates Store tile logos, target-size unplated AppX icon variants, and transparent 16/32/48/256px EXE icon frames from canonical `assets/finledge_icon.png`. |
 | `scripts/mark-build-channel.js` | Writes the packaged build-channel marker for Testing packages and Store-targeted production AppX packages. |
 
 ## Renderer: `frontendwebapp/src/`
@@ -281,10 +283,10 @@ frontendwebapp/src/
 | `components/ShortcutPrompt.jsx` | Desktop-bridge-only in-app shortcut prompt; it renders nothing in the mobile runtime. |
 | `components/ResultPanel.jsx` | Reusable result/status panel. |
 | `components/OnboardingTour.jsx` | Onboarding tour UI (currently disabled in app routing). |
-| `components/UpdateNotice.jsx` | Desktop update notification UI. |
+| `components/UpdateNotice.jsx` | Desktop update notification UI, including the Store-managed AppX update handoff and optional EXE-to-Store prompt. |
 | `constants/options.js` | Shared categories and dropdown choices. |
 | `hooks/useDismissibleMessage.js` | Reusable timed message dismissal behavior. |
-| `hooks/useDashboardPeriod.js` | Shared dashboard period state and record filtering. |
+| `hooks/useDashboardPeriod.js` | Shared dashboard period state and record filtering; consumes the one-time post-import request to show all dates on the matching module dashboard. |
 | `hooks/useDismissibleMessage.js` | Shared notice timeout lifecycle used by `StatusNotice`. |
 | `pages/Home.jsx` | Home module launcher. |
 | `pages/BankPage.jsx`, `BankDashboard.jsx` | Bank Services entry and dashboard screens. |
@@ -293,7 +295,7 @@ frontendwebapp/src/
 | `pages/PersonalFinancePage.jsx`, `PersonalFinanceDashboard.jsx` | Personal Expenses entry and dashboard screens. |
 | `pages/PersonalFinanceTransferPage.jsx` | Bank/Cash transfer entry and history screen. |
 | `pages/Summary.jsx` | Financial Summary analytics screen. |
-| `pages/Settings.jsx` | Settings navigation and state orchestration. |
+| `pages/Settings.jsx` | Settings navigation and state orchestration; after imports, records the matching dashboard to reveal all imported dates and reports the saved workbook path. |
 | `pages/settings/` | Focused Settings sections for general data paths, import/export, backup, about/help, and version panels; keeps each view independently maintainable. |
 | `pages/settings/settingsConstants.js` | Settings navigation labels and reusable file-location row definitions. |
 | `pages/settings/GeneralSettingsSection.jsx` | Shows data paths, build type, folder selection errors, and first-run setup status. |
@@ -301,7 +303,7 @@ frontendwebapp/src/
 | `pages/settings/BackupSettingsSection.jsx` | Automatic backup folder location and open-folder action. |
 | `pages/settings/AboutSettingsSection.jsx` | Product/module information and current version details. |
 | `pages/settings/HowToUseSettingsSection.jsx` | Usage guidance and import/export help. |
-| `pages/settings/VersionSettingsSection.jsx` | Current version display and update check action. |
+| `pages/settings/VersionSettingsSection.jsx` | Current version display and update check action for EXE and production Store AppX builds. |
 | `pages/settings/InvestmentSettingsSection.jsx`, `PrivacySettingsSection.jsx` | Placeholder panels for Settings sections not yet available. |
 | `pages/settings/SettingsPanels.jsx` | Shared placeholder and disabled Settings panel components. |
 | `utils/date.js`, `utils/format.js` | Shared date and display formatting helpers. |
@@ -320,7 +322,7 @@ frontendwebapp/src/
 | `scripts/verify-version.mjs` | Checks version consistency. |
 | `.github/workflows/desktop-release.yml` | Builds and publishes desktop release artifacts. |
 | `package.json` / `package-lock.json` | Root scripts and tooling dependencies; some commands are shared with other tracks. |
-| `desktop-update-policy.json` | Current desktop update channel policy. |
+| `desktop-update-policy.json` | Desktop updater policy. `appxLatestVersion` and `appxFallbackUrl` govern Store AppX notices; `storeProductId` can target the Store listing; `exeStoreMigration.enabled` stays false until an optional EXE-to-Store switch is announced. |
 | `update-policy.json` | Backward-compatible update policy for older desktop clients. |
 
 ## Desktop documentation

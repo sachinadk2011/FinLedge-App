@@ -45,7 +45,7 @@ function BankDashboard() {
   const [pendingDeleteRow, setPendingDeleteRow] = useState(null);
   const [tableSearch, setTableSearch] = useState("");
   const [tableCategory, setTableCategory] = useState("all");
-  const period = useDashboardPeriod("month", { bankMode: true });
+  const period = useDashboardPeriod("month", { bankMode: true, importTypes: ["bank"] });
 
   const loadData = ({ background = false } = {}) => {
     if (!background) {
