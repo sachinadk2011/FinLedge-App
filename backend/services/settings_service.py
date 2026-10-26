@@ -32,7 +32,6 @@ from .settings_data.workbook_import import (
     _apply_aliases,
     _backup_live_file,
     _count_live_rows,
-    _noon_timestamp,
     _read_live_rows,
     _read_workbook_rows,
     _remap_bank_rows,

@@ -1,10 +1,13 @@
 "use strict";
 
+const fs = require("fs");
+
 function createUpdatePolicyService({
   app,
   http,
   https,
   updatePolicyUrl,
+  localPolicyPath,
   releasesUrl,
   compareVersions,
   normalizeReleaseNotes,
@@ -57,10 +60,17 @@ function createUpdatePolicyService({
     });
   }
 
+  function loadPolicy() {
+    if (localPolicyPath) {
+      return Promise.resolve(JSON.parse(fs.readFileSync(localPolicyPath, "utf8")));
+    }
+    return fetchJson(updatePolicyUrl);
+  }
+
   async function checkUpdatePolicy({ silent = true } = {}) {
     if (!updatePolicyUrl) return;
     try {
-      const policy = await fetchJson(updatePolicyUrl);
+      const policy = await loadPolicy();
       const currentVersion = app.getVersion();
       const minimumSupportedVersion = String(policy.minimumSupportedVersion || "").trim();
       const latestVersion = String(policy.latestVersion || "").trim();
@@ -142,7 +152,7 @@ function createUpdatePolicyService({
   async function checkStoreUpdatePolicy({ silent = true } = {}) {
     if (!updatePolicyUrl) return;
     try {
-      const policy = await fetchJson(updatePolicyUrl);
+      const policy = await loadPolicy();
       const currentVersion = app.getVersion();
       const latestVersion = String(policy.appxLatestVersion || "").trim();
       const fallbackUrl = String(policy.appxFallbackUrl || policy.releaseUrl || releasesUrl).trim();

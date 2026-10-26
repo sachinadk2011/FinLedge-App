@@ -30,6 +30,7 @@ function createDataDirectoryRuntime({
   logLine,
 }) {
   let runtimeDataDir = null;
+  let activeBackendPort = backendPort;
   let dataDirError = "";
   let canChooseDataFolder = false;
   let dataDirectoryLock = null;
@@ -100,7 +101,8 @@ function createDataDirectoryRuntime({
         .toLowerCase(),
       FINLEDGE_PROJECT_ROOT: projectRoot,
       FINLEDGE_BACKEND_HOST: backendHost,
-      FINLEDGE_BACKEND_PORT: String(backendPort),
+      FINLEDGE_BACKEND_PORT: String(activeBackendPort),
+      FINLEDGE_PARENT_PID: String(process.pid),
       FINLEDGE_DATA_DIR: getRuntimeDataDir(),
       FINLEDGE_BACKUP_DIR: getBackupDirectoryForDataFolder(getRuntimeDataDir()),
       FINLEDGE_LEGACY_DATA_DIRS:
@@ -223,6 +225,7 @@ function createDataDirectoryRuntime({
   }
 
   return {
+    setBackendPort: (port) => { activeBackendPort = Number(port); },
     getBuildTypeLabel,
     getRuntimeDataDir,
     getBackupDirectory: () => getBackupDirectoryForDataFolder(getRuntimeDataDir()),

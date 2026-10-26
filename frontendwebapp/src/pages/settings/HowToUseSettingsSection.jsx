@@ -96,7 +96,7 @@ export default function HowToUseSettingsSection({}) {
             <strong>To export all files at once:</strong> click <strong>Export all data files (.zip)</strong>. You get a single zip containing all four workbooks.
           </p>
           <p className="subtitle">
-            <strong>To import a file:</strong> choose a <strong>Data type</strong>, pick an <strong>Excel file</strong>, and click <strong>Import file</strong>. The Required columns listed below the dropdown show the minimum columns your file must contain. Internal timestamp columns are optional — they are filled in automatically. If you already have data, you will be asked whether to <strong>Replace</strong> (discard existing) or <strong>Merge</strong> (keep existing and append imported rows). The existing workbook is always backed up before any change is made.
+            <strong>To import a file:</strong> choose a <strong>Data type</strong>, pick an <strong>Excel file</strong>, and click <strong>Import file</strong>. The Required columns listed below the dropdown show the minimum columns your file must contain. Existing timestamps are preserved; missing timestamps are filled in automatically. Older <strong>Timestamp</strong> columns are accepted. For Bank/Cash Transfers, use <strong>Date</strong>, <strong>Transfer Direction</strong> (or <strong>Direction</strong>), and <strong>Amount</strong>. If you already have data, you will be asked whether to <strong>Replace</strong> (discard existing) or <strong>Merge</strong> (keep existing and append imported rows). The existing workbook is always backed up before any change is made.
           </p>
 
           <h4>Frequently asked questions</h4>

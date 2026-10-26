@@ -46,7 +46,7 @@ DATA_TYPE_CONFIG: dict[str, dict[str, Any]] = {
         "filename": "personal_finance_transfer.xlsx",
         "path": personal_finance_service.TRANSFER_FILE_PATH,
         "headers": personal_finance_service.HEADERS,
-        "required_headers": ["Date", "Direction", "Amount"],
+        "required_headers": ["Date", "Transfer Direction", "Amount"],
         "sheet_name": personal_finance_service.TRANSFER_SHEET_NAME,
     },
 }

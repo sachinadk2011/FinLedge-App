@@ -5,14 +5,16 @@ const path = require("path");
 const fs = require("fs");
 const { getAppxPackageIdentity } = require("./services/appxPaths");
 const { createRendererPromptManager } = require("./services/rendererPromptManager");
+const { createTestUpdatePolicy } = require("./services/testUpdatePolicy");
 
 const PROJECT_ROOT = path.resolve(__dirname, "..");
 const ICON_PATH = path.join(__dirname, "assets", "finledge_icon.png");
 const WINDOW_ICON_PATH = path.join(__dirname, "assets", "finledge_icon.ico");
 const GITHUB_RELEASES_URL = "https://github.com/sachinadk2011/FinLedge-App/releases";
-const BACKEND_READY_TIMEOUT_MS = 30_000;
+const BACKEND_READY_TIMEOUT_MS = 60_000;
 const { LOG_FILE, logLine } = require("./services/logger");
 const { loadRuntimeConfig } = require("./services/runtimeConfig");
+const { findAvailablePort } = require("./services/runtimeConfig");
 const runtimeConfig = loadRuntimeConfig({
   app,
   projectRoot: PROJECT_ROOT,
@@ -25,13 +27,18 @@ const {
   isTestingBuild: IS_TESTING_BUILD,
   testBuildType: TEST_BUILD_TYPE,
   isStoreDistribution: IS_STORE_DISTRIBUTION,
-  backendPort: BACKEND_PORT,
-  frontendPort: FRONTEND_PORT,
   backendHost: BACKEND_HOST,
   frontendHost: FRONTEND_HOST,
   updatePolicyUrl: UPDATE_POLICY_URL,
+  testUpdatePolicyDirectory: TEST_UPDATE_POLICY_DIRECTORY,
   simulateUpdateValue: SIMULATE_UPDATE_VALUE,
 } = runtimeConfig;
+let BACKEND_PORT = runtimeConfig.backendPort;
+let FRONTEND_PORT = runtimeConfig.frontendPort;
+// Make the selected build-specific endpoint visible to the preload process too.
+process.env.FINLEDGE_BACKEND_PORT = String(BACKEND_PORT);
+process.env.FINLEDGE_FRONTEND_PORT = String(FRONTEND_PORT);
+process.env.FINLEDGE_TESTING_BUILD = IS_TESTING_BUILD ? "1" : "0";
 const APPX_APPLICATION_ID = runtimeConfig.appxApplicationId || (IS_TESTING_BUILD ? "FinledgeTesting" : "Finledge");
 const APPLICATION_NAME = IS_TESTING_BUILD
   ? `Finledge Testing ${TEST_BUILD_TYPE === "appx" ? "AppX" : "EXE"}`
@@ -39,6 +46,15 @@ const APPLICATION_NAME = IS_TESTING_BUILD
     ? "Finledge Development"
     : "Finledge";
 app.setName(APPLICATION_NAME);
+const HAS_SINGLE_INSTANCE_LOCK = app.requestSingleInstanceLock();
+if (!HAS_SINGLE_INSTANCE_LOCK) {
+  logLine("[main] another FinLedge instance is already starting or running");
+}
+const testUpdatePolicy = createTestUpdatePolicy({
+  app,
+  isTestingBuild: IS_TESTING_BUILD,
+  preferredDirectory: TEST_UPDATE_POLICY_DIRECTORY,
+});
 const IS_STORE_PACKAGE = Boolean(process.windowsStore && IS_STORE_DISTRIBUTION && !IS_TESTING_BUILD);
 process.env.FINLEDGE_STORE_DISTRIBUTION = IS_STORE_PACKAGE ? "1" : "0";
 const IS_APPX_PACKAGE = Boolean(process.windowsStore && app.isPackaged);
@@ -120,7 +136,7 @@ const windowManager = createWindowManager({
       dataDirAvailable: !dataDirError,
     });
     if (!IS_APPX_PACKAGE || dataDirError) return;
-    waitForHttpOk(`http://${BACKEND_HOST}:${BACKEND_PORT}/health`, BACKEND_READY_TIMEOUT_MS)
+    waitForBackendReady(BACKEND_READY_TIMEOUT_MS)
       .then(() => desktopShortcutManager.offerShortcut({
           enabled: true,
           displayName: APPLICATION_NAME,
@@ -131,6 +147,15 @@ const windowManager = createWindowManager({
       .catch((error) => logLine("[shortcut] AppX first-run prompt skipped", String(error?.stack || error)));
   },
 });
+if (HAS_SINGLE_INSTANCE_LOCK) {
+  app.on("second-instance", () => {
+    const window = windowManager.getMainWindow();
+    if (!window) return;
+    if (window.isMinimized()) window.restore();
+    window.show();
+    window.focus();
+  });
+}
 const rendererPromptManager = createRendererPromptManager({
   ipcMain,
   getMainWindow: windowManager.getMainWindow,
@@ -148,6 +173,7 @@ const updateService = createUpdatePolicyService({
   http: require("http"),
   https: require("https"),
   updatePolicyUrl: UPDATE_POLICY_URL,
+  localPolicyPath: testUpdatePolicy?.policyPath,
   releasesUrl: GITHUB_RELEASES_URL,
   compareVersions,
   normalizeReleaseNotes,
@@ -157,17 +183,20 @@ const updateService = createUpdatePolicyService({
 const {
   getRuntimeDataDir,
   initializeDataDirectory,
+  setBackendPort: setRuntimeBackendPort,
 } = dataRuntime;
 const {
   startBackend,
   stopBackend,
   startFrontendDevServer,
   stopFrontendDevServer,
-  waitForHttpOk,
+  waitForBackendReady,
   waitForAnyLocalPortOk,
   getFrontendUrl,
   getDevFrontendUrl,
   setDevFrontendUrl,
+  setBackendPort: setProcessBackendPort,
+  setFrontendPort: setProcessFrontendPort,
 } = processManager;
 const {
   createWindow,
@@ -200,7 +229,9 @@ registerUpdateHandlers({
   updateService,
   releasesUrl: GITHUB_RELEASES_URL,
   isDevelopment: IS_ELECTRON_DEV || IS_TESTING_BUILD || IS_STORE_PACKAGE,
-  updatesManagedByPackage: IS_APPX_PACKAGE,
+  isTestingBuild: IS_TESTING_BUILD,
+  testUpdatePolicyDirectory: testUpdatePolicy?.directory,
+  updatesManagedByPackage: IS_APPX_PACKAGE && !IS_TESTING_BUILD,
   isStorePackage: IS_STORE_PACKAGE,
   simulateUpdates: SHOULD_SIMULATE_UPDATES,
   simulateRequiredUpdate: SIMULATE_REQUIRED_UPDATE,
@@ -208,7 +239,14 @@ registerUpdateHandlers({
 });
 Menu.setApplicationMenu(null);
 
+let startupUpdateTimer = null;
+let periodicUpdateTimer = null;
+
 app.whenReady().then(async () => {
+  if (!HAS_SINGLE_INSTANCE_LOCK) {
+    app.quit();
+    return;
+  }
   try {
     iconAssets.ensureIconExists();
     logLine("[main] whenReady()");
@@ -218,6 +256,8 @@ app.whenReady().then(async () => {
     logLine("[main] icon", { iconPath: ICON_PATH, iconExists: fs.existsSync(ICON_PATH) });
     logLine("[main] userData", app.getPath("userData"));
     logLine("[main] dataDir", getRuntimeDataDir());
+    // Show a splash immediately so the user can see a single startup in progress.
+    createWindow();
 
     try {
       initializeDataDirectory(getRuntimeDataDir(), { allowLegacyFallback: true });
@@ -245,55 +285,67 @@ app.whenReady().then(async () => {
       });
     }
 
-    createWindow();
-    if (!dataRuntime.getDataDirError()) startBackend();
-
-    waitForHttpOk(`http://${BACKEND_HOST}:${BACKEND_PORT}/health`, BACKEND_READY_TIMEOUT_MS)
-      .then(() => logLine("[main] backend ready"))
-      .catch((err) => logLine("[main] backend not ready", String(err && err.message ? err.message : err)));
+    if (!dataRuntime.getDataDirError()) {
+      let backendReady = false;
+      let lastBackendError = null;
+      for (let attempt = 0; attempt < 3 && !backendReady; attempt += 1) {
+        BACKEND_PORT = await findAvailablePort(BACKEND_HOST);
+        process.env.FINLEDGE_BACKEND_PORT = String(BACKEND_PORT);
+        setRuntimeBackendPort(BACKEND_PORT);
+        setProcessBackendPort(BACKEND_PORT);
+        logLine("[main] selected private backend port", BACKEND_PORT);
+        startBackend();
+        try {
+          await waitForBackendReady(BACKEND_READY_TIMEOUT_MS);
+          backendReady = true;
+          logLine("[main] backend ready and owned by this FinLedge process");
+        } catch (error) {
+          lastBackendError = error;
+          logLine("[main] retrying unavailable backend port", String(error?.message || error));
+          await stopBackend();
+        }
+      }
+      if (!backendReady) {
+        logLine("[main] could not start an owned backend", String(lastBackendError?.stack || lastBackendError));
+        await dialog.showMessageBox({
+          type: "error",
+          title: "FinLedge could not start",
+          message: "FinLedge could not start its data service.",
+          detail: "FinLedge did not connect to another app's data service. For startup details, see %TEMP%\\finledge-electron.log.",
+          buttons: ["Close"],
+          noLink: true,
+        });
+        app.quit();
+        return;
+      }
+    }
 
     const hasBuiltFrontend = fs.existsSync(processManager.getFrontendIndexPath());
     logLine("[main] frontend built?", hasBuiltFrontend);
 
     if (IS_ELECTRON_DEV) {
-      
-      const preferredDevUrl = `http://${FRONTEND_HOST}:${FRONTEND_PORT}`;
-      const preferredLocalhostDevUrl = `http://localhost:${FRONTEND_PORT}`;
-
-      waitForHttpOk(preferredLocalhostDevUrl, 1200)
-        .then(() => {
-          setDevFrontendUrl(preferredLocalhostDevUrl);
-          logLine("[main] Vite already running", getDevFrontendUrl());
-          navigateToFrontend(getDevFrontendUrl());
-        })
-        .catch(() => waitForHttpOk(preferredDevUrl, 1200))
-        .then(() => {
-          if (getDevFrontendUrl()) {
-            return;
-          }
-          setDevFrontendUrl(preferredDevUrl);
-          logLine("[main] Vite already running", getDevFrontendUrl());
-          navigateToFrontend(getDevFrontendUrl());
-        })
-        .catch(() => {
-          startFrontendDevServer();
-          waitForAnyLocalPortOk([FRONTEND_PORT], 30_000)
-            .then((url) => {
-              setDevFrontendUrl(url);
-              logLine("[main] Vite ready", getDevFrontendUrl());
-              navigateToFrontend(getDevFrontendUrl());
-            })
-            .catch((err) => {
-              logLine("[main] Vite not ready", String(err && err.message ? err.message : err));
-              if (hasBuiltFrontend) {
-                logLine("[main] Falling back to built frontend");
-                navigateToFrontend(getFrontendUrl());
-              }
-            });
-        });
+      let frontendReady = false;
+      for (let attempt = 0; attempt < 3 && !frontendReady; attempt += 1) {
+        FRONTEND_PORT = await findAvailablePort(FRONTEND_HOST);
+        process.env.FINLEDGE_FRONTEND_PORT = String(FRONTEND_PORT);
+        setProcessFrontendPort(FRONTEND_PORT);
+        startFrontendDevServer();
+        try {
+          const url = await waitForAnyLocalPortOk([FRONTEND_PORT], 8_000);
+          setDevFrontendUrl(url);
+          frontendReady = true;
+          logLine("[main] owned Vite server ready", url);
+        } catch (error) {
+          logLine("[main] retrying unavailable Vite port", String(error?.message || error));
+          await stopFrontendDevServer();
+        }
+      }
+      if (frontendReady) navigateToFrontend(getDevFrontendUrl());
+      else if (hasBuiltFrontend) navigateToFrontend(getFrontendUrl());
+      else throw new Error("FinLedge could not start its development interface.");
 
       if (SHOULD_SIMULATE_UPDATES) {
-        setTimeout(
+        startupUpdateTimer = setTimeout(
           SIMULATE_REQUIRED_UPDATE ? simulateRequiredUpdate : simulateUpdateAvailable,
           2500
         );
@@ -301,10 +353,10 @@ app.whenReady().then(async () => {
     } else {
       navigateToFrontend(getFrontendUrl());
       if (IS_STORE_PACKAGE) {
-        setTimeout(() => checkStoreUpdatePolicy({ silent: true }), 5000);
-        setInterval(() => checkStoreUpdatePolicy({ silent: true }), 6 * 60 * 60 * 1000);
-      } else if (!IS_APPX_PACKAGE) {
-        setTimeout(() => {
+        startupUpdateTimer = setTimeout(() => checkStoreUpdatePolicy({ silent: true }), 5000);
+        periodicUpdateTimer = setInterval(() => checkStoreUpdatePolicy({ silent: true }), 6 * 60 * 60 * 1000);
+      } else if (IS_TESTING_BUILD || !IS_APPX_PACKAGE) {
+        startupUpdateTimer = setTimeout(() => {
           if (SHOULD_SIMULATE_UPDATES) {
             simulateUpdateAvailable();
             return;
@@ -312,7 +364,7 @@ app.whenReady().then(async () => {
 
           checkUpdatePolicy({ silent: true });
         }, 5000);
-        setInterval(() => checkUpdatePolicy({ silent: true }), 6 * 60 * 60 * 1000);
+        periodicUpdateTimer = setInterval(() => checkUpdatePolicy({ silent: true }), 6 * 60 * 60 * 1000);
       }
     }
 
@@ -333,8 +385,17 @@ app.on("window-all-closed", () => {
   }
 });
 
-app.on("will-quit", () => {
-  stopFrontendDevServer();
-  stopBackend();
-  dataRuntime.releaseLock();
+let shutdownStarted = false;
+app.on("before-quit", (event) => {
+  if (shutdownStarted) return;
+  shutdownStarted = true;
+  event.preventDefault();
+  if (startupUpdateTimer) clearTimeout(startupUpdateTimer);
+  if (periodicUpdateTimer) clearInterval(periodicUpdateTimer);
+  Promise.allSettled([stopFrontendDevServer(), stopBackend()]).finally(() => {
+    dataRuntime.releaseLock();
+    app.quit();
+  });
 });
+
+app.on("will-quit", () => dataRuntime.releaseLock());

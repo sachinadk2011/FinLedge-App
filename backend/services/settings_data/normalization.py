@@ -7,9 +7,10 @@ _COLUMN_ALIASES: dict[str, str] = {
     "cumulative total": "Cumulative Amount",
     "cumulative balance": "Cumulative Amount",
     "running total": "Cumulative Amount",
-    # Share Portfolio — some exports used "Timestamp" for the row timestamp
-    "created at": "Timestamp",
-    "created timestamp": "Timestamp",
+    # Audit timestamp aliases used by older workbooks and external exports.
+    "timestamp": "Created Timestamp",
+    "created at": "Created Timestamp",
+    "created timestamp": "Created Timestamp",
     # Personal Finance — alternate Direction names
     "type": "Direction",
     "transaction type": "Direction",

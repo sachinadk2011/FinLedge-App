@@ -1,6 +1,6 @@
 # Desktop Codebase Map
 
-Last reviewed: 2026-10-25
+Last reviewed: 2026-10-26
 
 This is the desktop-track file map. Keep it separate from `CODEBASE.md`, which is
 shared with the mobile track. The frontend and several root scripts are consumed by
@@ -76,7 +76,7 @@ backend/
 | Path | Responsibility |
 |---|---|
 | `main.py` | Creates the FastAPI application, runs startup migration, and registers routes. |
-| `engine_main.py` | Prepares and reports data-folder migration before starting the desktop API server. |
+| `engine_main.py` | Prepares and reports data-folder migration, starts the desktop API server, and watches its Electron owner; on Windows it uses process wait handles rather than `os.kill(pid, 0)`. |
 | `__init__.py` | Python package marker for backend imports. |
 | `models.py` | Request validation models and enums shared across API modules. |
 | `routes/__init__.py`, `services/__init__.py` | Python package markers for route and service imports. |
@@ -139,6 +139,8 @@ desktop/
 │   └── finledge_icon.png
 ├── services/
 │   ├── childProcessManager.js
+│   ├── testUpdatePolicy.js
+│   ├── test-update-policy.example.json
 │   ├── dataDirectory.js
 │   ├── dataDirectoryRuntime.js
 │   ├── dataFolderMigration.js
@@ -179,8 +181,10 @@ desktop/
 | `services/dataDirectoryRuntime.js` | Resolves the shared `FinLedge Data` child folder for default installs, supplies a sibling backup path, starts backend migration, and owns fallback handling and data-directory locks. |
 | `services/dataFolderMigration.js` | Copies default-root workbooks (including legacy bank/share filenames) and existing backups into the dedicated `FinLedge Data` child folder after making a timestamped source backup; never removes source files. |
 | `services/appxPaths.js` | Resolves AppX package family/AUMID identity and translates app-container user-data paths to physical LocalCache paths when Windows Explorer opens files or reads shortcut icons. |
-| `services/runtimeConfig.js` | Loads environment settings and the packaged build-channel marker, then resolves desktop hosts, ports, mode, update policy, and Python executable. |
-| `services/childProcessManager.js` | Starts and stops the Python sidecar and Vite development server, waits for local HTTP readiness, and selects the renderer URL. |
+| `services/runtimeConfig.js` | Loads environment settings and the packaged build-channel marker, resolves runtime settings, and selects available local ports from distinct desktop build ranges near port 8000, with OS-assigned fallback. |
+| `services/childProcessManager.js` | Starts the Python sidecar and app-owned Vite server, verifies the backend with a per-launch secret token (works with PyInstaller's one-file process wrapper), and stops child process trees at shutdown. |
+| `services/testUpdatePolicy.js` | Creates the local update-notice policy directory for test builds only, preferring the Git-ignored workspace folder and falling back to app-specific user data. |
+| `services/test-update-policy.example.json` | Tracked starter update-notice policy copied to a test build's ignored local policy file when absent. |
 | `services/windowManager.js` | Creates the Electron window and build-labeled startup splash and handles renderer navigation. |
 | `services/iconAssets.js` | Creates the branded fallback PNG when the desktop icon asset is unavailable. |
 | `services/logger.js` | Writes desktop process logs to the operating-system temporary directory and console. |

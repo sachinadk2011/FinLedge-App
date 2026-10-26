@@ -6,9 +6,12 @@ const backendPort = String(process.env.FINLEDGE_BACKEND_PORT || "8000").trim() |
 contextBridge.exposeInMainWorld("financialTracker", {
   updatesManagedByWindows: Boolean(process.windowsStore),
   storeAppxUpdates: process.env.FINLEDGE_STORE_DISTRIBUTION === "1",
+  testUpdateNotices: process.env.FINLEDGE_TESTING_BUILD === "1",
+  isTestBuild: process.env.FINLEDGE_TESTING_BUILD === "1",
   ping: () => "pong",
   refreshApp: () => ipcRenderer.invoke("app:refresh"),
   checkForUpdates: () => ipcRenderer.invoke("app:check-for-updates"),
+  openTestUpdatePolicyFolder: () => ipcRenderer.invoke("app:open-test-update-policy"),
   getUpdateStatus: () => ipcRenderer.invoke("app:get-update-status"),
   getAppVersion: () => ipcRenderer.invoke("app:get-version"),
   openUpdateRelease: (releaseUrl) => ipcRenderer.invoke("app:open-update-release", releaseUrl),

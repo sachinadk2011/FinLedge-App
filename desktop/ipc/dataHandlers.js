@@ -44,6 +44,8 @@ function registerDataHandlers({
     if (canceled || !filePaths?.[0]) return { ok: false, cancelled: true };
 
     try {
+      await processManager.stopBackend();
+      dataRuntime.releaseLock();
       const selected = ensureWritableDirectory(filePaths[0]);
       dataRuntime.initializeDataDirectory(selected);
       const saved = dataRuntime.persistDataDirectory(selected);
@@ -66,7 +68,7 @@ function registerDataHandlers({
         preferenceSaved: Boolean(saved.savedTo),
       };
     } catch (error) {
-      processManager.stopBackend();
+      await processManager.stopBackend();
       dataRuntime.releaseLock();
       dataRuntime.setDataDirError(error.message || "Could not use that folder. Choose a folder you can write to.", { canChooseDataFolder: true });
       return { ok: false, reason: dataRuntime.getDataDirError() };

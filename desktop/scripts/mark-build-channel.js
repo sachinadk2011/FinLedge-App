@@ -13,6 +13,7 @@ module.exports = async function markBuildChannel(context) {
         kind: "testing",
         appxBuildNumber: String(process.env.BUILD_NUMBER || "").trim(),
         appxApplicationId,
+        testUpdatePolicyDirectory: String(process.env.FINLEDGE_TEST_UPDATE_POLICY_DIR || "").trim(),
       }
     : String(process.env.FINLEDGE_DISTRIBUTION_CHANNEL || "").trim().toLowerCase() === "microsoft-store"
       ? { distributionChannel: "microsoft-store", appxApplicationId }

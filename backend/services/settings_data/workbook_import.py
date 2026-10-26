@@ -22,22 +22,6 @@ def _to_float(value: object) -> float:
     except (TypeError, ValueError):
         return 0.0
 
-def _noon_timestamp(date_value: Any, fallback_ts: str) -> str:
-    """Return a noon-time timestamp string from a cell date value, or fallback_ts."""
-    if date_value is None:
-        return fallback_ts
-    # date_value may be a datetime, date object, or an ISO string
-    try:
-        if isinstance(date_value, datetime):
-            return date_value.replace(hour=12, minute=0, second=0, microsecond=0).strftime("%Y-%m-%d %H:%M:%S")
-        if hasattr(date_value, "year"):  # date object
-            return f"{date_value.isoformat()} 12:00:00"
-        # Try parsing string
-        s = str(date_value).strip()[:10]  # take YYYY-MM-DD portion
-        return f"{s} 12:00:00"
-    except Exception:
-        return fallback_ts
-
 def _apply_aliases(headers: list[str]) -> list[str]:
     """Normalise column headers: apply aliases so old names map to current canonical names."""
     result = []
@@ -69,7 +53,10 @@ def _read_workbook_rows(
 def _validate_required_headers(actual_headers: list[str], required_headers: list[str]) -> list[str]:
     """Return list of missing required headers (empty = OK). Case-insensitive."""
     actual_lower = {h.lower() for h in actual_headers}
-    return [h for h in required_headers if h.lower() not in actual_lower]
+    return [
+        header for header in required_headers
+        if _apply_aliases([header])[0].lower() not in actual_lower
+    ]
 
 def _remap_bank_rows(
     rows: list[list[Any]],
@@ -84,7 +71,7 @@ def _remap_bank_rows(
     - Amount sign is corrected if the category migration requires it (income = +, charge = -).
     - Cumulative Amount is recalculated as a fresh running sum.
     - Description defaults to "".
-    - Timestamps default to noon on the row's own date.
+    - Audit timestamps record the actual import time.
     """
     idx = {h.lower(): i for i, h in enumerate(actual_headers)}
     running_cumulative = initial_cumulative
@@ -111,9 +98,8 @@ def _remap_bank_rows(
         # Recalculate running cumulative from the (now-signed) amount
         running_cumulative = round(running_cumulative + amount, 10)
 
-        ts = _noon_timestamp(date_val, import_ts)
-        created_ts = str(get("Created Timestamp", ts) or ts)
-        updated_ts = str(get("Last Updated Timestamp", ts) or ts)
+        created_ts = get("Created Timestamp") or get("Last Updated Timestamp") or import_ts
+        updated_ts = get("Last Updated Timestamp") or created_ts
 
         remapped = []
         for col in full_headers:
@@ -132,6 +118,8 @@ def _remap_bank_rows(
                 remapped.append(created_ts)
             elif col_l == "last updated timestamp":
                 remapped.append(updated_ts)
+            elif col_l == "updated device":
+                remapped.append("desktop")
             else:
                 remapped.append(None)
         result.append(remapped)
@@ -151,7 +139,7 @@ def _remap_share_rows(
       otherwise set to None.
     - ASBA Charge defaults to 0.
     - Total Amount: calculated as Per Unit Price × Allotted if not supplied.
-    - Timestamp defaults to noon on the row's own date.
+    - Audit timestamps record the actual import time.
     - Sync Ref defaults to None.
     """
     idx = {h.lower(): i for i, h in enumerate(actual_headers)}
@@ -179,8 +167,8 @@ def _remap_share_rows(
         profit_loss = get("Profit/Loss")
         cumulative_profit = get("Cumulative Profit")
 
-        ts = _noon_timestamp(date_val, import_ts)
-        row_ts = str(get("Timestamp", ts) or ts)
+        row_ts = get("Created Timestamp") or get("Last Updated Timestamp") or import_ts
+        updated_ts = get("Last Updated Timestamp") or row_ts
         sync_ref = get("Sync Ref", None)
 
         remapped = []
@@ -206,8 +194,12 @@ def _remap_share_rows(
                 remapped.append(_to_float(profit_loss) if profit_loss is not None else None)
             elif col_l == "cumulative profit":
                 remapped.append(_to_float(cumulative_profit) if cumulative_profit is not None else None)
-            elif col_l == "timestamp":
+            elif col_l == "created timestamp":
                 remapped.append(row_ts)
+            elif col_l == "last updated timestamp":
+                remapped.append(updated_ts)
+            elif col_l == "updated device":
+                remapped.append("desktop")
             elif col_l == "sync ref":
                 remapped.append(sync_ref)
             else:
@@ -230,7 +222,7 @@ def _remap_pf_rows(
     - Signed Amount is recalculated from the normalised direction.
     - Flow Type defaults to flow_type_override or 'bank'.
     - Source defaults to 'manual'.
-    - Timestamp defaults to noon on the row's own date.
+    - Audit timestamps record the actual import time.
     """
     idx = {h.lower(): i for i, h in enumerate(actual_headers)}
     result = []
@@ -256,8 +248,8 @@ def _remap_pf_rows(
         # Always recalculate signed amount from the normalised direction
         signed_amount = amount if direction == "income" else -amount
 
-        ts = _noon_timestamp(date_val, import_ts)
-        row_ts = str(get("Timestamp", ts) or ts)
+        row_ts = get("Created Timestamp") or get("Last Updated Timestamp") or import_ts
+        updated_ts = get("Last Updated Timestamp") or row_ts
 
         remapped = []
         for col in full_headers:
@@ -278,8 +270,12 @@ def _remap_pf_rows(
                 remapped.append(description)
             elif col_l == "source":
                 remapped.append(source)
-            elif col_l == "timestamp":
+            elif col_l == "created timestamp":
                 remapped.append(row_ts)
+            elif col_l == "last updated timestamp":
+                remapped.append(updated_ts)
+            elif col_l == "updated device":
+                remapped.append("desktop")
             elif col_l == "source ref":
                 remapped.append(source_ref)
             else:
@@ -368,8 +364,8 @@ def _remap_transfer_rows(
         direction = _normalize_transfer_direction(get("Direction", ""))
         amount = abs(_to_float(get("Amount", 0)))
         description = str(get("Description", "") or "").strip()
-        timestamp = str(get("Last Updated Timestamp", get("Timestamp", import_ts)) or import_ts)
-        created = str(get("Created Timestamp", timestamp) or timestamp)
+        created = get("Created Timestamp") or get("Last Updated Timestamp") or import_ts
+        timestamp = get("Last Updated Timestamp") or created
         transfer_ref = str(get("Source Ref", "") or "").strip() or f"transfer:{str(date_val)[:10]}:{uuid.uuid4().hex[:8]}"
         mapped = []
         for column in full_headers:
@@ -384,7 +380,7 @@ def _remap_transfer_rows(
             elif key == "created timestamp": mapped.append(created)
             elif key == "last updated timestamp": mapped.append(timestamp)
             elif key == "source ref": mapped.append(transfer_ref)
-            elif key == "updated device": mapped.append(str(get("Updated Device", "desktop") or "desktop"))
+            elif key == "updated device": mapped.append("desktop")
             else: mapped.append(None)
         result.append(mapped)
     return result
@@ -454,7 +450,7 @@ def import_data_file(
     Old column names are automatically aliased to their current equivalents.
     Derived columns (Cumulative Amount, Signed Amount, Total Amount) are
     calculated from the available data if not present in the import file.
-    Internal timestamp columns default to noon on each row's own date.
+    Missing audit timestamps use the time the import writes each row.
     """
     config = get_data_type_config(data_type)
     live_path = Path(config["path"])

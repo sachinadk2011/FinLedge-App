@@ -83,7 +83,7 @@ export default function UpdateNotice() {
   const updater = getUpdaterBridge();
 
   useEffect(() => {
-    if (!updater?.onUpdateStatus || (updater?.updatesManagedByWindows && !updater?.storeAppxUpdates)) return undefined;
+    if (!updater?.onUpdateStatus || (updater?.updatesManagedByWindows && !updater?.storeAppxUpdates && !updater?.testUpdateNotices)) return undefined;
 
     let isMounted = true;
 
@@ -122,7 +122,7 @@ export default function UpdateNotice() {
     status.state !== "idle" &&
     dismissedAt !== status.updatedAt;
 
-  if ((updater?.updatesManagedByWindows && !updater?.storeAppxUpdates) || !isVisible) return null;
+  if ((updater?.updatesManagedByWindows && !updater?.storeAppxUpdates && !updater?.testUpdateNotices) || !isVisible) return null;
 
   const accentColor = getAccentColor(status.state);
   const icon = getStateIcon(status.state);
@@ -177,7 +177,7 @@ export default function UpdateNotice() {
         {/* Top bar */}
         <div className="update-notice2__topbar" style={{ background: accentColor }}>
           <span className="update-notice2__topbar-label">
-            {isRequired ? "⛔ Update Required" : status.isSimulation ? "🧪 Simulated Update" : "Finledge Update"}
+            {isRequired ? "⛔ Update Required" : updater?.isTestBuild ? "🧪 Test Update Preview" : status.isSimulation ? "🧪 Simulated Update" : "Finledge Update"}
           </span>
           {!isRequired && (
             <button

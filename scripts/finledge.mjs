@@ -114,9 +114,10 @@ function getConfig() {
   const backendHost = env.FINLEDGE_BACKEND_HOST || "127.0.0.1";
   const frontendHost = env.FINLEDGE_FRONTEND_HOST || "127.0.0.1";
   const backendPort = env.FINLEDGE_BACKEND_PORT || "8000";
-  const desktopDevBackendPort = env.FINLEDGE_DESKTOP_DEV_BACKEND_PORT || "8001";
-  const desktopDevFrontendPort = env.FINLEDGE_DESKTOP_DEV_FRONTEND_PORT || "5174";
-  const desktopProdBackendPort = env.FINLEDGE_DESKTOP_PROD_BACKEND_PORT || "8000";
+  const desktopDevBackendPort = env.FINLEDGE_DESKTOP_DEV_BACKEND_PORT || "8401";
+  const desktopDevFrontendPort = env.FINLEDGE_DESKTOP_DEV_FRONTEND_PORT || "8451";
+  const desktopExeBackendPort = env.FINLEDGE_DESKTOP_EXE_BACKEND_PORT || "8001";
+  const desktopTestExeBackendPort = env.FINLEDGE_TEST_EXE_BACKEND_PORT || "8201";
 
   return {
     backendHost,
@@ -124,7 +125,8 @@ function getConfig() {
     backendPort,
     desktopDevBackendPort,
     desktopDevFrontendPort,
-    desktopProdBackendPort,
+    desktopExeBackendPort,
+    desktopTestExeBackendPort,
     pythonExe: resolvePythonExecutable(env),
   };
 }
@@ -156,24 +158,41 @@ async function buildDesktopRuntime(commonEnv) {
 }
 
 function nextTestAppxBuildNumber(certPath) {
-  const statePath = path.join(path.dirname(path.resolve(certPath)), "finledge-appx-test-build-number.txt");
+  const statePath = path.join(projectRoot, "desktop", "build", "finledge-appx-test-build-number.txt");
+  const legacyStatePath = path.join(path.dirname(path.resolve(certPath)), "finledge-appx-test-build-number.txt");
   let previous = 0;
-  try {
-    const storedValue = fs.readFileSync(statePath, "utf8").trim();
-    if (!/^\d+$/.test(storedValue)) {
-      throw new Error(`Invalid AppX test build counter in ${statePath}.`);
+  for (const candidate of [statePath, legacyStatePath]) {
+    try {
+      const storedValue = fs.readFileSync(candidate, "utf8").trim();
+      if (!/^\d+$/.test(storedValue)) {
+        throw new Error(`Invalid AppX test build counter in ${candidate}.`);
+      }
+      previous = Math.max(previous, Number(storedValue));
+    } catch (error) {
+      if (error?.code !== "ENOENT") throw error;
     }
-    previous = Number(storedValue);
-  } catch (error) {
-    if (error?.code !== "ENOENT") throw error;
   }
 
   const next = previous + 1;
   if (next > 65535) {
     throw new Error("The AppX test build revision reached 65535. Increase the app version before building again.");
   }
+  fs.mkdirSync(path.dirname(statePath), { recursive: true });
   fs.writeFileSync(statePath, `${next}\n`, "utf8");
   return next;
+}
+
+function copyStagedTestArtifacts(stagingDirectory, outputDirectory) {
+  fs.mkdirSync(outputDirectory, { recursive: true });
+  const candidates = fs.readdirSync(stagingDirectory).filter((file) => /\.(appx|exe|blockmap)$/i.test(file));
+  const copied = [];
+  for (const file of candidates) {
+    const source = path.join(stagingDirectory, file);
+    const destination = path.join(outputDirectory, file);
+    fs.copyFileSync(source, destination);
+    copied.push(destination);
+  }
+  return copied;
 }
 
 async function main() {
@@ -235,14 +254,14 @@ async function main() {
     case "desktop-build":
     case "desktop-build-publish": {
       cleanDesktopArtifacts();
-      const apiBase = `http://${cfg.backendHost}:${cfg.desktopProdBackendPort}`;
+      const apiBase = `http://${cfg.backendHost}:${cfg.desktopExeBackendPort}`;
       const appxApplicationId = getAppxApplicationId();
       const commonEnv = {
         FINLEDGE_MODE: "production",
         FINLEDGE_DISTRIBUTION_CHANNEL: "microsoft-store",
         FINLEDGE_APPX_APPLICATION_ID: appxApplicationId,
         FINLEDGE_BACKEND_HOST: cfg.backendHost,
-        FINLEDGE_BACKEND_PORT: cfg.desktopProdBackendPort,
+        FINLEDGE_BACKEND_PORT: cfg.desktopExeBackendPort,
         VITE_API_BASE_URL: apiBase,
       };
 
@@ -275,14 +294,24 @@ async function main() {
       }
 
       const appxBuildNumber = nextTestAppxBuildNumber(certPath);
-      const apiBase = `http://${cfg.backendHost}:${cfg.desktopProdBackendPort}`;
+      const testUpdatePolicyDirectory = path.join(projectRoot, "desktop", "test-update-policy");
+      const testUpdatePolicyPath = path.join(testUpdatePolicyDirectory, "desktop-update-policy.json");
+      fs.mkdirSync(testUpdatePolicyDirectory, { recursive: true });
+      if (!fs.existsSync(testUpdatePolicyPath)) {
+        fs.copyFileSync(
+          path.join(projectRoot, "desktop", "services", "test-update-policy.example.json"),
+          testUpdatePolicyPath
+        );
+      }
+      const apiBase = `http://${cfg.backendHost}:${cfg.desktopTestExeBackendPort}`;
       const commonEnv = {
         FINLEDGE_MODE: "testing",
         FINLEDGE_APPX_APPLICATION_ID: "FinledgeTesting",
         FINLEDGE_BACKEND_HOST: cfg.backendHost,
-        FINLEDGE_BACKEND_PORT: cfg.desktopProdBackendPort,
+        FINLEDGE_BACKEND_PORT: cfg.desktopTestExeBackendPort,
         VITE_API_BASE_URL: apiBase,
         BUILD_NUMBER: String(appxBuildNumber),
+        FINLEDGE_TEST_UPDATE_POLICY_DIR: testUpdatePolicyDirectory,
         WIN_CSC_LINK: certPath,
         ...(buildEnv.FINLEDGE_TEST_CERT_PASSWORD
           ? { WIN_CSC_KEY_PASSWORD: buildEnv.FINLEDGE_TEST_CERT_PASSWORD }
@@ -290,41 +319,56 @@ async function main() {
       };
 
       await buildDesktopRuntime(commonEnv);
-      await runNpmWithEnv(
-        commonEnv,
-        "run",
-        "build",
-        "--prefix",
-        "desktop",
-        "--",
-        "--win",
-        "nsis",
-        "appx",
-        "--x64",
-        "--publish",
-        "never",
-        "--config.appId=com.finledge.tracker.testing",
-        "--config.productName=Finledge-Testing",
-        "--config.win.artifactName=Finledge-Testing-EXE-Setup-${version}.${ext}",
-        `--config.appx.identityName=${appxConfig.identityName}.Testing`,
-        "--config.appx.applicationId=FinledgeTesting",
-        "--config.appx.displayName=Finledge-Testing",
-        "--config.appx.setBuildNumber=true",
-        "--config.appx.artifactName=Finledge-Testing-${version}.${ext}"
-      );
-
       const outputDir = path.join(projectRoot, "desktop", "dist");
-      const artifacts = fs.existsSync(outputDir)
-        ? fs.readdirSync(outputDir).filter((file) => file.startsWith("Finledge-Testing-"))
-        : [];
-      if (!artifacts.some((file) => file.toLowerCase().endsWith(".appx")) ||
-          !artifacts.some((file) => file.toLowerCase().endsWith(".exe"))) {
-        throw new Error(`The combined test build did not produce both AppX and NSIS packages in ${outputDir}.`);
+      const buildRoot = path.resolve(projectRoot, "desktop", "build");
+      const stagingDirectory = path.resolve(buildRoot, `test-output-${appxBuildNumber}`);
+      if (!stagingDirectory.startsWith(`${buildRoot}${path.sep}`)) {
+        throw new Error("The temporary test build path is outside desktop/build.");
       }
+      const relativeStagingDirectory = path.relative(path.join(projectRoot, "desktop"), stagingDirectory);
+      fs.rmSync(stagingDirectory, { recursive: true, force: true });
+
+      let artifacts = [];
+      try {
+        await runNpmWithEnv(
+          commonEnv,
+          "run",
+          "build",
+          "--prefix",
+          "desktop",
+          "--",
+          "--win",
+          "nsis",
+          "appx",
+          "--x64",
+          "--publish",
+          "never",
+          "--config.appId=com.finledge.tracker.testing",
+          "--config.productName=Finledge-Testing",
+          `--config.directories.output=${relativeStagingDirectory}`,
+          "--config.win.artifactName=Finledge-Testing-EXE-Setup-${version}-r" + appxBuildNumber + ".${ext}",
+          `--config.appx.identityName=${appxConfig.identityName}.Testing`,
+          "--config.appx.applicationId=FinledgeTesting",
+          "--config.appx.displayName=Finledge-Testing",
+          "--config.appx.setBuildNumber=true",
+          "--config.appx.artifactName=Finledge-Testing-${version}-r" + appxBuildNumber + ".${ext}"
+        );
+
+        artifacts = copyStagedTestArtifacts(stagingDirectory, outputDir);
+        if (!artifacts.some((file) => file.toLowerCase().endsWith(".appx")) ||
+            !artifacts.some((file) => file.toLowerCase().endsWith(".exe"))) {
+          throw new Error(`The combined test build did not produce both AppX and NSIS packages in ${stagingDirectory}.`);
+        }
+      } finally {
+        try {
+          fs.rmSync(stagingDirectory, { recursive: true, force: true });
+        } catch (error) {
+          console.warn(`Could not remove temporary test build output ${stagingDirectory}:`, error instanceof Error ? error.message : error);
+        }
+      }
+
       console.log(`Combined AppX and EXE test packages (AppX revision ${appxBuildNumber}):`);
-      for (const artifact of artifacts.filter((file) => /\.(appx|exe)$/i.test(file))) {
-        console.log(path.join(outputDir, artifact));
-      }
+      for (const artifact of artifacts.filter((file) => /\.(appx|exe)$/i.test(file))) console.log(artifact);
       return;
     }
 

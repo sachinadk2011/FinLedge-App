@@ -1,4 +1,5 @@
 import sys
+import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -42,7 +43,11 @@ app.include_router(settings_router)
 
 @app.get("/health", include_in_schema=False)
 def health_check():
-    return {"status": "ok"}
+    return {
+        "status": "ok",
+        "pid": os.getpid(),
+        "instance": os.getenv("FINLEDGE_BACKEND_INSTANCE_TOKEN", ""),
+    }
 
 
 def _get_frontend_dist() -> Path:

@@ -15,6 +15,8 @@ function registerUpdateHandlers({
   updateService,
   releasesUrl,
   isDevelopment,
+  isTestingBuild = false,
+  testUpdatePolicyDirectory = "",
   updatesManagedByPackage = false,
   isStorePackage = false,
   simulateUpdates,
@@ -63,6 +65,7 @@ function registerUpdateHandlers({
     await updateService.checkUpdatePolicy({ silent: false });
     const state = updateService.getLatestUpdateStatus().state;
     if (state === "required" || state === "available") return { ok: true, policy: true };
+    if (isTestingBuild) return { ok: true, policy: true };
     if (isDevelopment || !app.isPackaged) {
       updateService.sendUpdateStatus({
         state: "not-available",
@@ -78,7 +81,19 @@ function registerUpdateHandlers({
   ipcMain.handle("app:get-update-status", async () => updateService.getLatestUpdateStatus());
   ipcMain.handle("app:get-version", () => app.getVersion());
 
+  ipcMain.handle("app:open-test-update-policy", async () => {
+    if (!isTestingBuild || !testUpdatePolicyDirectory) return { ok: false, reason: "not-a-test-build" };
+    try {
+      const error = await shell.openPath(testUpdatePolicyDirectory);
+      return error ? { ok: false, reason: "open-policy-folder-failed" } : { ok: true };
+    } catch (error) {
+      logLine("[updater] open test policy folder failed", String(error?.stack || error));
+      return { ok: false, reason: "open-policy-folder-failed" };
+    }
+  });
+
   ipcMain.handle("app:open-update-release", async (_event, releaseUrl) => {
+    if (isTestingBuild) return { ok: true, simulated: true };
     if (isStorePackage) {
       const status = updateService.getLatestUpdateStatus();
       const productId = String(status.storeProductId || "").trim();
@@ -125,6 +140,7 @@ function registerUpdateHandlers({
   });
 
   ipcMain.handle("app:download-update", async () => {
+    if (isTestingBuild) return { ok: true, simulated: true };
     if (isStorePackage) {
       const status = updateService.getLatestUpdateStatus();
       const fallback = getSafeReleaseUrl(status.releaseUrl, releasesUrl);

@@ -2,6 +2,7 @@
 
 const fs = require("fs");
 const path = require("path");
+const net = require("net");
 
 const DEFAULT_UPDATE_POLICY_URL =
   "https://raw.githubusercontent.com/sachinadk2011/FinLedge-App/main/desktop-update-policy.json";
@@ -25,6 +26,7 @@ function readBuildChannel(resourcesPath) {
         buildType: "",
         appxBuildNumber: String(marker.appxBuildNumber || "").trim(),
         appxApplicationId: String(marker.appxApplicationId || "").trim(),
+        testUpdatePolicyDirectory: String(marker.testUpdatePolicyDirectory || "").trim(),
       };
       const distributionChannel = String(marker.distributionChannel || "").trim().toLowerCase();
       if (distributionChannel === "microsoft-store") return {
@@ -72,6 +74,69 @@ function getPortFromEnv(env, envVarName, defaultPort, logLine) {
   return defaultPort;
 }
 
+function findAvailablePort(host = "127.0.0.1", preferredPort = 0, attempts = 40) {
+  return new Promise((resolve, reject) => {
+    let attempt = 0;
+    const tryPort = () => {
+      const requestedPort = attempt < attempts && preferredPort > 0
+        ? preferredPort + attempt
+        : 0;
+      attempt += 1;
+      listen(requestedPort);
+    };
+    const listen = (requestedPort) => {
+    const server = net.createServer();
+      server.once("error", (error) => {
+        if (error.code === "EADDRINUSE" && attempt <= attempts) {
+          tryPort();
+          return;
+        }
+        reject(error);
+      });
+      server.listen(requestedPort, host, () => {
+        const address = server.address();
+        const port = typeof address === "object" && address ? address.port : 0;
+        server.close((error) => error ? reject(error) : resolve(port));
+      });
+    };
+    tryPort();
+  });
+}
+
+function resolveBackendPort({ env, logLine, isPackaged, isDevelopment, isTestingBuild, isStoreBuild, isStoreDistribution }) {
+  let settingName = "FINLEDGE_DESKTOP_EXE_BACKEND_PORT";
+  let defaultPort = 8001;
+  if (isTestingBuild && isStoreBuild) {
+    settingName = "FINLEDGE_TEST_APPX_BACKEND_PORT";
+    defaultPort = 8301;
+  } else if (isTestingBuild) {
+    settingName = "FINLEDGE_TEST_EXE_BACKEND_PORT";
+    defaultPort = 8201;
+  } else if (isStoreBuild && isStoreDistribution) {
+    settingName = "FINLEDGE_STORE_BACKEND_PORT";
+    defaultPort = 8101;
+  } else if (isDevelopment) {
+    settingName = "FINLEDGE_DESKTOP_DEV_BACKEND_PORT";
+    defaultPort = 8401;
+  }
+
+  if (isPackaged) return getPortFromEnv(env, settingName, defaultPort, logLine);
+  const scopedOverride = env[settingName];
+  if (scopedOverride != null && String(scopedOverride).trim() !== "") {
+    return getPortFromEnv(env, settingName, defaultPort, logLine);
+  }
+  return getPortFromEnv(env, "FINLEDGE_BACKEND_PORT", defaultPort, logLine);
+}
+
+function resolveFrontendPort({ env, logLine, isDevelopment, isTestingBuild, isStoreBuild, isStoreDistribution }) {
+  let defaultPort = 8051;
+  if (isTestingBuild && isStoreBuild) defaultPort = 8351;
+  else if (isTestingBuild) defaultPort = 8251;
+  else if (isStoreBuild && isStoreDistribution) defaultPort = 8151;
+  else if (isDevelopment) defaultPort = 8451;
+  return getPortFromEnv(env, "FINLEDGE_FRONTEND_PORT", defaultPort, logLine);
+}
+
 function resolvePythonExecutable(projectRoot, env = process.env) {
   const explicit = String(env.FINLEDGE_PYTHON_PATH || "").trim();
   if (explicit && fs.existsSync(explicit)) return explicit;
@@ -88,6 +153,7 @@ function loadRuntimeConfig({ app, projectRoot, resourcesPath, isStoreBuild = fal
   const isDevelopment = String(env.ELECTRON_DEV || "") === "1";
   const buildChannel = app.isPackaged ? readBuildChannel(resourcesPath) : null;
   const isTestingBuild = Boolean(buildChannel?.isTestingBuild);
+  const isStoreDistribution = buildChannel?.distributionChannel === "microsoft-store";
   env.FINLEDGE_MODE = isTestingBuild
     ? "testing"
     : String(env.FINLEDGE_MODE || (isDevelopment ? "development" : "production"))
@@ -101,9 +167,25 @@ function loadRuntimeConfig({ app, projectRoot, resourcesPath, isStoreBuild = fal
     testBuildType: buildChannel?.buildType || (isTestingBuild ? (isStoreBuild ? "appx" : "exe") : ""),
     appxBuildNumber: buildChannel?.appxBuildNumber || "",
     appxApplicationId: buildChannel?.appxApplicationId || "",
-    isStoreDistribution: buildChannel?.distributionChannel === "microsoft-store",
-    backendPort: getPortFromEnv(env, "FINLEDGE_BACKEND_PORT", 8000, logLine),
-    frontendPort: getPortFromEnv(env, "FINLEDGE_FRONTEND_PORT", 5173, logLine),
+    testUpdatePolicyDirectory: buildChannel?.testUpdatePolicyDirectory || "",
+    isStoreDistribution,
+    backendPort: resolveBackendPort({
+      env,
+      logLine,
+      isPackaged: Boolean(app.isPackaged),
+      isDevelopment,
+      isTestingBuild,
+      isStoreBuild,
+      isStoreDistribution,
+    }),
+    frontendPort: resolveFrontendPort({
+      env,
+      logLine,
+      isDevelopment,
+      isTestingBuild,
+      isStoreBuild,
+      isStoreDistribution,
+    }),
     backendHost: String(env.FINLEDGE_BACKEND_HOST || "127.0.0.1").trim() || "127.0.0.1",
     frontendHost: String(env.FINLEDGE_FRONTEND_HOST || "127.0.0.1").trim() || "127.0.0.1",
     updatePolicyUrl: String(env.FINLEDGE_UPDATE_POLICY_URL || DEFAULT_UPDATE_POLICY_URL).trim(),
@@ -114,4 +196,4 @@ function loadRuntimeConfig({ app, projectRoot, resourcesPath, isStoreBuild = fal
   };
 }
 
-module.exports = { getPortFromEnv, loadDotEnv, loadRuntimeConfig, resolvePythonExecutable };
+module.exports = { findAvailablePort, getPortFromEnv, loadDotEnv, loadRuntimeConfig, resolveBackendPort, resolveFrontendPort, resolvePythonExecutable };

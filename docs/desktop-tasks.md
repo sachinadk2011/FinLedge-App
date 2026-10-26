@@ -161,6 +161,46 @@ AGENTS.md §0.5: ambiguous = narrower action. PLAN.md Hard Constraints still app
 
 (append dated entries; include a "Docs touched" line per AGENTS.md §11)
 
+### 2026-10-26 — Data backup paths, import timestamps, and backend isolation
+
+- **Backup-folder investigation:** The checked migration and backup code copies existing
+  backup trees and does not remove `migration`, `auto`, or `import` directories. Automatic
+  retention removes individual old snapshot `.xlsx` files under `auto`; it does not remove
+  the backup directories. The active backup location is a sibling `backups` directory beside
+  `FinLedge Data`, which can make older `FinLedge Data\backups` contents appear missing when
+  Settings opens the active path. Startup workbook-schema migrations now use the same shared
+  backup resolver instead of creating a second nested backup tree.
+- **Import audit fields:** Imported Bank, Share, Personal Expenses, and Bank/Cash Transfer
+  rows preserve timestamps present in the source file. Older `Timestamp`/`Created At` headers
+  map to `Created Timestamp`; missing timestamps are filled from the source's other audit time
+  when available, otherwise from import time. Imported rows record `desktop` as updated device.
+- **Transfer requirements:** Settings now labels the minimum transfer columns as `Date`,
+  `Transfer Direction`, and `Amount`. Validation accepts both `Transfer Direction` and the
+  workbook's canonical `Direction` header.
+- **Test update notices:** Test packages now read a local policy file on each check. The
+  build-machine copy lives in ignored `desktop/test-update-policy/`; when that path is not
+  available, each installed test app uses its own user-data policy folder. Test notice actions
+  are previews and do not launch production downloads or installers.
+- **Backend ownership:** Desktop builds use distinct local port ranges near 8000 (production
+  EXE starts at 8001, Store at 8101, test EXE at 8201, test AppX at 8301, and dev at 8401;
+  development Vite uses the corresponding 8051/8151/8251/8351/8451 ranges). They retry
+  within their range if a port is occupied, then request an OS-assigned port, and verify the backend using
+  a per-launch token before opening the dashboard. This works with the PyInstaller one-file
+  wrapper, whose Python worker PID can differ from the executable launcher PID. A single-instance
+  lock prevents repeated clicks from starting overlapping copies. The splash appears before
+  data/backend startup, and backend output is written to the desktop log. Desktop development
+  starts its own Vite server on a separate OS-assigned port instead of attaching to an existing
+  Vite process. The standalone backend command keeps port 8000. Electron clears background
+  update timers and stops backend/Vite process trees on exit; the backend also exits if its
+  Electron parent disappears.
+- **Data path:** Desktop development defaults to `%APPDATA%\Finledge Development\FinLedge Data`
+  on Windows, unless `FINLEDGE_DATA_DIR` explicitly overrides it. Test and production data
+  roots are separate from that path.
+- **Verification:** Python and JavaScript syntax checks, isolated timestamp/port/policy checks,
+  and the frontend build were run. No real user data folders were read or changed. A clean
+  AppX install/upgrade and installed EXE behavior still require manual testing on Windows.
+- **Docs touched:** `docs/desktop-tasks.md`, `docs/desktop-codebase.md`.
+
 ### 2026-10-25 — Settings import isolation and dedicated data folder
 
 - **Import safety:** Bank Services imports now reject recognizable Personal Expenses
@@ -248,6 +288,44 @@ AGENTS.md §0.5: ambiguous = narrower action. PLAN.md Hard Constraints still app
 - Added a pre-backend one-time workbook copy/validation report. It leaves legacy files intact, skips non-empty destinations, and does not overwrite existing workbooks. It also copies and validates backup history.
 - Added a write check and Settings folder picker, plus a cross-build heartbeat lock and build-type display.
 - Added Python migration tests and Node resolver/lock tests. Full backend suite passed (87 tests); desktop data tests passed (3 tests). The Windows installer build completed.
+- Docs touched: `docs/desktop-tasks.md`, `docs/desktop-codebase.md`.
+
+### 2026-10-26 — AppX test build and backend startup/shutdown check
+
+- **Build output:** The combined test build now uses a unique temporary directory
+  under ignored `desktop/build/` and copies only the finished AppX, NSIS installer,
+  and blockmap files into the existing `desktop/dist/`. This avoids editing the
+  previously locked `desktop/dist/win-unpacked/Finledge-Testing.exe` and keeps one
+  standard artifact folder. AppX test revisions 21, 22, and 24 were produced; the
+  build hit intermittent Windows locks during Electron extraction/resource editing
+  on earlier attempts.
+- **Startup failures found during install testing:** The packaged backend could not
+  import a stale `_noon_timestamp` name from the workbook import module. After that
+  was removed, a second failure surfaced: Windows `os.kill(pid, 0)` returned
+  `WinError 87` for a live Electron process, so the backend watchdog exited the
+  sidecar with code 0. The watcher now checks its owner with Windows process wait
+  handles and retains `os.kill` for non-Windows platforms.
+- **Tested install:** Installed AppX revision 24 as an in-place update to the
+  separate `SachinAdhikari.Finledge.Testing` identity; Windows reported version
+  `1.3.0.24`, status `Ok`. The app reached the renderer, the sidecar served its
+  `/health` endpoint on OS-assigned port `57487`, the per-launch token matched, and
+  data migration reported `not-needed`. Test package data was preserved.
+- **Shutdown check:** Force-stopped only the test Electron parent process. The
+  sidecar exited and port `57487` was released. The app used a dynamically assigned
+  port because its preferred test port was occupied; it did not use port 8000.
+- **Update policy files:** The JSON in `desktop/services/` is a shared starter
+  template and should be tracked. The build-machine override in
+  `desktop/test-update-policy/` is local and ignored. Added a narrow ignore
+  exception so the broad `test-*` rule no longer hides the starter template.
+- **Icon investigation:** The desktop AppX shortcut targets `explorer.exe` with the
+  AppX AUMID, which is how Windows activates the package; its shortcut icon is the
+  FinLedge icon. Repository code does not change the Windows Explorer executable
+  or its registry icon. The reported Task Manager/File Explorer icon appearance
+  could not be visually inspected in this run.
+- **Verification:** Frontend production build and Python syntax compilation passed;
+  combined NSIS/AppX test build succeeded; AppX install/update and backend start,
+  health, and forced-parent shutdown were verified. A visual UI review of the
+  Explorer icon and an NSIS install/launch were not completed.
 - Docs touched: `docs/desktop-tasks.md`, `docs/desktop-codebase.md`.
 
 ### 2026-10-25 — Shared data migration and Store update handoff

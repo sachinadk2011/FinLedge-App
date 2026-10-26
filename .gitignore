@@ -17,6 +17,9 @@ desktop/dist-*/
 desktop/artifacts/
 desktop/assets/appx/
 desktop/build/
+desktop/test-update-policy/*
+test-*
+!desktop/services/test-update-policy.example.json
 dist*
 # Tooling caches
 .pytest_cache/

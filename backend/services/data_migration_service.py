@@ -5,13 +5,13 @@ from __future__ import annotations
 import json
 import os
 import shutil
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 from openpyxl import Workbook, load_workbook
 
-from .excel_utils import to_float as _amount
+from .excel_utils import get_backup_directory, readable_backup_timestamp, to_float as _amount
 from .path_utils import get_data_dir
 
 MIGRATION_VERSION = "v1.2.0"
@@ -202,8 +202,8 @@ def migrate_bank_workbook(data_dir: Path, *, apply: bool) -> dict[str, Any]:
     if not apply:
         return report
 
-    tag = datetime.now().strftime("%Y%m%d-%H%M%S")
-    backup_dir = data_dir / "backups" / f"v1.1.0-to-{MIGRATION_VERSION}" / tag
+    tag = readable_backup_timestamp(datetime.now(timezone.utc))
+    backup_dir = get_backup_directory(source) / f"v1.1.0-to-{MIGRATION_VERSION}" / tag
     backup_dir.mkdir(parents=True, exist_ok=False)
     backup_file = backup_dir / source.name
     staged_workbook = data_dir / f".bank_transactions.{MIGRATION_VERSION}-{tag}.xlsx"
@@ -311,8 +311,8 @@ def _write_rows(path: Path, sheet_name: str, headers: list[str], rows: list[list
 
 
 def _migrate_header_workbook(data_dir: Path, source: Path, sheet_name: str, headers: list[str], rows: list[list[Any]], label: str) -> dict[str, Any]:
-    tag = datetime.now().strftime("%Y%m%d-%H%M%S")
-    backup_dir = data_dir / "backups" / label / tag
+    tag = readable_backup_timestamp(datetime.now(timezone.utc))
+    backup_dir = get_backup_directory(source) / label / tag
     backup_dir.mkdir(parents=True, exist_ok=False)
     backup_file = backup_dir / source.name
     staged_workbook = data_dir / f".{source.stem}.{label}-{tag}.xlsx"
