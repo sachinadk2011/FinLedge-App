@@ -6,6 +6,7 @@ import BankForm from "../components/BankForm";
 import StatusNotice from "../components/StatusNotice";
 import { BANK_CATEGORIES } from "../constants/options";
 import { getTodayInputValue } from "../utils/date";
+import { clearAmountAndDescription } from "../utils/forms";
 
 const DEFAULT_BANK_CATEGORY = "Interest Earned";
 
@@ -79,20 +80,16 @@ function BankPage() {
         setSuccess("Entry updated successfully.");
         // Clear edit mode but keep the user on the same page.
         navigate("/bank", { replace: true });
-        setForm((prev) => ({ ...prev, amount: "", description: "" }));
+        setForm((prev) => clearAmountAndDescription(prev));
       } else {
         await addBankEntry(form);
         setSuccess("Entry saved successfully.");
         // Keep user on the same page for quick entry.
-        setForm((prev) => ({
-          ...prev,
-          amount: "",
-          description: "",
-        }));
+        setForm((prev) => clearAmountAndDescription(prev));
       }
     } catch (err) {
       setError(err.message || "Unable to save bank entry.");
-      setForm((prev) => ({ ...prev, amount: "", description: "" }));
+      setForm((prev) => clearAmountAndDescription(prev));
     } finally {
       setSubmitting(false);
     }

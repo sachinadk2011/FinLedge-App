@@ -4,12 +4,14 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { createTransfer, getPersonalFinanceData, updateTransfer } from "../api/personalFinanceApi";
 import TransactionsTable from "../components/TransactionsTable";
 import StatusNotice from "../components/StatusNotice";
+import {
+  normalizeTransferDirection,
+  PERSONAL_FINANCE_TRANSFER_DIRECTIONS,
+  transferActionLabel,
+} from "../constants/options";
 import { getTodayInputValue } from "../utils/date";
-
-const TRANSFER_DIRECTIONS = [
-  { value: "bank_to_cash", label: "Bank to Cash  (Withdraw)" },
-  { value: "cash_to_bank", label: "Cash to Bank  (Deposit)" },
-];
+import { clearAmountAndDescription } from "../utils/forms";
+import { sortHistoryNewestFirst } from "../utils/history";
 
 const fmt = new Intl.NumberFormat("en-US", {
   minimumFractionDigits: 2,
@@ -19,7 +21,7 @@ const fmt = new Intl.NumberFormat("en-US", {
 function getDefaultForm() {
   return {
     dates: getTodayInputValue(),
-    direction: "bank_to_cash",
+    direction: PERSONAL_FINANCE_TRANSFER_DIRECTIONS[0].value,
     amount: "",
     description: "",
   };
@@ -46,7 +48,7 @@ function PersonalFinanceTransferPage() {
     setLoadingHistory(true);
     getPersonalFinanceData()
       .then((response) => {
-        const allTransfers = (response?.records || [])
+        const allTransfers = sortHistoryNewestFirst(response?.records || [])
           .filter((r) => r.source === "transfer")
           .filter(
             (r, idx, arr) =>
@@ -54,8 +56,7 @@ function PersonalFinanceTransferPage() {
                 (x) => x.source_ref === r.source_ref && x.flow_type === r.flow_type
               ) === idx
           )
-          .filter((r) => (r.signed_amount ?? -1) < 0)
-          .reverse();
+          .filter((r) => (r.signed_amount ?? -1) < 0);
         if (callback) callback(allTransfers);
         setTransferHistory(allTransfers.slice(0, 12));
       })
@@ -73,7 +74,7 @@ function PersonalFinanceTransferPage() {
       if (!found) return;
       setForm({
         dates: found.date || getTodayInputValue(),
-        direction: found.transfer_direction || "bank_to_cash",
+        direction: normalizeTransferDirection(found.transfer_direction) || PERSONAL_FINANCE_TRANSFER_DIRECTIONS[0].value,
         amount: String(found.amount || ""),
         description: (found.description || "").replace(
           /^(Withdrawn to Cash|Deposited to Bank)(: )?/,
@@ -88,7 +89,7 @@ function PersonalFinanceTransferPage() {
     const amt = Number(form.amount);
     if (!form.amount || amt <= 0) {
       setError("Please enter a valid amount greater than 0.");
-      setForm((prev) => ({ ...prev, amount: "", description: "" }));
+      setForm((prev) => clearAmountAndDescription(prev));
       return;
     }
     setError("");
@@ -97,22 +98,20 @@ function PersonalFinanceTransferPage() {
     try {
       if (isEditing) {
         await updateTransfer(editId, form);
-        const dirLabel =
-          form.direction === "bank_to_cash" ? "Bank to Cash withdrawal" : "Cash to Bank deposit";
+        const dirLabel = transferActionLabel(form.direction);
         setSuccess(`Transfer updated: ${dirLabel} of ${fmt.format(amt)}.`);
-        setForm((prev) => ({ ...prev, amount: "", description: "" }));
+        setForm((prev) => clearAmountAndDescription(prev));
         navigate("/personal-finance-transfer", { replace: true });
       } else {
         await createTransfer(form);
-        const dirLabel =
-          form.direction === "bank_to_cash" ? "Bank to Cash withdrawal" : "Cash to Bank deposit";
+        const dirLabel = transferActionLabel(form.direction);
         setSuccess(`${dirLabel} of ${fmt.format(amt)} recorded successfully.`);
-        setForm((prev) => ({ ...prev, amount: "", description: "" }));
+        setForm((prev) => clearAmountAndDescription(prev));
         loadHistory();
       }
     } catch (err) {
       setError(err.message || "Unable to record transfer.");
-      setForm((prev) => ({ ...prev, amount: "", description: "" }));
+      setForm((prev) => clearAmountAndDescription(prev));
     } finally {
       setSubmitting(false);
     }
@@ -131,12 +130,9 @@ function PersonalFinanceTransferPage() {
       id: r.id,
       _seqId: Number(numPart),
       date: r.date,
-      dirLabel:
-        r.transfer_direction === "bank_to_cash"
-          ? "Bank to Cash"
-          : r.transfer_direction === "cash_to_bank"
-          ? "Cash to Bank"
-          : r.description || "Transfer",
+      dirLabel: PERSONAL_FINANCE_TRANSFER_DIRECTIONS.find(
+        (direction) => direction.value === normalizeTransferDirection(r.transfer_direction)
+      )?.label || r.description || "Transfer",
       amount: fmt.format(r.amount),
       description: (r.description || "").replace(
         /^(Withdrawn to Cash|Deposited to Bank)(: )?/,
@@ -192,7 +188,7 @@ function PersonalFinanceTransferPage() {
               value={form.direction}
               onChange={(e) => setForm((f) => ({ ...f, direction: e.target.value }))}
             >
-              {TRANSFER_DIRECTIONS.map((d) => (
+              {PERSONAL_FINANCE_TRANSFER_DIRECTIONS.map((d) => (
                 <option key={d.value} value={d.value}>
                   {d.label}
                 </option>

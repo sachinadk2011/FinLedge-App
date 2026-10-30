@@ -1,4 +1,5 @@
 import fs from "fs";
+import os from "os";
 import path from "path";
 import { spawn } from "child_process";
 import { fileURLToPath } from "url";
@@ -320,13 +321,17 @@ async function main() {
 
       await buildDesktopRuntime(commonEnv);
       const outputDir = path.join(projectRoot, "desktop", "dist");
-      const buildRoot = path.resolve(projectRoot, "desktop", "build");
-      const stagingDirectory = path.resolve(buildRoot, `test-output-${appxBuildNumber}`);
-      if (!stagingDirectory.startsWith(`${buildRoot}${path.sep}`)) {
-        throw new Error("The temporary test build path is outside desktop/build.");
+      const stagingRoot = path.resolve(os.tmpdir());
+      const stagingDirectory = path.resolve(
+        stagingRoot,
+        `finledge-test-output-${appxBuildNumber}-${process.pid}-${Date.now()}`
+      );
+      if (!stagingDirectory.startsWith(`${stagingRoot}${path.sep}`)) {
+        throw new Error("The temporary test build path is outside the system temporary directory.");
       }
-      const relativeStagingDirectory = path.relative(path.join(projectRoot, "desktop"), stagingDirectory);
-      fs.rmSync(stagingDirectory, { recursive: true, force: true });
+      if (fs.existsSync(stagingDirectory)) {
+        throw new Error("The unique temporary test build path already exists; refusing to reuse it.");
+      }
 
       let artifacts = [];
       try {
@@ -345,13 +350,13 @@ async function main() {
           "never",
           "--config.appId=com.finledge.tracker.testing",
           "--config.productName=Finledge-Testing",
-          `--config.directories.output=${relativeStagingDirectory}`,
-          "--config.win.artifactName=Finledge-Testing-EXE-Setup-${version}-r" + appxBuildNumber + ".${ext}",
+          `--config.directories.output=${stagingDirectory}`,
+          "--config.win.artifactName=Finledge-Testing-EXE-Setup-${version}.${ext}",
           `--config.appx.identityName=${appxConfig.identityName}.Testing`,
           "--config.appx.applicationId=FinledgeTesting",
           "--config.appx.displayName=Finledge-Testing",
           "--config.appx.setBuildNumber=true",
-          "--config.appx.artifactName=Finledge-Testing-${version}-r" + appxBuildNumber + ".${ext}"
+          "--config.appx.artifactName=Finledge-Testing-${version}.${ext}"
         );
 
         artifacts = copyStagedTestArtifacts(stagingDirectory, outputDir);

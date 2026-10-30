@@ -41,8 +41,10 @@ in the standard `desktop/dist/` output folder. Both use a distinct Testing app n
 the AppX package uses the `SachinAdhikari.Finledge.Testing` identity, so it can be
 installed alongside the production app. The command never publishes. It uses the
 same output folder as the normal desktop release build to exercise the same packaging
-flow. AppX test builds use Electron's app-specific `userData` directory at
-`%APPDATA%\Finledge Testing AppX`, created before backend startup. Settings reports
+flow. The backend sidecar is packaged as an onedir folder at `resources/engine/finledge-engine/`
+so startup does not unpack a one-file Python payload each time. AppX test builds use
+the physical per-user Roaming folder at
+`%USERPROFILE%\AppData\Roaming\Finledge Testing AppX\FinLedge Data`, created before backend startup even though AppX redirects `%APPDATA%`. Settings reports
 its resolved location. The first launch checks the older
 `%LOCALAPPDATA%\Finledge Testing AppX Test` folder as a legacy source and copies
 validated files without modifying the source. No production
@@ -55,13 +57,30 @@ Store-targeted production AppX builds disable the self-update checker and use th
 Phase 3 data-folder resolver. Testing packages use their app-specific user-data
 folders instead.
 
-Each combined test build increments the AppX package revision and records the
-counter beside the configured `.pfx`, outside the repository. This gives each
+Each combined test build increments the AppX package revision embedded in the
+package and records the counter beside the configured `.pfx`, outside the repository.
+The output filenames stay stable (`Finledge-Testing-1.3.0.appx` and
+`Finledge-Testing-EXE-Setup-1.3.0.exe`), so each build replaces the previous
+test package of the same type in `desktop/dist/`. This gives each
 package a higher version than the previous test build, allowing Windows to update
 the installed test app in place while retaining its test data. Keep the `.pfx`
 directory available and writable between builds so the counter persists. Do not
 manually reset the counter while a package built with a higher revision is still
 installed.
+
+The build stages the combined packages in a unique directory under the operating
+system temporary folder, then copies the final artifacts to `desktop/dist/`. This
+avoids Electron's Windows runtime extraction rename failing in the repository's
+workspace directory. For an isolated launch of a Testing package, set
+`FINLEDGE_TEST_ISOLATED=1`, `FINLEDGE_DATA_DIR` to a new test-only workbook folder,
+and `FINLEDGE_TEST_DOCUMENTS_DIR` to a new test-only Documents root in the process
+environment. In this mode the package skips all legacy data scans and places its
+recovery snapshots under the supplied test Documents root. To test migration from
+one selected source without scanning other Testing data, leave isolation off and set
+`FINLEDGE_TEST_LEGACY_DATA_DIRS` to a JSON array containing only that source folder;
+also set `FINLEDGE_DATA_DIR` and `FINLEDGE_TEST_DOCUMENTS_DIR` to fresh test paths.
+Do not set these values for normal Testing runs, where all configured legacy roots
+are intentionally scanned.
 
 Install the produced AppX package from PowerShell:
 

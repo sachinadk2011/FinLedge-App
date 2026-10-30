@@ -28,6 +28,7 @@ function createChildProcessManager({
   let backendStopPromise = null;
   let frontendStopPromise = null;
   let devFrontendUrl = null;
+  let backendStartupOutputBuffer = "";
 
   function getFrontendIndexPath() {
     return app.isPackaged
@@ -36,7 +37,7 @@ function createChildProcessManager({
   }
 
   function getPackagedEnginePath() {
-    return path.join(process.resourcesPath, "engine", "finledge-engine.exe");
+    return path.join(process.resourcesPath, "engine", "finledge-engine", "finledge-engine.exe");
   }
 
   function startBackend() {
@@ -51,6 +52,7 @@ function createChildProcessManager({
     }
 
     backendInstanceToken = crypto.randomUUID();
+    backendStartupOutputBuffer = "";
     backendProcess = spawn(command, args, {
       cwd,
       env: {
@@ -66,6 +68,21 @@ function createChildProcessManager({
       backendProcess = null;
     });
     backendProcess.stdout.on("data", (data) => {
+      backendStartupOutputBuffer += String(data);
+      const outputLines = backendStartupOutputBuffer.split(/\r?\n/);
+      backendStartupOutputBuffer = outputLines.pop() || "";
+      for (const line of outputLines) {
+        const reportPrefix = "FINLEDGE_MIGRATION_REPORT=";
+        if (!line.startsWith(reportPrefix)) continue;
+        try {
+          logLine("[migration]", JSON.parse(line.slice(reportPrefix.length)));
+        } catch (error) {
+          logLine("[migration] report could not be parsed", String(error?.message || error));
+        }
+      }
+      if (outputLines.some((line) => line.includes("FINLEDGE_STARTUP_PHASE=data-ready"))) {
+        logLine("[startup] data ready");
+      }
       logLine("[backend] stdout", String(data).trimEnd());
       process.stdout.write(`[backend] ${data}`);
     });
@@ -189,26 +206,28 @@ function createChildProcessManager({
     });
   }
 
+  async function pollUntil(fn, timeoutMs, intervalMs) {
+    const deadline = Date.now() + timeoutMs;
+    do {
+      if (await fn()) return;
+      const remaining = deadline - Date.now();
+      if (remaining <= 0) break;
+      await new Promise((resolve) => setTimeout(resolve, Math.min(intervalMs, remaining)));
+    } while (Date.now() < deadline);
+    throw new Error("Polling timed out.");
+  }
+
   function waitForHttpOk(url, timeoutMs) {
-    return new Promise((resolve, reject) => {
-      const deadline = Date.now() + timeoutMs;
-      const tick = () => {
-        const request = http.get(url, (response) => {
-          response.resume();
-          if (response.statusCode && response.statusCode >= 200 && response.statusCode < 500) {
-            resolve();
-            return;
-          }
-          if (Date.now() >= deadline) reject(new Error(`Timeout waiting for ${url}`));
-          else setTimeout(tick, 500);
-        });
-        request.on("error", () => {
-          if (Date.now() >= deadline) reject(new Error(`Timeout waiting for ${url}`));
-          else setTimeout(tick, 500);
-        });
-        request.setTimeout(400, () => request.destroy());
-      };
-      tick();
+    const probe = () => new Promise((resolve) => {
+      const request = http.get(url, (response) => {
+        response.resume();
+        resolve(Boolean(response.statusCode && response.statusCode >= 200 && response.statusCode < 500));
+      });
+      request.on("error", () => resolve(false));
+      request.setTimeout(400, () => request.destroy());
+    });
+    return pollUntil(probe, timeoutMs, 500).catch(() => {
+      throw new Error(`Timeout waiting for ${url}`);
     });
   }
 
@@ -216,45 +235,40 @@ function createChildProcessManager({
     const child = backendProcess;
     if (!child?.pid) return Promise.reject(new Error("FinLedge backend is not running."));
     const url = `http://${backendHost}:${activeBackendPort}/health`;
-    const deadline = Date.now() + timeoutMs;
-    return new Promise((resolve, reject) => {
-      const tick = () => {
-        if (child.exitCode !== null || child.signalCode !== null || backendProcess !== child) {
-          reject(new Error("FinLedge backend stopped before it became ready."));
-          return;
-        }
-        const request = http.get(url, (response) => {
-          let body = "";
-          response.setEncoding("utf8");
-          response.on("data", (chunk) => { body += chunk; });
-          response.on("end", () => {
-            try {
-              const health = JSON.parse(body);
-              if (response.statusCode === 200 && health.instance === backendInstanceToken) {
-                resolve();
-                return;
-              }
-              if (response.statusCode === 200) {
-                logLine("[main] backend health response did not match this launch", {
-                  pid: health.pid,
-                  hasInstanceToken: Boolean(health.instance),
-                });
-              }
-            } catch { /* A different service answered this port. */ }
-            retry();
-          });
+    const probe = () => new Promise((resolve, reject) => {
+      if (child.exitCode !== null || child.signalCode !== null || backendProcess !== child) {
+        const error = new Error("FinLedge backend stopped before it became ready.");
+        if (child.exitCode === 75) error.code = "FINLEDGE_DATA_PREP_FAILED";
+        reject(error);
+        return;
+      }
+      const request = http.get(url, (response) => {
+        let body = "";
+        response.setEncoding("utf8");
+        response.on("data", (chunk) => { body += chunk; });
+        response.on("end", () => {
+          try {
+            const health = JSON.parse(body);
+            if (response.statusCode === 200 && health.instance === backendInstanceToken) {
+              resolve(true);
+              return;
+            }
+            if (response.statusCode === 200) {
+              logLine("[main] backend health response did not match this launch", {
+                pid: health.pid,
+                hasInstanceToken: Boolean(health.instance),
+              });
+            }
+          } catch { /* A different service answered this port. */ }
+          resolve(false);
         });
-        request.on("error", retry);
-        request.setTimeout(500, () => request.destroy());
-      };
-      const retry = () => {
-        if (Date.now() >= deadline) {
-          reject(new Error("Timed out waiting for the FinLedge backend on its assigned port."));
-        } else {
-          setTimeout(tick, 250);
-        }
-      };
-      tick();
+      });
+      request.on("error", () => resolve(false));
+      request.setTimeout(300, () => request.destroy());
+    });
+    return pollUntil(probe, timeoutMs, 100).catch((error) => {
+      if (error.code === "FINLEDGE_DATA_PREP_FAILED" || error.message === "FinLedge backend stopped before it became ready.") throw error;
+      throw new Error("Timed out waiting for the FinLedge backend on its assigned port.");
     });
   }
 

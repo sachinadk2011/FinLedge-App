@@ -26,6 +26,8 @@ dist*
 .mypy_cache/
 .ruff_cache/
 .npm-cache/
+/.pytest-*/
+/.playwright-cli/
 
 # OS / editor
 .DS_Store
@@ -34,10 +36,15 @@ Thumbs.db
 tests/*
 tests/
 backend/tests
-
 desktop/tests
 .npm-cache/
 android/
 dist/
 finledge-mobile-design-v3.html
 %TEST*
+
+# Keep backend and desktop test source files visible while ignoring caches/data.
+!backend/tests/
+!backend/tests/*.py
+!desktop/tests/
+!desktop/tests/*.cjs

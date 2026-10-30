@@ -1,25 +1,7 @@
 """Legacy column and category normalization rules for workbook imports."""
 
 from ...models import BankCategory, ShareCategory, PF_EXPENSE_CATEGORIES, PF_INCOME_CATEGORIES
-
-_COLUMN_ALIASES: dict[str, str] = {
-    # Bank Services — old versions called it "Cumulative Total"
-    "cumulative total": "Cumulative Amount",
-    "cumulative balance": "Cumulative Amount",
-    "running total": "Cumulative Amount",
-    # Audit timestamp aliases used by older workbooks and external exports.
-    "timestamp": "Created Timestamp",
-    "created at": "Created Timestamp",
-    "created timestamp": "Created Timestamp",
-    # Personal Finance — alternate Direction names
-    "type": "Direction",
-    "transaction type": "Direction",
-    "transfer direction": "Direction",
-    # Generic
-    "note": "Description",
-    "notes": "Description",
-    "remarks": "Description",
-}
+from ..workbook_headers import HEADER_ALIASES as _COLUMN_ALIASES
 
 _BANK_REQUIRED = ["Date", "Category", "Amount"]
 
@@ -33,7 +15,7 @@ _BANK_RETIRED_CATEGORIES = {"atm charge", "sms charge"}
 
 _BANK_VALID_CATEGORIES = {c.value for c in BankCategory}
 
-_BANK_INCOME_CATEGORIES = {"Interest Earned"}
+_BANK_INCOME_CATEGORIES = {BankCategory.interest_earned.value}
 
 _SHARE_CATEGORY_ALIASES: dict[str, str] = {
     "ipo": "ipo",

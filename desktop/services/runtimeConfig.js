@@ -3,9 +3,13 @@
 const fs = require("fs");
 const path = require("path");
 const net = require("net");
-
-const DEFAULT_UPDATE_POLICY_URL =
-  "https://raw.githubusercontent.com/sachinadk2011/FinLedge-App/main/desktop-update-policy.json";
+const {
+  buildRepositoryUrl,
+  buildUpdatePolicyUrl,
+  parseGitHubRepositoryUrl,
+  readPackageRepository,
+  resolveRepositoryConfig,
+} = require("./repositoryConfig");
 
 function readBuildChannel(resourcesPath) {
   if (!resourcesPath) return null;
@@ -148,8 +152,17 @@ function resolvePythonExecutable(projectRoot, env = process.env) {
     || (process.platform === "win32" ? "python" : "python3");
 }
 
+function readRepositoryUrl(projectRoot) {
+  return buildRepositoryUrl(readPackageRepository(projectRoot) || {});
+}
+
+function getDefaultUpdatePolicyUrl(repositoryUrl) {
+  return buildUpdatePolicyUrl(parseGitHubRepositoryUrl(repositoryUrl) || {});
+}
+
 function loadRuntimeConfig({ app, projectRoot, resourcesPath, isStoreBuild = false, logLine, env = process.env }) {
   loadDotEnv(projectRoot, env);
+  const repositoryConfig = resolveRepositoryConfig({ projectRoot, resourcesPath, env });
   const isDevelopment = String(env.ELECTRON_DEV || "") === "1";
   const buildChannel = app.isPackaged ? readBuildChannel(resourcesPath) : null;
   const isTestingBuild = Boolean(buildChannel?.isTestingBuild);
@@ -188,7 +201,11 @@ function loadRuntimeConfig({ app, projectRoot, resourcesPath, isStoreBuild = fal
     }),
     backendHost: String(env.FINLEDGE_BACKEND_HOST || "127.0.0.1").trim() || "127.0.0.1",
     frontendHost: String(env.FINLEDGE_FRONTEND_HOST || "127.0.0.1").trim() || "127.0.0.1",
-    updatePolicyUrl: String(env.FINLEDGE_UPDATE_POLICY_URL || DEFAULT_UPDATE_POLICY_URL).trim(),
+    githubOwner: repositoryConfig.owner,
+    githubRepo: repositoryConfig.repo,
+    repositoryUrl: repositoryConfig.repositoryUrl,
+    updatePolicyUrl: repositoryConfig.updatePolicyUrl,
+    releasesUrl: repositoryConfig.releasesUrl,
     simulateUpdateValue: isDevelopment
       ? String(env.FINLEDGE_SIMULATE_UPDATE || "").trim().toLowerCase()
       : "",
@@ -196,4 +213,14 @@ function loadRuntimeConfig({ app, projectRoot, resourcesPath, isStoreBuild = fal
   };
 }
 
-module.exports = { findAvailablePort, getPortFromEnv, loadDotEnv, loadRuntimeConfig, resolveBackendPort, resolveFrontendPort, resolvePythonExecutable };
+module.exports = {
+  findAvailablePort,
+  getDefaultUpdatePolicyUrl,
+  getPortFromEnv,
+  loadDotEnv,
+  loadRuntimeConfig,
+  readRepositoryUrl,
+  resolveBackendPort,
+  resolveFrontendPort,
+  resolvePythonExecutable,
+};

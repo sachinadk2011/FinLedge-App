@@ -34,8 +34,6 @@
     "publish": [
       {
         "provider": "github",
-        "owner": "sachinadk2011",
-        "repo": "FinLedge-App",
         "releaseType": "release"
       }
     ],
@@ -51,8 +49,8 @@
     ],
     "extraResources": [
       {
-        "from": "build/sidecar/finledge-engine.exe",
-        "to": "engine/finledge-engine.exe"
+        "from": "build/sidecar/finledge-engine",
+        "to": "engine/finledge-engine"
       },
       {
         "from": "../frontendwebapp/dist",

@@ -7,14 +7,22 @@ from openpyxl import Workbook, load_workbook
 
 from .excel_utils import (
     current_timestamp as _current_timestamp,
-    safe_load_workbook,
-    snapshot_before_write,
+    ensure_workbook_exists,
+    iter_sheet_rows_as_dicts,
+    workbook_for_update,
     to_float as _to_float,
     to_int as _to_int,
 )
 from .path_utils import get_data_dir
-from .share_lot_calculations import _build_open_lots, _consume_lots, _cost_basis_for_sell
+from .share_lot_calculations import (
+    _build_open_lots,
+    _cost_basis_for_sell,
+    add_share_lot,
+    apply_sip_investment,
+    consume_share_lots,
+)
 from .share_summary import summarize_share_records
+from .workbook_merge import append_tombstone, get_device_label, new_row_id, refresh_sheet_metadata
 
 DATA_DIR = get_data_dir()
 FILE_PATH = DATA_DIR / "share_transactions.xlsx"
@@ -33,52 +41,15 @@ HEADERS = [
     "Created Timestamp",
     "Last Updated Timestamp",
     "Updated Device",
+    "Row ID",
+    "Content Hash",
 ]
 
 _file_lock = threading.Lock()
 
 
 def _ensure_workbook_exists() -> None:
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    workbook = safe_load_workbook(FILE_PATH, SHEET_NAME, HEADERS)
-    modified = False
-
-    # If the file exists but the expected sheet is missing, create/rename it.
-    if SHEET_NAME not in workbook.sheetnames:
-        modified = True
-        if not workbook.sheetnames:
-            sheet = workbook.create_sheet(title=SHEET_NAME)
-        else:
-            candidate = workbook.active
-            candidate_first = str(candidate.cell(row=1, column=1).value or "").strip().lower()
-            candidate_is_empty = candidate.max_row <= 1 and all(
-                candidate.cell(row=1, column=col).value in (None, "") for col in range(1, len(HEADERS) + 1)
-            )
-            candidate_is_compatible = candidate_first == "date"
-            if len(workbook.sheetnames) == 1 and (candidate_is_empty or candidate_is_compatible):
-                sheet = candidate
-                sheet.title = SHEET_NAME
-            else:
-                sheet = workbook.create_sheet(title=SHEET_NAME)
-    else:
-        sheet = workbook[SHEET_NAME]
-
-    # Ensure headers exist without clobbering a first data row.
-    first_cell = str(sheet.cell(row=1, column=1).value or "").strip().lower()
-    if first_cell != "date":
-        modified = True
-        sheet.insert_rows(1)
-        for idx, header in enumerate(HEADERS, start=1):
-            sheet.cell(row=1, column=idx).value = header
-    else:
-        for idx, header in enumerate(HEADERS, start=1):
-            if sheet.cell(row=1, column=idx).value in (None, ""):
-                modified = True
-                sheet.cell(row=1, column=idx).value = header
-
-    if modified:
-        workbook.save(FILE_PATH)
-    workbook.close()
+    ensure_workbook_exists(FILE_PATH, SHEET_NAME, HEADERS, DATA_DIR)
 
 
 def _sip_outstanding_investment(sheet, share_name: str, before_row: int | None = None) -> float:
@@ -116,9 +87,7 @@ def append_share_record(
     allotted: int,
     buy_sell: str,
 ) -> dict:
-    with _file_lock:
-        _ensure_workbook_exists()
-
+    with workbook_for_update(FILE_PATH, _file_lock, _ensure_workbook_exists) as workbook:
         entry_date = entry_date or date.today()
         timestamp = _current_timestamp()
         share_name = share_name.strip().upper()
@@ -149,7 +118,6 @@ def append_share_record(
         if per_unit_price < 0:
             raise ValueError("Per unit price cannot be negative.")
 
-        workbook = load_workbook(FILE_PATH)
         sheet = workbook[SHEET_NAME]
 
         # ASBA charge rules:
@@ -210,13 +178,12 @@ def append_share_record(
                 cumulative_profit,
                 timestamp,
                 timestamp,
-                "desktop",
+                get_device_label(),
+                new_row_id(),
+                None,
             ]
         )
-        snapshot_before_write(FILE_PATH)
-        workbook.save(FILE_PATH)
-        workbook.close()
-
+        refresh_sheet_metadata(sheet, "share", touched_row=sheet.max_row, identity_scope="share_transactions.xlsx#share")
         return {
             "id": sheet.max_row - 1,
             "date": entry_date.isoformat(),
@@ -232,7 +199,9 @@ def append_share_record(
             "timestamp": timestamp,
             "created_timestamp": timestamp,
             "last_updated_timestamp": timestamp,
-            "updated_device": "desktop",
+            "updated_device": get_device_label(),
+            "row_id": str(sheet.cell(sheet.max_row, 14).value or ""),
+            "content_hash": str(sheet.cell(sheet.max_row, 15).value or ""),
             "file": str(FILE_PATH),
         }
 
@@ -245,27 +214,29 @@ def read_share_records() -> list[dict]:
         sheet = workbook[SHEET_NAME]
 
         records: list[dict] = []
-        for row_idx, row in enumerate(sheet.iter_rows(min_row=2, values_only=True), start=2):
-            if not row or all(value is None for value in row):
-                continue
+        for row_idx, row in iter_sheet_rows_as_dicts(sheet):
+            created = row.get("created timestamp")
+            updated = row.get("last updated timestamp") or created
             records.append(
                 {
                     # Stable ID that matches the Excel row index (header excluded).
                     "id": row_idx - 1,
-                    "date": str(row[0] or ""),
-                    "share_name": str(row[1] or ""),
-                    "category": str(row[2] or ""),
-                    "per_unit_price": _to_float(row[3]),
-                    "asba_charge": _to_float(row[4]),
-                    "allotted": _to_int(row[5]),
-                    "buy_sell": str(row[6] or ""),
-                    "total_amount": _to_float(row[7]),
-                    "profit_loss": _to_float(row[8]),
-                    "cumulative_profit": _to_float(row[9]),
-                    "timestamp": str(row[11] or row[10] or "") if len(row) > 11 else str(row[10] or "") if len(row) > 10 else "",
-                    "created_timestamp": str(row[10] or "") if len(row) > 10 else "",
-                    "last_updated_timestamp": str(row[11] or row[10] or "") if len(row) > 11 else str(row[10] or "") if len(row) > 10 else "",
-                    "updated_device": str(row[12] or "legacy") if len(row) > 12 else "legacy",
+                    "date": str(row.get("date") or ""),
+                    "share_name": str(row.get("share name") or ""),
+                    "category": str(row.get("category") or ""),
+                    "per_unit_price": _to_float(row.get("per unit price")),
+                    "asba_charge": _to_float(row.get("asba charge")),
+                    "allotted": _to_int(row.get("allotted")),
+                    "buy_sell": str(row.get("buy/sell") or ""),
+                    "total_amount": _to_float(row.get("total amount")),
+                    "profit_loss": _to_float(row.get("profit/loss")),
+                    "cumulative_profit": _to_float(row.get("cumulative profit")),
+                    "timestamp": str(updated or ""),
+                    "created_timestamp": str(created or ""),
+                    "last_updated_timestamp": str(updated or ""),
+                    "updated_device": str(row.get("updated device") or "legacy"),
+                    "row_id": str(row.get("row id") or ""),
+                    "content_hash": str(row.get("content hash") or ""),
                 }
             )
 
@@ -304,14 +275,12 @@ def _recompute_sheet(sheet) -> None:
                 stored_total = float(per_unit_price) * int(allotted) if allotted > 0 else float(per_unit_price)
             total_amount = stored_total
             if normalized_buy_sell == "redeem":
-                outstanding = sip_investment_by_share.get(share_key, 0.0)
                 # Profit = Redeemed Amount - Total Invested
-                profit_loss = total_amount - outstanding
-                sip_investment_by_share[share_key] = 0.0
+                profit_loss = apply_sip_investment(sip_investment_by_share, share_key, total_amount, redeem=True)
                 per_unit_price = total_amount
                 buy_sell = "redeem"
             else:
-                sip_investment_by_share[share_key] = sip_investment_by_share.get(share_key, 0.0) + total_amount
+                apply_sip_investment(sip_investment_by_share, share_key, total_amount, redeem=False)
                 buy_sell = "installment"
             if normalized_buy_sell != "redeem" and allotted > 0:
                 per_unit_price = total_amount / int(allotted)
@@ -321,14 +290,16 @@ def _recompute_sheet(sheet) -> None:
             total_amount = (float(per_unit_price) * int(allotted)) + float(asba_charge)
 
         if category in {"ipo", "buy"} or (category == "dividend" and buy_sell == "bonus"):
-            if share_key:
-                lots_by_share.setdefault(share_key, []).append(
-                    {"qty": allotted, "price": per_unit_price if category != "dividend" else 0.0, "asba": asba_charge if category == "ipo" else 0.0}
-                )
+            add_share_lot(
+                lots_by_share,
+                share_key,
+                allotted,
+                per_unit_price if category != "dividend" else 0.0,
+                asba_charge if category == "ipo" else 0.0,
+            )
         elif category == "sell":
-            lots = lots_by_share.get(share_key, [])
             if allotted > 0:
-                cost_basis = _consume_lots(lots, allotted)
+                cost_basis = consume_share_lots(lots_by_share, share_key, allotted)
                 profit_loss = total_amount - cost_basis
 
         cumulative_profit += profit_loss
@@ -343,10 +314,7 @@ def _recompute_sheet(sheet) -> None:
 
 
 def update_share_allotment(share_name: str, allotted: int) -> dict:
-    with _file_lock:
-        _ensure_workbook_exists()
-
-        workbook = load_workbook(FILE_PATH)
+    with workbook_for_update(FILE_PATH, _file_lock, _ensure_workbook_exists) as workbook:
         sheet = workbook[SHEET_NAME]
 
         target = share_name.strip().lower()
@@ -377,12 +345,9 @@ def update_share_allotment(share_name: str, allotted: int) -> dict:
         if not sheet.cell(row=target_row, column=11).value:
             sheet.cell(row=target_row, column=11).value = timestamp
         sheet.cell(row=target_row, column=12).value = timestamp
-        sheet.cell(row=target_row, column=13).value = "desktop"
+        sheet.cell(row=target_row, column=13).value = get_device_label()
         _recompute_sheet(sheet)
-        snapshot_before_write(FILE_PATH)
-        workbook.save(FILE_PATH)
-        workbook.close()
-
+        refresh_sheet_metadata(sheet, "share", touched_row=target_row, identity_scope="share_transactions.xlsx#share")
         return {
             "record_id": int(target_row - 1),
             "date": updated_date,
@@ -392,15 +357,13 @@ def update_share_allotment(share_name: str, allotted: int) -> dict:
             "timestamp": timestamp,
             "created_timestamp": str(sheet.cell(row=target_row, column=11).value or timestamp),
             "last_updated_timestamp": timestamp,
-            "updated_device": "desktop",
+            "updated_device": get_device_label(),
+            "row_id": str(sheet.cell(target_row, 14).value or ""),
         }
 
 
 def update_sip_allotment(share_name: str, allotted: int) -> dict:
-    with _file_lock:
-        _ensure_workbook_exists()
-
-        workbook = load_workbook(FILE_PATH)
+    with workbook_for_update(FILE_PATH, _file_lock, _ensure_workbook_exists) as workbook:
         sheet = workbook[SHEET_NAME]
 
         target = share_name.strip().lower()
@@ -433,13 +396,10 @@ def update_sip_allotment(share_name: str, allotted: int) -> dict:
         if not sheet.cell(row=target_row, column=11).value:
             sheet.cell(row=target_row, column=11).value = timestamp
         sheet.cell(row=target_row, column=12).value = timestamp
-        sheet.cell(row=target_row, column=13).value = "desktop"
+        sheet.cell(row=target_row, column=13).value = get_device_label()
         _recompute_sheet(sheet)
+        refresh_sheet_metadata(sheet, "share", touched_row=target_row, identity_scope="share_transactions.xlsx#share")
         average_price = _to_float(sheet.cell(row=target_row, column=4).value)
-        snapshot_before_write(FILE_PATH)
-        workbook.save(FILE_PATH)
-        workbook.close()
-
         return {
             "record_id": int(target_row - 1),
             "date": updated_date,
@@ -451,7 +411,8 @@ def update_sip_allotment(share_name: str, allotted: int) -> dict:
             "timestamp": timestamp,
             "created_timestamp": str(sheet.cell(row=target_row, column=11).value or timestamp),
             "last_updated_timestamp": timestamp,
-            "updated_device": "desktop",
+            "updated_device": get_device_label(),
+            "row_id": str(sheet.cell(target_row, 14).value or ""),
         }
 
 
@@ -460,25 +421,21 @@ def delete_share_record(record_id: int) -> dict:
     Delete a record by its 1-based index in the data list (header excluded),
     then recompute ASBA/total/profit/cumulative so the Excel stays consistent.
     """
-    with _file_lock:
-        _ensure_workbook_exists()
-
+    with workbook_for_update(FILE_PATH, _file_lock, _ensure_workbook_exists) as workbook:
         if record_id <= 0:
             raise ValueError("record_id must be a positive integer.")
 
-        workbook = load_workbook(FILE_PATH)
         sheet = workbook[SHEET_NAME]
 
         excel_row = record_id + 1  # +1 for header row
         if excel_row < 2 or excel_row > sheet.max_row:
             raise ValueError("record_id is out of range.")
 
+        row_id = str(sheet.cell(excel_row, 14).value or "")
+        append_tombstone(workbook, row_id)
         sheet.delete_rows(excel_row, 1)
         _recompute_sheet(sheet)
-        snapshot_before_write(FILE_PATH)
-        workbook.save(FILE_PATH)
-        workbook.close()
-
+        refresh_sheet_metadata(sheet, "share", identity_scope="share_transactions.xlsx#share")
         return {"deleted_id": int(record_id)}
 
 
@@ -496,9 +453,7 @@ def update_share_record(
 
     Note: recomputation keeps Excel consistent after edits.
     """
-    with _file_lock:
-        _ensure_workbook_exists()
-
+    with workbook_for_update(FILE_PATH, _file_lock, _ensure_workbook_exists) as workbook:
         if record_id <= 0:
             raise ValueError("record_id must be a positive integer.")
 
@@ -539,7 +494,6 @@ def update_share_record(
         except (InvalidOperation, TypeError, ValueError) as exc:
             raise ValueError("Per unit price must be a valid number.") from exc
 
-        workbook = load_workbook(FILE_PATH)
         sheet = workbook[SHEET_NAME]
 
         excel_row = record_id + 1  # +1 for header row
@@ -559,13 +513,10 @@ def update_share_record(
         if not sheet.cell(row=excel_row, column=11).value:
             sheet.cell(row=excel_row, column=11).value = timestamp
         sheet.cell(row=excel_row, column=12).value = timestamp
-        sheet.cell(row=excel_row, column=13).value = "desktop"
+        sheet.cell(row=excel_row, column=13).value = get_device_label()
 
         _recompute_sheet(sheet)
-        snapshot_before_write(FILE_PATH)
-        workbook.save(FILE_PATH)
-        workbook.close()
-
+        refresh_sheet_metadata(sheet, "share", touched_row=excel_row, identity_scope="share_transactions.xlsx#share")
         return {
             "updated_id": int(record_id),
             "date": entry_date.isoformat(),
@@ -577,6 +528,7 @@ def update_share_record(
             "timestamp": timestamp,
             "created_timestamp": str(sheet.cell(row=excel_row, column=11).value or timestamp),
             "last_updated_timestamp": timestamp,
-            "updated_device": "desktop",
+            "updated_device": get_device_label(),
+            "row_id": str(sheet.cell(excel_row, 14).value or ""),
             "file": str(FILE_PATH),
         }

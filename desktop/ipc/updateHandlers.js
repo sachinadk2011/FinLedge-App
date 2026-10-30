@@ -1,10 +1,28 @@
 "use strict";
 
 function getSafeReleaseUrl(candidate, releasesUrl) {
-  const url = String(candidate || "").trim();
-  return url.startsWith("https://github.com/sachinadk2011/FinLedge-App/releases")
-    ? url
-    : releasesUrl;
+  try {
+    const base = new URL(String(releasesUrl || ""));
+    if (base.protocol !== "https:" || !base.hostname || base.username || base.password) return "";
+    const candidateUrl = new URL(String(candidate || ""));
+    const basePath = base.pathname.replace(/\/+$/, "");
+    if (
+      base.protocol === "https:" && candidateUrl.protocol === "https:"
+      && !candidateUrl.username && !candidateUrl.password
+      && candidateUrl.origin === base.origin
+      && (candidateUrl.pathname === basePath || candidateUrl.pathname.startsWith(`${basePath}/`))
+    ) return candidateUrl.href;
+  } catch {
+    // Invalid configured or policy URLs fall back to the configured release page.
+  }
+  try {
+    const base = new URL(String(releasesUrl || ""));
+    return base.protocol === "https:" && base.hostname && !base.username && !base.password
+      ? base.href
+      : "";
+  } catch {
+    return "";
+  }
 }
 
 function registerUpdateHandlers({

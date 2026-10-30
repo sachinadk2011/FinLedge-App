@@ -3,7 +3,7 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 
 import { deletePersonalFinanceRecord, getPersonalFinanceData } from "../api/personalFinanceApi";
 import BarChart from "../components/BarChart";
-import ConfirmDialog from "../components/ConfirmDialog";
+import DeleteConfirmationDialog from "../components/DeleteConfirmationDialog";
 import InteractiveTimelineChart from "../components/InteractiveTimelineChart";
 import StatGrid from "../components/StatGrid";
 import StatusNotice from "../components/StatusNotice";
@@ -11,10 +11,14 @@ import TransactionsTable from "../components/TransactionsTable";
 import DashboardPeriodFilter from "../components/DashboardPeriodFilter";
 import TransactionFilters from "../components/TransactionFilters";
 import useDashboardPeriod from "../hooks/useDashboardPeriod";
+import useDeleteConfirmation from "../hooks/useDeleteConfirmation";
 
 import { formatCurrency } from "../utils/format";
 import { parseDate, isoDayKey, isoMonthKey } from "../utils/date";
 import { buildDashboardBuckets } from "../utils/dashboardPeriod";
+import { addTransferReceivers, getDirectionLabel, getSourceLabel } from "../utils/personalFinance";
+import { summarizePersonalFlowRecords } from "../utils/summaries";
+import { sortHistoryNewestFirst } from "../utils/history";
 
 const formatter = {
   format: (val) => formatCurrency(val)
@@ -56,74 +60,13 @@ function buildFlowOverview(records, flowType, buckets, monthly) {
   return Array.from(byKey.values());
 }
 
-function summarizeFlowRecords(records) {
-  const flow = () => ({ income: 0, expenses: 0, transfer_in: 0, transfer_out: 0, total_income: 0, total_expenses: 0, net: 0, income_breakdown: {}, expense_breakdown: {} });
-  const result = { bank: flow(), cash: flow(), combined: { overall_income: 0, overall_expenses: 0, overall_net: 0 } };
-  records.forEach((record) => {
-    const current = result[record.flow_type];
-    if (!current) return;
-    const amount = Number(record.amount || 0);
-    if (record.source === "transfer") {
-      const signed = Number(record.signed_amount || 0);
-      if (signed < 0) current.transfer_out += Math.abs(signed);
-      else current.transfer_in += signed;
-      current.total_income += signed;
-    } else if (record.direction === "income") {
-      current.income += amount;
-      current.income_breakdown[record.category] = (current.income_breakdown[record.category] || 0) + amount;
-    } else {
-      current.expenses += amount;
-      current.expense_breakdown[record.category] = (current.expense_breakdown[record.category] || 0) + amount;
-    }
-  });
-  ["bank", "cash"].forEach((name) => {
-    const current = result[name];
-    current.total_income += current.income;
-    current.total_expenses = current.expenses;
-    current.net = current.total_income - current.total_expenses;
-  });
-  result.combined.overall_income = result.bank.income + result.cash.income;
-  result.combined.overall_expenses = result.bank.expenses + result.cash.expenses;
-  result.combined.overall_net = result.combined.overall_income - result.combined.overall_expenses;
-  return result;
-}
-
-function addTransferReceivers(records) {
-  const receiverRecords = records.flatMap((record) => {
-    if (record.source !== "transfer") return [];
-    const receiverFlow = record.transfer_direction === "bank_to_cash"
-      ? "cash"
-      : record.transfer_direction === "cash_to_bank" ? "bank" : null;
-    if (!receiverFlow) return [];
-    return [{
-      ...record,
-      flow_type: receiverFlow,
-      signed_amount: Math.abs(Number(record.amount || 0)),
-      description: record.transfer_direction === "bank_to_cash" ? "Received from Bank" : "Received from Cash",
-    }];
-  });
-  return [...records, ...receiverRecords];
-}
-
-function getSourceLabel(source) {
-  if (source === "transfer") return "Transfer";
-  return "Manual";
-}
-
-function getDirectionLabel(record) {
-  if (record.source === "transfer") return "Transfer";
-  return record.direction === "income" ? "Income" : "Expense";
-}
-
 function FlowDashboard({ title, netLabel, summary, records, flowType, navigate, deletingId, setPendingDeleteRow, bounds, range, search, onSearchChange, category, onCategoryChange }) {
   const monthly = range === "year" || range === "all_time" || (range === "custom" && bounds && (bounds.end - bounds.start) / 86400000 > 60);
   const buckets = useMemo(() => buildDashboardBuckets(records, bounds, { monthly }), [records, bounds, monthly]);
   const overview = useMemo(() => buildFlowOverview(records, flowType, buckets, monthly), [records, flowType, buckets, monthly]);
   const flowRows = useMemo(
     () =>
-      records
-        .filter((record) => record.flow_type === flowType)
-        .reverse()
+      sortHistoryNewestFirst(records.filter((record) => record.flow_type === flowType))
         .map((record) => ({
           id: record.id,
           display_id: record.display_id || `${flowType === "cash" ? "C" : "B"}-${record.id}`,
@@ -251,11 +194,10 @@ function PersonalFinanceDashboard() {
   const [error, setError] = useState("");
   const [warning, setWarning] = useState("");
   const [loading, setLoading] = useState(true);
-  const [deletingId, setDeletingId] = useState(null);
-  const [pendingDeleteRow, setPendingDeleteRow] = useState(null);
+  const { deletingId, pendingDeleteRow, setPendingDeleteRow, runDelete } = useDeleteConfirmation();
   const [tableSearch, setTableSearch] = useState("");
   const [tableCategory, setTableCategory] = useState("all");
-  const period = useDashboardPeriod("week", { importTypes: ["pf-bank", "pf-cash", "pf-transfer"] });
+  const period = useDashboardPeriod("week");
 
   useEffect(() => {
     setActiveView(initialView);
@@ -276,24 +218,23 @@ function PersonalFinanceDashboard() {
 
   async function handleDelete(row) {
     if (!row) return;
-    setDeletingId(row.id);
     setError("");
-    try {
-      await deletePersonalFinanceRecord(row.id, row.raw?.flow_type || "bank");
-      setPendingDeleteRow(null);
-      loadData(true);
-    } catch (err) {
-      setError(err.message || "Unable to delete record.");
-    } finally {
-      setDeletingId(null);
-    }
+    await runDelete(row.id, async () => {
+      try {
+        await deletePersonalFinanceRecord(row.id, row.raw?.flow_type || "bank");
+        setPendingDeleteRow(null);
+        loadData(true);
+      } catch (err) {
+        setError(err.message || "Unable to delete record.");
+      }
+    });
   }
 
   const records = data?.records || [];
   const periodRecords = useMemo(() => period.filterRecords(records), [records, period.bounds]);
   const periodBounds = useMemo(() => period.boundsForRecords(records), [records, period.range, period.bounds]);
   const flowRecords = useMemo(() => addTransferReceivers(periodRecords), [periodRecords]);
-  const summary = useMemo(() => summarizeFlowRecords(flowRecords), [flowRecords]);
+  const summary = useMemo(() => summarizePersonalFlowRecords(flowRecords), [flowRecords]);
   const combinedStats = [
     { label: "Overall income", value: formatter.format(summary.combined?.overall_income || 0) },
     { label: "Overall expenses", value: formatter.format(summary.combined?.overall_expenses || 0) },
@@ -316,8 +257,7 @@ function PersonalFinanceDashboard() {
   const periodBuckets = useMemo(() => buildDashboardBuckets(periodRecords, periodBounds, { monthly: isMonthly }), [periodRecords, periodBounds, isMonthly]);
   const combinedOverview = useMemo(() => buildFlowOverview(periodRecords, "combined", periodBuckets, isMonthly), [periodRecords, periodBuckets, isMonthly]);
 
-  const recentRows = [...periodRecords]
-    .reverse()
+  const recentRows = sortHistoryNewestFirst(periodRecords)
     .map((record) => ({
       id: record.id,
       display_id: record.display_id || `${record.flow_type === "cash" ? "C" : "B"}-${record.id}`,
@@ -378,6 +318,7 @@ function PersonalFinanceDashboard() {
       <DashboardPeriodFilter {...period} />
 
       {loading ? <p>Loading Personal Expenses dashboard...</p> : null}
+      <StatusNotice message={period.importNotice} kind="success" />
       <StatusNotice message={error} onDismiss={() => setError("")} />
       <StatusNotice message={warning} kind="warning" onDismiss={() => setWarning("")} />
 
@@ -491,15 +432,14 @@ function PersonalFinanceDashboard() {
         </>
       ) : null}
 
-      <ConfirmDialog
-        open={Boolean(pendingDeleteRow)}
+      <DeleteConfirmationDialog
+        record={pendingDeleteRow}
         title="Delete personal finance entry?"
         message={
           pendingDeleteRow
             ? `This will remove the ${pendingDeleteRow.category} entry from ${pendingDeleteRow.date}.`
             : ""
         }
-        confirming={deletingId === pendingDeleteRow?.id}
         onCancel={() => setPendingDeleteRow(null)}
         onConfirm={() => handleDelete(pendingDeleteRow)}
       />

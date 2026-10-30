@@ -38,7 +38,7 @@ def _ensure_min_records() -> tuple[list[dict], list[dict]]:
     return bank_records, share_records
 
 
-@router.get("/graphs/monthly-bank")
+@router.get("/graphs/monthly-bank", deprecated=True)
 def monthly_bank_graph():
     try:
         bank_records, _share_records = _ensure_min_records()
@@ -49,7 +49,7 @@ def monthly_bank_graph():
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
-@router.get("/graphs/yearly-bank")
+@router.get("/graphs/yearly-bank", deprecated=True)
 def yearly_bank_graph():
     try:
         bank_records, _share_records = _ensure_min_records()
@@ -60,7 +60,7 @@ def yearly_bank_graph():
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
-@router.get("/graphs/monthly-share")
+@router.get("/graphs/monthly-share", deprecated=True)
 def monthly_share_graph():
     try:
         _bank_records, share_records = _ensure_min_records()
@@ -71,7 +71,7 @@ def monthly_share_graph():
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
-@router.get("/graphs/yearly-share")
+@router.get("/graphs/yearly-share", deprecated=True)
 def yearly_share_graph():
     try:
         _bank_records, share_records = _ensure_min_records()
@@ -82,7 +82,7 @@ def yearly_share_graph():
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
-@router.get("/graphs/monthly")
+@router.get("/graphs/monthly", deprecated=True)
 def monthly_overview_graph():
     try:
         bank_records, share_records = _ensure_min_records()
@@ -93,7 +93,7 @@ def monthly_overview_graph():
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
-@router.get("/graphs/yearly")
+@router.get("/graphs/yearly", deprecated=True)
 def yearly_overview_graph():
     try:
         bank_records, share_records = _ensure_min_records()
@@ -104,7 +104,7 @@ def yearly_overview_graph():
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
-@router.get("/graphs/combined")
+@router.get("/graphs/combined", deprecated=True)
 def combined_graph():
     try:
         bank_records, share_records = _ensure_min_records()

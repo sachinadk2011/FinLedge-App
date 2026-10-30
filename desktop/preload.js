@@ -1,7 +1,35 @@
 const { contextBridge, ipcRenderer } = require("electron");
 
 const backendHost = String(process.env.FINLEDGE_BACKEND_HOST || "127.0.0.1").trim() || "127.0.0.1";
-const backendPort = String(process.env.FINLEDGE_BACKEND_PORT || "8000").trim() || "8000";
+let resolvedBackendPort = null;
+let backendPortResolution = null;
+
+if (typeof ipcRenderer.on === "function") {
+  ipcRenderer.on("app:backend-port-changed", (_event, port) => {
+    const updatedPort = String(port || "").trim();
+    if (!updatedPort) return;
+    resolvedBackendPort = updatedPort;
+    backendPortResolution = Promise.resolve(updatedPort);
+  });
+}
+
+async function getBackendBaseUrl() {
+  if (resolvedBackendPort === null) {
+    if (!backendPortResolution) {
+      backendPortResolution = ipcRenderer.invoke("app:get-backend-port")
+        .then((port) => {
+          resolvedBackendPort = String(port || process.env.FINLEDGE_BACKEND_PORT || "8000").trim() || "8000";
+          return resolvedBackendPort;
+        })
+        .catch(() => {
+          resolvedBackendPort = String(process.env.FINLEDGE_BACKEND_PORT || "8000").trim() || "8000";
+          return resolvedBackendPort;
+        });
+    }
+    await backendPortResolution;
+  }
+  return `http://${backendHost}:${resolvedBackendPort}`;
+}
 
 contextBridge.exposeInMainWorld("financialTracker", {
   updatesManagedByWindows: Boolean(process.windowsStore),
@@ -37,5 +65,6 @@ contextBridge.exposeInMainWorld("financialTracker", {
     ipcRenderer.on("app:update-status", listener);
     return () => ipcRenderer.removeListener("app:update-status", listener);
   },
-  getBackendBaseUrl: () => `http://${backendHost}:${backendPort}`,
+  getBackendBaseUrl,
+  reportStartupFirstPaint: () => ipcRenderer.send("app:startup-first-paint"),
 });

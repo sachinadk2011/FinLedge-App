@@ -5,14 +5,15 @@ const path = require("path");
 const { ensureWritableDirectory } = require("../services/dataDirectory");
 const { resolveAppxExternalPath } = require("../services/appxPaths");
 
-function getFileLocations(dataDir, backupDir = path.join(dataDir, "backups")) {
+function getFileLocations(dataDir, backupDir = path.join(dataDir, "backups"), resolvePath = (value) => value) {
   return {
-    dataDir,
-    backupDir: path.join(backupDir, "auto"),
-    bankFile: path.join(dataDir, "bank_transactions.xlsx"),
-    shareFile: path.join(dataDir, "share_transactions.xlsx"),
-    personalFinanceBankFile: path.join(dataDir, "personal_finance_bank_flow.xlsx"),
-    personalFinanceCashFile: path.join(dataDir, "personal_finance_cash_flow.xlsx"),
+    dataDir: resolvePath(dataDir),
+    backupDir: resolvePath(path.join(backupDir, "auto")),
+    bankFile: resolvePath(path.join(dataDir, "bank_transactions.xlsx")),
+    shareFile: resolvePath(path.join(dataDir, "share_transactions.xlsx")),
+    personalFinanceBankFile: resolvePath(path.join(dataDir, "personal_finance_bank_flow.xlsx")),
+    personalFinanceCashFile: resolvePath(path.join(dataDir, "personal_finance_cash_flow.xlsx")),
+    personalFinanceTransferFile: resolvePath(path.join(dataDir, "personal_finance_transfer.xlsx")),
   };
 }
 
@@ -22,19 +23,46 @@ function registerDataHandlers({
   dialog,
   shell,
   dataRuntime,
-  appxPackageFamilyName,
-  isAppxPackage,
   processManager,
   getMainWindow,
   logLine,
+  isAppxPackage = false,
+  appxPackageFamilyName = "",
+  localAppDataPath = process.env.LOCALAPPDATA || "",
 }) {
-  ipcMain.handle("app:get-data-locations", async () => ({
-    ...getFileLocations(dataRuntime.getRuntimeDataDir(), dataRuntime.getBackupDirectory()),
-    buildType: dataRuntime.getBuildTypeLabel(),
-    dataDirError: dataRuntime.getDataDirError(),
-    canChooseDataFolder: dataRuntime.getCanChooseDataFolder(),
-    dataSetupStatus: dataRuntime.getDataSetupStatus(),
-  }));
+  const resolveExternalPath = (targetPath) => isAppxPackage
+    ? resolveAppxExternalPath({
+      targetPath,
+      packageFamilyName: appxPackageFamilyName,
+      userDataPath: app.getPath("userData"),
+      appDataPath: app.getPath("appData"),
+      localAppDataPath,
+    })
+    : targetPath;
+  const getRuntimeFileLocations = () => getFileLocations(
+    dataRuntime.getRuntimeDataDir(),
+    dataRuntime.getBackupDirectory(),
+    resolveExternalPath,
+  );
+
+  ipcMain.handle("app:get-data-locations", async () => {
+    const locations = getRuntimeFileLocations();
+    logLine("[main] Settings data locations", {
+      dataDir: locations.dataDir,
+      bankFile: locations.bankFile,
+      shareFile: locations.shareFile,
+      personalFinanceBankFile: locations.personalFinanceBankFile,
+      personalFinanceCashFile: locations.personalFinanceCashFile,
+      personalFinanceTransferFile: locations.personalFinanceTransferFile,
+    });
+    return {
+      ...locations,
+      buildType: dataRuntime.getBuildTypeLabel(),
+      dataDirError: dataRuntime.getDataDirError(),
+      canChooseDataFolder: dataRuntime.getCanChooseDataFolder(),
+      dataSetupStatus: dataRuntime.getDataSetupStatus(),
+    };
+  });
 
   ipcMain.handle("app:choose-data-folder", async () => {
     const { canceled, filePaths } = await dialog.showOpenDialog(getMainWindow(), {
@@ -59,7 +87,7 @@ function registerDataHandlers({
       return {
         ok: true,
         locations: {
-          ...getFileLocations(selected, dataRuntime.getBackupDirectory()),
+          ...getFileLocations(selected, dataRuntime.getBackupDirectory(), resolveExternalPath),
           buildType: dataRuntime.getBuildTypeLabel(),
           dataSetupStatus: dataRuntime.getDataSetupStatus(),
           dataDirError: dataRuntime.getDataDirError(),
@@ -70,37 +98,29 @@ function registerDataHandlers({
     } catch (error) {
       await processManager.stopBackend();
       dataRuntime.releaseLock();
-      dataRuntime.setDataDirError(error.message || "Could not use that folder. Choose a folder you can write to.", { canChooseDataFolder: true });
+      dataRuntime.setDataDirError("Could not use that folder. Choose a folder you can write to.", { canChooseDataFolder: true });
       return { ok: false, reason: dataRuntime.getDataDirError() };
     }
   });
 
   ipcMain.handle("app:open-data-location", async (_event, target = "folder") => {
-    const dataDir = dataRuntime.getRuntimeDataDir();
-    const backupDir = dataRuntime.getBackupDirectory();
+    const locations = getRuntimeFileLocations();
     const targetMap = {
-      folder: dataDir,
-      backups: path.join(backupDir, "auto"),
-      bank: path.join(dataDir, "bank_transactions.xlsx"),
-      share: path.join(dataDir, "share_transactions.xlsx"),
-      "pf-bank": path.join(dataDir, "personal_finance_bank_flow.xlsx"),
-      "pf-cash": path.join(dataDir, "personal_finance_cash_flow.xlsx"),
+      folder: locations.dataDir,
+      backups: locations.backupDir,
+      bank: locations.bankFile,
+      share: locations.shareFile,
+      "pf-bank": locations.personalFinanceBankFile,
+      "pf-cash": locations.personalFinanceCashFile,
+      "pf-transfer": locations.personalFinanceTransferFile,
     };
-    const requestedPath = targetMap[String(target)] || dataDir;
+    const requestedPath = targetMap[String(target)] || locations.dataDir;
 
     try {
-      fs.mkdirSync(dataDir, { recursive: true });
+      fs.mkdirSync(locations.dataDir, { recursive: true });
       if (String(target) === "backups") fs.mkdirSync(requestedPath, { recursive: true });
-      const pathToOpen = fs.existsSync(requestedPath) ? requestedPath : dataDir;
-      const shellPath = isAppxPackage
-        ? resolveAppxExternalPath({
-            targetPath: pathToOpen,
-            packageFamilyName: appxPackageFamilyName,
-            userDataPath: app.getPath("userData"),
-            appDataPath: app.getPath("appData"),
-            localAppDataPath: path.resolve(app.getPath("appData"), "..", "Local"),
-          })
-        : pathToOpen;
+      const shellPath = fs.existsSync(requestedPath) ? requestedPath : locations.dataDir;
+      logLine("[main] opening data location", { target: String(target), path: shellPath });
       const openError = await shell.openPath(shellPath);
       if (openError) {
         logLine("[main] open data location returned an error", { path: shellPath, error: openError });

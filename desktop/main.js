@@ -4,15 +4,19 @@ const { app, BrowserWindow, Menu, ipcMain, screen, shell, dialog } = require("el
 const path = require("path");
 const fs = require("fs");
 const { getAppxPackageIdentity } = require("./services/appxPaths");
+const { acquireClientInstanceLock } = require("./services/clientInstanceLock");
 const { createRendererPromptManager } = require("./services/rendererPromptManager");
 const { createTestUpdatePolicy } = require("./services/testUpdatePolicy");
 
 const PROJECT_ROOT = path.resolve(__dirname, "..");
 const ICON_PATH = path.join(__dirname, "assets", "finledge_icon.png");
 const WINDOW_ICON_PATH = path.join(__dirname, "assets", "finledge_icon.ico");
-const GITHUB_RELEASES_URL = "https://github.com/sachinadk2011/FinLedge-App/releases";
 const BACKEND_READY_TIMEOUT_MS = 60_000;
 const { LOG_FILE, logLine } = require("./services/logger");
+const startupStartedAt = Date.now();
+function logStartupPhase(phase, details = {}) {
+  logLine("[startup]", { phase, elapsedMs: Date.now() - startupStartedAt, ...details });
+}
 const { loadRuntimeConfig } = require("./services/runtimeConfig");
 const { findAvailablePort } = require("./services/runtimeConfig");
 const runtimeConfig = loadRuntimeConfig({
@@ -32,6 +36,7 @@ const {
   updatePolicyUrl: UPDATE_POLICY_URL,
   testUpdatePolicyDirectory: TEST_UPDATE_POLICY_DIRECTORY,
   simulateUpdateValue: SIMULATE_UPDATE_VALUE,
+  releasesUrl: RELEASES_URL,
 } = runtimeConfig;
 let BACKEND_PORT = runtimeConfig.backendPort;
 let FRONTEND_PORT = runtimeConfig.frontendPort;
@@ -46,17 +51,7 @@ const APPLICATION_NAME = IS_TESTING_BUILD
     ? "Finledge Development"
     : "Finledge";
 app.setName(APPLICATION_NAME);
-const HAS_SINGLE_INSTANCE_LOCK = app.requestSingleInstanceLock();
-if (!HAS_SINGLE_INSTANCE_LOCK) {
-  logLine("[main] another FinLedge instance is already starting or running");
-}
-const testUpdatePolicy = createTestUpdatePolicy({
-  app,
-  isTestingBuild: IS_TESTING_BUILD,
-  preferredDirectory: TEST_UPDATE_POLICY_DIRECTORY,
-});
 const IS_STORE_PACKAGE = Boolean(process.windowsStore && IS_STORE_DISTRIBUTION && !IS_TESTING_BUILD);
-process.env.FINLEDGE_STORE_DISTRIBUTION = IS_STORE_PACKAGE ? "1" : "0";
 const IS_APPX_PACKAGE = Boolean(process.windowsStore && app.isPackaged);
 const APPX_PACKAGE_IDENTITY = IS_APPX_PACKAGE
   ? getAppxPackageIdentity(process.execPath, APPX_APPLICATION_ID)
@@ -64,7 +59,31 @@ const APPX_PACKAGE_IDENTITY = IS_APPX_PACKAGE
 const APP_USER_MODEL_ID = IS_APPX_PACKAGE
   ? APPX_PACKAGE_IDENTITY?.applicationUserModelId
   : IS_TESTING_BUILD ? "com.finledge.tracker.testing" : "com.finledge.tracker";
+// Keep Windows shell identity specific to this client before app readiness.
 if (APP_USER_MODEL_ID && process.platform === "win32") app.setAppUserModelId(APP_USER_MODEL_ID);
+const clientInstanceLock = acquireClientInstanceLock({
+  directory: app.getPath("userData"),
+  pid: process.pid,
+});
+const HAS_SINGLE_INSTANCE_LOCK = clientInstanceLock.acquired;
+if (!HAS_SINGLE_INSTANCE_LOCK) {
+  logLine("[main] this FinLedge client is already starting or running", {
+    userData: app.getPath("userData"),
+  });
+}
+const testUpdatePolicy = createTestUpdatePolicy({
+  app,
+  isTestingBuild: IS_TESTING_BUILD,
+  preferredDirectory: TEST_UPDATE_POLICY_DIRECTORY,
+});
+process.env.FINLEDGE_STORE_DISTRIBUTION = IS_STORE_PACKAGE ? "1" : "0";
+process.env.FINLEDGE_DEVICE_ID = IS_TESTING_BUILD
+  ? "desktop-test"
+  : IS_ELECTRON_DEV
+    ? "desktop-dev"
+    : IS_APPX_PACKAGE
+      ? "desktop-appx"
+      : "desktop-exe";
 const APPX_PACKAGE_VERSION = runtimeConfig.appxBuildNumber
   ? `${app.getVersion()}.${runtimeConfig.appxBuildNumber}`
   : app.getVersion();
@@ -89,6 +108,7 @@ process.on("unhandledRejection", (reason) => {
 });
 
 logLine("[main] Finledge Electron starting...", { logFile: LOG_FILE });
+logStartupPhase("launch");
 
 const dataRuntime = createDataDirectoryRuntime({
   app,
@@ -97,9 +117,11 @@ const dataRuntime = createDataDirectoryRuntime({
   isTestingBuild: IS_TESTING_BUILD,
   testBuildType: TEST_BUILD_TYPE,
   isStoreDistribution: IS_STORE_DISTRIBUTION,
+  isAppxPackage: IS_APPX_PACKAGE,
+  appxPackageFamilyName: APPX_PACKAGE_IDENTITY?.packageFamilyName,
+  localAppDataPath: process.env.LOCALAPPDATA || path.resolve(app.getPath("appData"), "..", "Local"),
   backendHost: BACKEND_HOST,
   backendPort: BACKEND_PORT,
-  getPythonExecutable: () => runtimeConfig.pythonExecutable,
   logLine,
 });
 const processManager = createChildProcessManager({
@@ -147,15 +169,7 @@ const windowManager = createWindowManager({
       .catch((error) => logLine("[shortcut] AppX first-run prompt skipped", String(error?.stack || error)));
   },
 });
-if (HAS_SINGLE_INSTANCE_LOCK) {
-  app.on("second-instance", () => {
-    const window = windowManager.getMainWindow();
-    if (!window) return;
-    if (window.isMinimized()) window.restore();
-    window.show();
-    window.focus();
-  });
-}
+app.on("will-quit", () => clientInstanceLock.release());
 const rendererPromptManager = createRendererPromptManager({
   ipcMain,
   getMainWindow: windowManager.getMainWindow,
@@ -174,7 +188,7 @@ const updateService = createUpdatePolicyService({
   https: require("https"),
   updatePolicyUrl: UPDATE_POLICY_URL,
   localPolicyPath: testUpdatePolicy?.policyPath,
-  releasesUrl: GITHUB_RELEASES_URL,
+  releasesUrl: RELEASES_URL,
   compareVersions,
   normalizeReleaseNotes,
   getMainWindow: windowManager.getMainWindow,
@@ -201,6 +215,7 @@ const {
 const {
   createWindow,
   navigateToFrontend,
+  notifyBackendReady,
   getMainWindow,
 } = windowManager;
 const {
@@ -215,11 +230,19 @@ registerDataHandlers({
   dialog,
   shell,
   dataRuntime,
-  appxPackageFamilyName: APPX_PACKAGE_IDENTITY?.packageFamilyName,
-  isAppxPackage: IS_APPX_PACKAGE,
   processManager,
   getMainWindow,
   logLine,
+  isAppxPackage: IS_APPX_PACKAGE,
+  appxPackageFamilyName: APPX_PACKAGE_IDENTITY?.packageFamilyName,
+  localAppDataPath: process.env.LOCALAPPDATA || path.resolve(app.getPath("appData"), "..", "Local"),
+});
+ipcMain.handle("app:get-backend-port", () => String(BACKEND_PORT));
+let firstPaintLogged = false;
+ipcMain.on("app:startup-first-paint", () => {
+  if (firstPaintLogged) return;
+  firstPaintLogged = true;
+  logStartupPhase("first paint");
 });
 registerUpdateHandlers({
   ipcMain,
@@ -227,7 +250,7 @@ registerUpdateHandlers({
   shell,
   getMainWindow,
   updateService,
-  releasesUrl: GITHUB_RELEASES_URL,
+  releasesUrl: RELEASES_URL,
   isDevelopment: IS_ELECTRON_DEV || IS_TESTING_BUILD || IS_STORE_PACKAGE,
   isTestingBuild: IS_TESTING_BUILD,
   testUpdatePolicyDirectory: testUpdatePolicy?.directory,
@@ -241,6 +264,30 @@ Menu.setApplicationMenu(null);
 
 let startupUpdateTimer = null;
 let periodicUpdateTimer = null;
+
+async function startDevelopmentFrontend(hasBuiltFrontend) {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    FRONTEND_PORT = await findAvailablePort(FRONTEND_HOST);
+    process.env.FINLEDGE_FRONTEND_PORT = String(FRONTEND_PORT);
+    setProcessFrontendPort(FRONTEND_PORT);
+    startFrontendDevServer();
+    try {
+      const url = await waitForAnyLocalPortOk([FRONTEND_PORT], 8_000);
+      setDevFrontendUrl(url);
+      logLine("[main] owned Vite server ready", url);
+      navigateToFrontend(url);
+      return true;
+    } catch (error) {
+      logLine("[main] retrying unavailable Vite port", String(error?.message || error));
+      await stopFrontendDevServer();
+    }
+  }
+  if (hasBuiltFrontend) {
+    navigateToFrontend(getFrontendUrl());
+    return true;
+  }
+  return false;
+}
 
 app.whenReady().then(async () => {
   if (!HAS_SINGLE_INSTANCE_LOCK) {
@@ -267,6 +314,19 @@ app.whenReady().then(async () => {
         app.quit();
         return;
       }
+      if (error.code === "FINLEDGE_SHARED_STORAGE_UNAVAILABLE") {
+        logLine("[main] shared recovery storage is unavailable", String(error?.stack || error));
+        await dialog.showMessageBox({
+          type: "error",
+          title: "FinLedge could not access its shared folder",
+          message: "FinLedge could not create its shared recovery folders.",
+          detail: "FinLedge needs write access to its shared folder to keep recovery copies. Check that the shared folder is available and writable, then reopen FinLedge.",
+          buttons: ["Close"],
+          noLink: true,
+        });
+        app.quit();
+        return;
+      }
       const canChooseDataFolder = dataRuntime.getCanChooseDataFolder();
       const userMessage = canChooseDataFolder
         ? "FinLedge cannot access this data folder."
@@ -285,24 +345,53 @@ app.whenReady().then(async () => {
       });
     }
 
+    const hasBuiltFrontend = fs.existsSync(processManager.getFrontendIndexPath());
+    logLine("[main] frontend built?", hasBuiltFrontend);
+
+    if (!dataRuntime.getDataDirError()) {
+      BACKEND_PORT = await findAvailablePort(BACKEND_HOST);
+      process.env.FINLEDGE_BACKEND_PORT = String(BACKEND_PORT);
+      setRuntimeBackendPort(BACKEND_PORT);
+      setProcessBackendPort(BACKEND_PORT);
+      logLine("[main] selected private backend port", BACKEND_PORT);
+    }
+
+    // Load the renderer while the single backend process prepares the workbooks.
+    const frontendStartupPromise = IS_ELECTRON_DEV
+      ? startDevelopmentFrontend(hasBuiltFrontend)
+      : Promise.resolve(navigateToFrontend(getFrontendUrl()));
+
     if (!dataRuntime.getDataDirError()) {
       let backendReady = false;
       let lastBackendError = null;
+      let usingLegacyFallback = false;
       for (let attempt = 0; attempt < 3 && !backendReady; attempt += 1) {
-        BACKEND_PORT = await findAvailablePort(BACKEND_HOST);
-        process.env.FINLEDGE_BACKEND_PORT = String(BACKEND_PORT);
-        setRuntimeBackendPort(BACKEND_PORT);
-        setProcessBackendPort(BACKEND_PORT);
-        logLine("[main] selected private backend port", BACKEND_PORT);
+        if (attempt > 0) {
+          BACKEND_PORT = await findAvailablePort(BACKEND_HOST);
+          process.env.FINLEDGE_BACKEND_PORT = String(BACKEND_PORT);
+          setRuntimeBackendPort(BACKEND_PORT);
+          setProcessBackendPort(BACKEND_PORT);
+          getMainWindow()?.webContents.send("app:backend-port-changed", String(BACKEND_PORT));
+          logLine("[main] selected private backend port", BACKEND_PORT);
+        }
+        logStartupPhase("backend spawn", { attempt: attempt + 1 });
         startBackend();
         try {
           await waitForBackendReady(BACKEND_READY_TIMEOUT_MS);
           backendReady = true;
+          if (dataRuntime.getDataSetupStatus() !== "legacy_fallback") dataRuntime.setDataSetupStatus("ready");
+          logStartupPhase("health ok", { attempt: attempt + 1 });
+          notifyBackendReady();
           logLine("[main] backend ready and owned by this FinLedge process");
         } catch (error) {
           lastBackendError = error;
           logLine("[main] retrying unavailable backend port", String(error?.message || error));
           await stopBackend();
+          if (error.code === "FINLEDGE_DATA_PREP_FAILED" && !usingLegacyFallback) {
+            usingLegacyFallback = dataRuntime.switchToLegacyFallback(error);
+            if (usingLegacyFallback) continue;
+            break;
+          }
         }
       }
       if (!backendReady) {
@@ -310,8 +399,12 @@ app.whenReady().then(async () => {
         await dialog.showMessageBox({
           type: "error",
           title: "FinLedge could not start",
-          message: "FinLedge could not start its data service.",
-          detail: "FinLedge did not connect to another app's data service. For startup details, see %TEMP%\\finledge-electron.log.",
+          message: lastBackendError?.code === "FINLEDGE_DATA_PREP_FAILED"
+            ? "FinLedge could not prepare its data folders."
+            : "FinLedge could not start its data service.",
+          detail: lastBackendError?.code === "FINLEDGE_DATA_PREP_FAILED"
+            ? "Your original workbook files were left in place. Check that the shared folder is available, then reopen FinLedge. See the FinLedge startup log in your temporary files folder for details."
+            : "FinLedge did not start its own data service. See the FinLedge startup log in your temporary files folder for details.",
           buttons: ["Close"],
           noLink: true,
         });
@@ -320,29 +413,9 @@ app.whenReady().then(async () => {
       }
     }
 
-    const hasBuiltFrontend = fs.existsSync(processManager.getFrontendIndexPath());
-    logLine("[main] frontend built?", hasBuiltFrontend);
-
     if (IS_ELECTRON_DEV) {
-      let frontendReady = false;
-      for (let attempt = 0; attempt < 3 && !frontendReady; attempt += 1) {
-        FRONTEND_PORT = await findAvailablePort(FRONTEND_HOST);
-        process.env.FINLEDGE_FRONTEND_PORT = String(FRONTEND_PORT);
-        setProcessFrontendPort(FRONTEND_PORT);
-        startFrontendDevServer();
-        try {
-          const url = await waitForAnyLocalPortOk([FRONTEND_PORT], 8_000);
-          setDevFrontendUrl(url);
-          frontendReady = true;
-          logLine("[main] owned Vite server ready", url);
-        } catch (error) {
-          logLine("[main] retrying unavailable Vite port", String(error?.message || error));
-          await stopFrontendDevServer();
-        }
-      }
-      if (frontendReady) navigateToFrontend(getDevFrontendUrl());
-      else if (hasBuiltFrontend) navigateToFrontend(getFrontendUrl());
-      else throw new Error("FinLedge could not start its development interface.");
+      const frontendReady = await frontendStartupPromise;
+      if (!frontendReady) throw new Error("FinLedge could not start its development interface.");
 
       if (SHOULD_SIMULATE_UPDATES) {
         startupUpdateTimer = setTimeout(
@@ -351,7 +424,6 @@ app.whenReady().then(async () => {
         );
       }
     } else {
-      navigateToFrontend(getFrontendUrl());
       if (IS_STORE_PACKAGE) {
         startupUpdateTimer = setTimeout(() => checkStoreUpdatePolicy({ silent: true }), 5000);
         periodicUpdateTimer = setInterval(() => checkStoreUpdatePolicy({ silent: true }), 6 * 60 * 60 * 1000);

@@ -7,7 +7,7 @@ import {
   getPersonalFinanceData,
   updatePersonalFinanceEntry,
 } from "../api/personalFinanceApi";
-import ConfirmDialog from "../components/ConfirmDialog";
+import DeleteConfirmationDialog from "../components/DeleteConfirmationDialog";
 import PersonalFinanceForm from "../components/PersonalFinanceForm";
 import StatusNotice from "../components/StatusNotice";
 import TransactionsTable from "../components/TransactionsTable";
@@ -16,6 +16,10 @@ import {
   PERSONAL_FINANCE_INCOME_CATEGORIES,
 } from "../constants/options";
 import { getTodayInputValue } from "../utils/date";
+import { getSourceLabel } from "../utils/personalFinance";
+import useDeleteConfirmation from "../hooks/useDeleteConfirmation";
+import { clearAmountAndDescription } from "../utils/forms";
+import { sortHistoryNewestFirst } from "../utils/history";
 
 function getDefaultForm(flowType = "bank") {
   const normalizedFlow = flowType === "cash" ? "cash" : "bank";
@@ -44,11 +48,6 @@ function normalizeEditCategory(record) {
   return found || categories[0];
 }
 
-function getSourceLabel(source) {
-  if (source === "transfer") return "Transfer";
-  return "Manual";
-}
-
 function PersonalFinancePage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -65,8 +64,7 @@ function PersonalFinancePage() {
   const [success, setSuccess] = useState("");
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
-  const [deletingId, setDeletingId] = useState(null);
-  const [pendingDeleteRow, setPendingDeleteRow] = useState(null);
+  const { deletingId, pendingDeleteRow, setPendingDeleteRow, runDelete } = useDeleteConfirmation();
 
   const loadData = ({ background = false } = {}) => {
     if (!background) setLoading(true);
@@ -140,11 +138,11 @@ function PersonalFinancePage() {
         await addPersonalFinanceEntry(form);
         setSuccess("Entry saved successfully.");
       }
-      setForm((prev) => ({ ...prev, amount: "", description: "" }));
+      setForm((prev) => clearAmountAndDescription(prev));
       loadData({ background: true });
     } catch (err) {
       setError(err.message || "Unable to save Personal Expenses entry.");
-      setForm((prev) => ({ ...prev, amount: "", description: "" }));
+      setForm((prev) => clearAmountAndDescription(prev));
     } finally {
       setSubmitting(false);
     }
@@ -152,25 +150,23 @@ function PersonalFinancePage() {
 
   async function handleDelete(recordId) {
     if (!recordId) return;
-    setDeletingId(recordId);
     setError("");
-    try {
-      await deletePersonalFinanceRecord(recordId, pendingDeleteRow?.raw?.flow_type || requestedFlow);
-      setPendingDeleteRow(null);
-      loadData({ background: true });
-    } catch (err) {
-      setError(err.message || "Unable to delete Personal Expenses record.");
-    } finally {
-      setDeletingId(null);
-    }
+    await runDelete(recordId, async () => {
+      try {
+        await deletePersonalFinanceRecord(recordId, pendingDeleteRow?.raw?.flow_type || requestedFlow);
+        setPendingDeleteRow(null);
+        loadData({ background: true });
+      } catch (err) {
+        setError(err.message || "Unable to delete Personal Expenses record.");
+      }
+    });
   }
 
   const tableRows = useMemo(
     () =>
-      [...(data?.records || [])]
+      sortHistoryNewestFirst(data?.records || [])
         .filter((record) => record.source === "manual")
         .filter((record) => requestedFlow === "combined" || record.flow_type === form.flow_type)
-        .reverse()
         .slice(0, 12)
         .map((record) => ({
           id: record.id,
@@ -301,15 +297,14 @@ function PersonalFinancePage() {
         />
       </section>
 
-      <ConfirmDialog
-        open={Boolean(pendingDeleteRow)}
+      <DeleteConfirmationDialog
+        record={pendingDeleteRow}
         title="Delete personal finance entry?"
         message={
           pendingDeleteRow
             ? `This will remove the ${pendingDeleteRow.category} entry from ${pendingDeleteRow.date}.`
             : ""
         }
-        confirming={deletingId === pendingDeleteRow?.id}
         onCancel={() => setPendingDeleteRow(null)}
         onConfirm={() => handleDelete(pendingDeleteRow?.id)}
       />

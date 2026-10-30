@@ -3,7 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 
 import { deleteShareRecord, getShareData, updateShareAllotment, updateSipAllotment } from "../api/shareApi";
 import BarChart from "../components/BarChart";
-import ConfirmDialog from "../components/ConfirmDialog";
+import DeleteConfirmationDialog from "../components/DeleteConfirmationDialog";
 import InteractiveTimelineChart from "../components/InteractiveTimelineChart";
 import StatGrid from "../components/StatGrid";
 import StatusNotice from "../components/StatusNotice";
@@ -11,10 +11,13 @@ import TransactionsTable from "../components/TransactionsTable";
 import DashboardPeriodFilter from "../components/DashboardPeriodFilter";
 import TransactionFilters from "../components/TransactionFilters";
 import useDashboardPeriod from "../hooks/useDashboardPeriod";
+import useDeleteConfirmation from "../hooks/useDeleteConfirmation";
 
 import { formatCurrency } from "../utils/format";
+import { summarizeShareRecords } from "../utils/summaries";
 import { parseDate, isoDayKey, isoMonthKey } from "../utils/date";
 import { buildDashboardBuckets } from "../utils/dashboardPeriod";
+import { sortHistoryNewestFirst } from "../utils/history";
 
 const formatter = {
   format: (val) => formatCurrency(val)
@@ -59,10 +62,9 @@ function ShareDashboard() {
   const [sipUpdating, setSipUpdating] = useState(false);
   const [sipUpdateMessage, setSipUpdateMessage] = useState("");
   const [sipUpdateError, setSipUpdateError] = useState("");
-  const [deletingId, setDeletingId] = useState(null);
-  const [pendingDeleteRow, setPendingDeleteRow] = useState(null);
+  const { deletingId, pendingDeleteRow, setPendingDeleteRow, runDelete } = useDeleteConfirmation();
   const [tableCategory, setTableCategory] = useState("all");
-  const period = useDashboardPeriod("week", { importTypes: ["share"] });
+  const period = useDashboardPeriod("week");
 
   const loadData = ({ background = false } = {}) => {
     if (!background) {
@@ -91,39 +93,7 @@ function ShareDashboard() {
   const records = data?.records || [];
   const periodRecords = useMemo(() => period.filterRecords(records), [records, period.bounds]);
   const periodBounds = useMemo(() => period.boundsForRecords(records), [records, period.range, period.bounds]);
-  const summary = useMemo(() => {
-    const totals = {
-    total_ipo_investment: 0,
-    total_sip_investment: 0,
-    total_sip_redeemed: 0,
-    sip_profit_loss: 0,
-    total_buy_amount: 0,
-    overall_investment: 0,
-    total_sell_amount: 0,
-    total_dividend: 0,
-    total_profit: 0,
-    overall_profit_loss: 0,
-    grand_total_investment: 0,
-    grand_profit_loss: 0,
-    };
-    periodRecords.forEach((record) => {
-      const category = String(record.category || "").toLowerCase();
-      const action = String(record.buy_sell || "").toLowerCase();
-      const amount = Number(record.total_amount || 0);
-      const profit = Number(record.profit_loss || 0);
-      if (category === "ipo") totals.total_ipo_investment += amount;
-      else if (category === "buy") totals.total_buy_amount += amount;
-      else if (category === "sell") { totals.total_sell_amount += amount; totals.total_profit += profit; }
-      else if (category === "sip" && ["redeem", "redeemed"].includes(action)) { totals.total_sip_redeemed += amount; totals.sip_profit_loss += profit; }
-      else if (category === "sip") totals.total_sip_investment += amount;
-      else if (category === "dividend" && action === "cash") totals.total_dividend += amount;
-    });
-    totals.overall_investment = totals.total_ipo_investment + totals.total_buy_amount;
-    totals.overall_profit_loss = totals.total_profit + totals.total_dividend - totals.overall_investment;
-    totals.grand_total_investment = totals.overall_investment + totals.total_sip_investment;
-    totals.grand_profit_loss = totals.overall_profit_loss + totals.sip_profit_loss;
-    return totals;
-  }, [periodRecords]);
+  const summary = useMemo(() => summarizeShareRecords(periodRecords), [periodRecords]);
   const totalIpoInvestment = Number(summary.total_ipo_investment || 0);
   const totalSipInvestment = Number(summary.total_sip_investment || 0);
   const totalSipRedeemed = Number(summary.total_sip_redeemed || 0);
@@ -182,7 +152,7 @@ function ShareDashboard() {
     { key: "profit_loss", label: "Profit/Loss" },
   ];
 
-  const tableRows = [...periodRecords].reverse().map((record) => {
+  const tableRows = sortHistoryNewestFirst(periodRecords).map((record) => {
     let catDisplay = record.category;
     if (record.category === "dividend") {
       catDisplay = `Dividend (${record.buy_sell === "bonus" ? "Bonus" : "Cash"})`;
@@ -363,17 +333,16 @@ function ShareDashboard() {
   async function handleDelete(recordId) {
     if (!recordId) return;
 
-    setDeletingId(recordId);
     setError("");
-    try {
-      await deleteShareRecord(recordId);
-      setPendingDeleteRow(null);
-      loadData({ background: true });
-    } catch (err) {
-      setError(err.message || "Unable to delete share record.");
-    } finally {
-      setDeletingId(null);
-    }
+    await runDelete(recordId, async () => {
+      try {
+        await deleteShareRecord(recordId);
+        setPendingDeleteRow(null);
+        loadData({ background: true });
+      } catch (err) {
+        setError(err.message || "Unable to delete share record.");
+      }
+    });
   }
 
   return (
@@ -397,6 +366,7 @@ function ShareDashboard() {
       </header>
 
       {loading && !data ? <p>Loading share data...</p> : null}
+      <StatusNotice message={period.importNotice} kind="success" />
       <StatusNotice message={error} onDismiss={() => setError("")} />
       <StatusNotice message={warning} kind="warning" onDismiss={() => setWarning("")} />
 
@@ -551,15 +521,14 @@ function ShareDashboard() {
               </div>
             ) : null}
           </section>
-          <ConfirmDialog
-            open={Boolean(pendingDeleteRow)}
+          <DeleteConfirmationDialog
+            record={pendingDeleteRow}
             title="Delete share entry?"
             message={
               pendingDeleteRow
                 ? `This will remove the ${pendingDeleteRow.share_name} entry from ${pendingDeleteRow.date}.`
                 : ""
             }
-            confirming={deletingId === pendingDeleteRow?.id}
             onCancel={() => setPendingDeleteRow(null)}
             onConfirm={() => handleDelete(pendingDeleteRow?.id)}
           />

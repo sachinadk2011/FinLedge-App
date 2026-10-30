@@ -9,6 +9,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from backend.routes.bank import router as bank_router
+from backend.routes.meta import router as meta_router
 from backend.routes.personal_finance import router as personal_finance_router
 from backend.routes.settings import router as settings_router
 from backend.routes.share import router as share_router
@@ -18,9 +19,14 @@ from backend.services.data_migration_service import run_pending_data_migrations
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Upgrade legacy local data before API routes can read it."""
+    """Apply required schema migrations before serving, then backfill metadata quietly."""
     result = run_pending_data_migrations()
     print(f"[migration] {result.get('status', 'unknown')}: {result.get('source_file', '')}")
+    if os.getenv("FINLEDGE_SHARED_SYNC_DIR"):
+        from backend.services.metadata_backfill_service import start_metadata_backfill_worker
+        from backend.services.shared_sync_service import start_shared_sync_worker
+        start_metadata_backfill_worker()
+        start_shared_sync_worker()
     yield
 
 
@@ -35,6 +41,7 @@ app.add_middleware(
 )
 
 app.include_router(bank_router)
+app.include_router(meta_router)
 app.include_router(personal_finance_router)
 app.include_router(share_router)
 app.include_router(summary_router)

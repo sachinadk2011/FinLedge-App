@@ -10,6 +10,19 @@ const LOCATION_FILE_NAME = ".finledge-data-location.json";
 const LOCK_HEARTBEAT_MS = 5_000;
 const LOCK_STALE_MS = 30_000;
 
+function expandDataDirectoryPath(value, { env = process.env, homeDir = os.homedir() } = {}) {
+  let expanded = String(value || "").trim();
+  if (!expanded) return "";
+  expanded = expanded.replace(/^~(?=$|[\\/])/, homeDir);
+  expanded = expanded.replace(/%([^%]+)%|\$\{([^}]+)\}|\$([A-Za-z_][A-Za-z0-9_]*)/g, (match, percentName, braceName, dollarName) => {
+    const name = percentName || braceName || dollarName;
+    return Object.prototype.hasOwnProperty.call(env, name) ? String(env[name]) : match;
+  });
+  const unresolved = expanded.match(/%[^%]+%|\$\{[^}]+\}|\$[A-Za-z_][A-Za-z0-9_]*/);
+  if (unresolved) throw new Error(`Data folder setting contains an undefined environment variable: ${unresolved[0]}`);
+  return path.normalize(expanded);
+}
+
 function readSavedLocation(documentsDir, userDataDir, fileSystem = fs) {
   const candidates = [
     path.join(documentsDir, LOCATION_FILE_NAME),
@@ -30,20 +43,28 @@ function readSavedLocation(documentsDir, userDataDir, fileSystem = fs) {
 function resolveDataDirectory({
   explicitPath,
   isDevelopment = false,
+  isTestingBuild = false,
   projectRoot,
   documentsDir,
+  roamingDir,
   userDataDir,
   homeDir = os.homedir(),
+  env = process.env,
   fileSystem = fs,
 }) {
-  if (String(explicitPath || "").trim()) return path.resolve(explicitPath);
+  const configuredPath = expandDataDirectoryPath(explicitPath, { homeDir, env });
+  if (configuredPath && configuredPath.toLowerCase() !== "auto") return path.resolve(configuredPath);
   if (isDevelopment) {
-    return path.resolve(userDataDir || path.join(projectRoot, ".finledge-dev-data"));
+    const developmentRoot = projectRoot ? path.join(projectRoot, ".finledge-dev-data") : userDataDir || ".finledge-dev-data";
+    return path.resolve(developmentRoot, "FinLedge Data");
   }
 
   const documents = documentsDir || path.join(homeDir, "Documents");
-  return readSavedLocation(documents, userDataDir || "", fileSystem)
-    || path.join(documents, "FinLedge");
+  const saved = readSavedLocation(documents, userDataDir || "", fileSystem);
+  if (saved) return saved;
+  const roaming = roamingDir || path.join(homeDir, "AppData", "Roaming");
+  const rootName = isTestingBuild ? "Finledge Testing EXE" : "Finledge";
+  return path.join(roaming, rootName, "FinLedge Data");
 }
 
 function ensureWritableDirectory(dataDir, { fileSystem = fs, processId = process.pid } = {}) {
@@ -200,6 +221,7 @@ module.exports = {
   LOCK_FILE_NAME,
   acquireDataDirectoryLock,
   ensureWritableDirectory,
+  expandDataDirectoryPath,
   getBuildType,
   persistDataDirectory,
   resolveDataDirectory,

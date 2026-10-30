@@ -3,7 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 
 import { deleteBankRecord, getBankData } from "../api/bankApi";
 import BarChart from "../components/BarChart";
-import ConfirmDialog from "../components/ConfirmDialog";
+import DeleteConfirmationDialog from "../components/DeleteConfirmationDialog";
 import DashboardPeriodFilter from "../components/DashboardPeriodFilter";
 import InteractiveTimelineChart from "../components/InteractiveTimelineChart";
 import StatGrid from "../components/StatGrid";
@@ -11,10 +11,13 @@ import StatusNotice from "../components/StatusNotice";
 import TransactionFilters from "../components/TransactionFilters";
 import TransactionsTable from "../components/TransactionsTable";
 import useDashboardPeriod from "../hooks/useDashboardPeriod";
+import useDeleteConfirmation from "../hooks/useDeleteConfirmation";
 import { BANK_CATEGORIES, BANK_INCOME_CATEGORIES } from "../constants/options";
+import { summarizeBankRecords } from "../utils/summaries";
 import { formatCurrency } from "../utils/format";
 import { isoDayKey, isoMonthKey } from "../utils/date";
 import { buildDashboardBuckets } from "../utils/dashboardPeriod";
+import { sortHistoryNewestFirst } from "../utils/history";
 
 function isBankIncomeCategory(category) {
   return BANK_INCOME_CATEGORIES.has(String(category || "").trim().toLowerCase());
@@ -41,11 +44,10 @@ function BankDashboard() {
   const [error, setError] = useState("");
   const [warning, setWarning] = useState("");
   const [loading, setLoading] = useState(true);
-  const [deletingId, setDeletingId] = useState(null);
-  const [pendingDeleteRow, setPendingDeleteRow] = useState(null);
+  const { deletingId, pendingDeleteRow, setPendingDeleteRow, runDelete } = useDeleteConfirmation();
   const [tableSearch, setTableSearch] = useState("");
   const [tableCategory, setTableCategory] = useState("all");
-  const period = useDashboardPeriod("month", { bankMode: true, importTypes: ["bank"] });
+  const period = useDashboardPeriod("month", { bankMode: true });
 
   const loadData = ({ background = false } = {}) => {
     if (!background) {
@@ -75,14 +77,7 @@ function BankDashboard() {
   const records = data?.records || [];
   const periodRecords = useMemo(() => period.filterRecords(records), [records, period.bounds]);
   const periodBounds = useMemo(() => period.boundsForRecords(records), [records, period.range, period.bounds]);
-  const summary = useMemo(() => periodRecords.reduce((totals, record) => {
-    const amount = Number(record.amount || 0);
-    if (isBankIncomeCategory(record.category)) totals.total_income += amount;
-    else totals.total_expenses += Math.abs(amount);
-    totals.category_totals[record.category] = (totals.category_totals[record.category] || 0) + Math.abs(amount);
-    return totals;
-  }, { total_income: 0, total_expenses: 0, category_totals: {} }), [periodRecords]);
-  summary.net_balance = summary.total_income - summary.total_expenses;
+  const summary = useMemo(() => summarizeBankRecords(periodRecords), [periodRecords]);
 
   const stats = [
     { label: "Interest earned", value: formatCurrency(summary.total_income) },
@@ -104,7 +99,7 @@ function BankDashboard() {
   const periodBuckets = useMemo(() => buildDashboardBuckets(periodRecords, periodBounds, { monthly: period.range === "all_time" || period.range !== "custom" || customIsMonthly }), [periodRecords, periodBounds, period.range, customIsMonthly]);
   const overview = useMemo(() => buildBankOverview(periodRecords, periodBuckets), [periodRecords, periodBuckets]);
 
-  const tableRows = [...periodRecords].reverse().map((record) => ({
+  const tableRows = sortHistoryNewestFirst(periodRecords).map((record) => ({
     id: record.id,
     date: record.date,
     category: record.category,
@@ -127,17 +122,16 @@ function BankDashboard() {
   async function handleDelete(recordId) {
     if (!recordId) return;
 
-    setDeletingId(recordId);
     setError("");
-    try {
-      await deleteBankRecord(recordId);
-      setPendingDeleteRow(null);
-      loadData({ background: true });
-    } catch (err) {
-      setError(err.message || "Unable to delete bank record.");
-    } finally {
-      setDeletingId(null);
-    }
+    await runDelete(recordId, async () => {
+      try {
+        await deleteBankRecord(recordId);
+        setPendingDeleteRow(null);
+        loadData({ background: true });
+      } catch (err) {
+        setError(err.message || "Unable to delete bank record.");
+      }
+    });
   }
 
   return (
@@ -161,6 +155,7 @@ function BankDashboard() {
       </header>
 
       {loading ? <p>Loading bank data...</p> : null}
+      <StatusNotice message={period.importNotice} kind="success" />
       <StatusNotice message={error} onDismiss={() => setError("")} />
       <StatusNotice message={warning} kind="warning" onDismiss={() => setWarning("")} />
 
@@ -218,15 +213,14 @@ function BankDashboard() {
               )}
             />
           </section>
-          <ConfirmDialog
-            open={Boolean(pendingDeleteRow)}
+          <DeleteConfirmationDialog
+            record={pendingDeleteRow}
             title="Delete bank entry?"
             message={
               pendingDeleteRow
                 ? `This will remove the ${pendingDeleteRow.category} entry from ${pendingDeleteRow.date}.`
                 : ""
             }
-            confirming={deletingId === pendingDeleteRow?.id}
             onCancel={() => setPendingDeleteRow(null)}
             onConfirm={() => handleDelete(pendingDeleteRow?.id)}
           />

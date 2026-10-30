@@ -38,13 +38,17 @@ export function parseDate(value) {
   if (!value) return null;
   if (value instanceof Date) return value;
   const s = String(value).trim();
-  // ISO date or datetime
+  // Date-only values represent a calendar day, not a UTC instant.
+  const dateOnly = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+  if (dateOnly) return new Date(Number(dateOnly[1]), Number(dateOnly[2]) - 1, Number(dateOnly[3]));
+  // ISO datetime values are converted to local time before grouping.
   if (/^\d{4}-\d{2}-\d{2}/.test(s)) return new Date(s);
   // Excel serial (numeric string)
   const num = Number(s);
   if (!isNaN(num) && num > 1000) {
     // Excel epoch starts 1899-12-30
-    return new Date(Math.round((num - 25569) * 86400 * 1000));
+    const excelDate = new Date(Math.round((num - 25569) * 86400 * 1000));
+    return new Date(excelDate.getUTCFullYear(), excelDate.getUTCMonth(), excelDate.getUTCDate());
   }
   return null;
 }
@@ -56,7 +60,7 @@ export function parseDate(value) {
 export function isoDayKey(dateValue) {
   const d = parseDate(dateValue);
   if (!d) return null;
-  return d.toISOString().slice(0, 10);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
 /**
@@ -66,5 +70,5 @@ export function isoDayKey(dateValue) {
 export function isoMonthKey(dateValue) {
   const d = parseDate(dateValue);
   if (!d) return null;
-  return d.toISOString().slice(0, 7);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 }

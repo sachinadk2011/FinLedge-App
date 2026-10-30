@@ -22,7 +22,6 @@ const _currencyFmt = new Intl.NumberFormat("en-US", {
 export function formatCurrency(value) {
   return _currencyFmt.format(value ?? 0);
 }
-
 /** Match mobile chart labels: negatives keep their sign and large amounts use k/L. */
 export function compactMoney(value) {
   const number = Number(value || 0);
@@ -37,18 +36,4 @@ export function compactMoney(value) {
     return `${sign}${Number.isInteger(compact) ? compact.toFixed(0) : compact.toFixed(1)}k`;
   }
   return `${sign}${amount.toLocaleString("en-US", { maximumFractionDigits: 0 })}`;
-}
-
-// ---------------------------------------------------------------------------
-// Source labels (Personal Finance synced rows)
-// ---------------------------------------------------------------------------
-
-/**
- * Return a human-readable label for a Personal Finance row's source field.
- * Used in both PersonalFinancePage and PersonalFinanceDashboard.
- */
-export function getSourceLabel(source) {
-  if (source === "bank-services-sync") return "Bank Services";
-  if (source === "share-sync") return "Share Portfolio";
-  return "Manual";
 }

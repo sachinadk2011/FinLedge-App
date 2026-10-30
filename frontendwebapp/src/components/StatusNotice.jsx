@@ -1,17 +1,31 @@
+import { useCallback, useEffect, useState } from "react";
 import { useDismissibleMessage } from "../hooks/useDismissibleMessage";
 
 function StatusNotice({ message, onDismiss, kind = "error", duration = 5000 }) {
-  useDismissibleMessage(message, onDismiss, duration);
+  const [dismissed, setDismissed] = useState(false);
+  const desktopRuntime = typeof window !== "undefined" && Boolean(window.financialTracker);
+  useEffect(() => {
+    if (desktopRuntime) setDismissed(false);
+  }, [message, desktopRuntime]);
+  const dismiss = useCallback(() => {
+    if (onDismiss) onDismiss();
+    else setDismissed(true);
+  }, [onDismiss]);
+  useDismissibleMessage(
+    desktopRuntime ? (message && !dismissed ? message : "") : message,
+    desktopRuntime ? dismiss : onDismiss,
+    duration,
+  );
 
-  if (!message) return null;
+  if (!message || (desktopRuntime && dismissed)) return null;
 
   const role = kind === "error" || kind === "warning" ? "alert" : "status";
 
   return (
     <div className={`status-notice status-notice-${kind}`} role={role} aria-live={kind === "error" ? "assertive" : "polite"}>
       <span>{message}</span>
-      {onDismiss ? (
-        <button type="button" className="status-notice-close" aria-label="Dismiss message" onClick={onDismiss}>
+      {onDismiss || desktopRuntime ? (
+        <button type="button" className="status-notice-close" aria-label="Dismiss message" onClick={dismiss}>
           ×
         </button>
       ) : null}

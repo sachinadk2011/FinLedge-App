@@ -3,6 +3,7 @@ $ErrorActionPreference = "Stop"
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\\..")).Path
 $pythonExe = Join-Path $repoRoot "venv\\Scripts\\python.exe"
 $entryScript = Join-Path $repoRoot "backend\\engine_main.py"
+$transferDirectionRules = Join-Path $repoRoot "backend\\services\\transfer_direction_rules.json"
 $distDir = Join-Path $repoRoot "desktop\\build\\sidecar"
 $workDir = Join-Path $repoRoot "desktop\\build\\pyinstaller-work"
 $specDir = Join-Path $repoRoot "desktop\\build\\pyinstaller-spec"
@@ -14,6 +15,10 @@ if (-not (Test-Path $pythonExe)) {
 
 if (-not (Test-Path $entryScript)) {
     throw "Backend launcher not found at $entryScript"
+}
+
+if (-not (Test-Path $transferDirectionRules)) {
+    throw "Transfer direction rules not found at $transferDirectionRules"
 }
 
 Remove-Item $distDir -Recurse -Force -ErrorAction SilentlyContinue
@@ -32,20 +37,25 @@ if ($LASTEXITCODE -ne 0) {
 & $pythonExe -m PyInstaller `
     --noconfirm `
     --clean `
-    --onefile `
+    --onedir `
     --name finledge-engine `
+    --exclude-module matplotlib `
+    --exclude-module numpy `
+    --exclude-module PIL `
+    --exclude-module tkinter `
     --distpath $distDir `
     --workpath $workDir `
     --specpath $specDir `
     --version-file $versionInfoPath `
     --paths $repoRoot `
+    --add-data "$transferDirectionRules;backend/services" `
     $entryScript
 
 if ($LASTEXITCODE -ne 0) {
     throw "PyInstaller build failed."
 }
 
-$enginePath = Join-Path $distDir "finledge-engine.exe"
+$enginePath = Join-Path $distDir "finledge-engine\finledge-engine.exe"
 if (-not (Test-Path $enginePath)) {
     throw "Expected sidecar executable not found at $enginePath"
 }

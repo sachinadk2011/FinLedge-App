@@ -5,19 +5,19 @@ import { addShareEntry, getShareData, updateShareEntry } from "../api/shareApi";
 import ShareForm from "../components/ShareForm";
 import StatusNotice from "../components/StatusNotice";
 import { getTodayInputValue } from "../utils/date";
+import { clearAmountAndDescription } from "../utils/forms";
 
 function clearShareAmountFields(current) {
   const category = String(current.category || "").toLowerCase();
   const dividendType = String(current._dividendType || "cash").toLowerCase();
-  return {
+  return clearAmountAndDescription({
     ...current,
     per_unit_price: "",
     total_amount: "",
-    amount: "",
     bonus_shares: "",
     allotted: category === "sip" || (category === "dividend" && dividendType === "cash") ? "0" : "",
     _totalAmount: "",
-  };
+  });
 }
 
 function SharePage() {

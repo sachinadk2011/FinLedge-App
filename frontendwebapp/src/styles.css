@@ -479,6 +479,12 @@ button:hover:not(:disabled) {
   font-weight: 600;
 }
 
+body.finledge-desktop .ghost:hover:not(:disabled) {
+  background: rgba(15, 118, 110, 0.1);
+  border-color: rgba(15, 118, 110, 0.5);
+  color: #115e59;
+}
+
 .danger {
   color: #b91c1c;
   border-color: #b91c1c;
@@ -676,6 +682,21 @@ tbody tr:hover {
   box-shadow: 0 16px 38px rgba(15, 23, 42, 0.2);
 }
 
+body.finledge-desktop .period-custom-popover {
+  position: fixed;
+  right: auto;
+  width: min(390px, calc(100vw - 40px));
+  box-sizing: border-box;
+  max-width: calc(100vw - 40px);
+  max-height: calc(100dvh - 40px);
+  overflow-y: auto;
+}
+
+body.finledge-desktop .period-custom-fields input {
+  min-width: 0;
+  width: 100%;
+}
+
 .period-custom-popover .period-custom-fields {
   justify-content: stretch;
 }
@@ -692,6 +713,12 @@ tbody tr:hover {
 
 .period-range-buttons button {
   min-width: 72px;
+}
+
+body.finledge-desktop .period-range-buttons button.ghost:hover:not(:disabled) {
+  background: #ccfbf1;
+  border-color: #0f766e;
+  color: #134e4a;
 }
 
 .period-custom-fields {
@@ -1210,6 +1237,22 @@ pre {
   margin-bottom: 0;
 }
 
+.settings-panel--scrollable {
+  display: flex;
+  flex-direction: column;
+  height: min(720px, max(180px, calc(100dvh - 220px)));
+  min-height: 0;
+}
+
+.settings-panel-scroll-content {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  scrollbar-gutter: stable;
+  padding-right: 4px;
+}
+
 .settings-panel--disabled .settings-actions {
   margin-top: 16px;
 }
@@ -1304,6 +1347,10 @@ pre {
 }
 
 @media (max-width: 860px) {
+  .settings-panel--scrollable {
+    height: min(560px, max(160px, calc(100dvh - 350px)));
+  }
+
   .settings-layout {
     grid-template-columns: 1fr;
   }

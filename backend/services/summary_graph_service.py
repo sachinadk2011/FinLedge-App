@@ -5,6 +5,8 @@ from datetime import date, datetime, timedelta
 from io import BytesIO
 from typing import Iterable
 
+from ..models import BankCategory
+
 
 def _safe_date(value: object) -> date | None:
     if not value:
@@ -147,7 +149,48 @@ def _format_month_label(month_key: str) -> str:
 
 
 def _is_bank_income_category(category: str) -> bool:
-    return category.strip().lower() in {"interest earned", "income"}
+    return category.strip().casefold() in {BankCategory.interest_earned.value.casefold(), "income"}
+
+
+def _aggregate_buckets(
+    dated: list[tuple[date, dict]],
+    keys: list[date] | list[str],
+    bucket_key,
+    classify,
+) -> dict:
+    """Sum each record's classified amounts into the requested day/month buckets."""
+    key_set = set(keys)
+    totals = {key: defaultdict(float) for key in keys}
+    for record_date, record in dated:
+        key = bucket_key(record_date)
+        if key not in key_set:
+            continue
+        for name, amount in classify(record).items():
+            totals[key][name] = totals[key].get(name, 0.0) + float(amount or 0.0)
+    return totals
+
+
+def _bank_contributions(record: dict, income_key: str = "income", expense_key: str = "expense") -> dict[str, float]:
+    amount = float(record.get("amount") or 0.0)
+    if _is_bank_income_category(str(record.get("category") or "").strip().lower()):
+        return {income_key: amount}
+    return {expense_key: abs(amount)}
+
+
+def _share_contributions(record: dict, investment_key: str = "investment", profit_key: str = "profit", loss_key: str = "loss") -> dict[str, float]:
+    category = str(record.get("category") or "").strip().lower()
+    buy_sell = str(record.get("buy_sell") or "").strip().lower()
+    total = float(record.get("total_amount") or 0.0)
+    profit = float(record.get("profit_loss") or 0.0)
+    if category in {"ipo", "buy"} or (category == "sip" and buy_sell != "redeem"):
+        return {investment_key: total}
+    if category in {"sip", "sell", "dividend"} and (category != "sip" or buy_sell == "redeem"):
+        return {profit_key: profit} if profit >= 0 else {loss_key: abs(profit)}
+    return {}
+
+
+def _month_key(day: date) -> str:
+    return f"{day.year:04d}-{day.month:02d}"
 
 
 def build_monthly_bank_png(records: Iterable[dict]) -> bytes:
@@ -156,17 +199,7 @@ def build_monthly_bank_png(records: Iterable[dict]) -> bytes:
     start, end = _last_n_days_window(dated, 14)
     day_keys = _day_keys(start, end)
 
-    by_day: dict[date, dict[str, float]] = {d: {"income": 0.0, "expense": 0.0} for d in day_keys}
-
-    for d, r in dated:
-        if d < start or d > end:
-            continue
-        category = str(r.get("category") or "").strip().lower()
-        amt = float(r.get("amount") or 0.0)
-        if _is_bank_income_category(category):
-            by_day[d]["income"] += amt
-        else:
-            by_day[d]["expense"] += abs(amt)
+    by_day = _aggregate_buckets(dated, day_keys, lambda day: day, _bank_contributions)
 
     keys = day_keys
 
@@ -197,18 +230,7 @@ def build_yearly_bank_png(records: Iterable[dict]) -> bytes:
             y -= 1
     keys.reverse()
 
-    by_month: dict[str, dict[str, float]] = {k: {"income": 0.0, "expense": 0.0} for k in keys}
-
-    for d, r in dated:
-        key = f"{d.year:04d}-{d.month:02d}"
-        if key not in by_month:
-            continue
-        category = str(r.get("category") or "").strip().lower()
-        amt = float(r.get("amount") or 0.0)
-        if _is_bank_income_category(category):
-            by_month[key]["income"] += amt
-        else:
-            by_month[key]["expense"] += abs(amt)
+    by_month = _aggregate_buckets(dated, keys, _month_key, _bank_contributions)
 
     return _render_bar_chart(
         title="Yearly bank services transactions (last 12 months)",
@@ -226,27 +248,7 @@ def build_monthly_share_png(records: Iterable[dict]) -> bytes:
     start, end = _last_n_days_window(dated, 14)
     day_keys = _day_keys(start, end)
 
-    by_day: dict[date, dict[str, float]] = {d: {"investment": 0.0, "profit": 0.0, "loss": 0.0} for d in day_keys}
-
-    for d, r in dated:
-        if d < start or d > end:
-            continue
-        category = str(r.get("category") or "").strip().lower()
-        buy_sell = str(r.get("buy_sell") or "").strip().lower()
-        total = float(r.get("total_amount") or 0.0)
-        profit = float(r.get("profit_loss") or 0.0)
-        if category in {"ipo", "buy"} or (category == "sip" and buy_sell != "redeem"):
-            by_day[d]["investment"] += total
-        elif category == "sip" and buy_sell == "redeem":
-            if profit >= 0:
-                by_day[d]["profit"] += profit
-            else:
-                by_day[d]["loss"] += abs(profit)
-        elif category == "sell" or category == "dividend":
-            if profit >= 0:
-                by_day[d]["profit"] += profit
-            else:
-                by_day[d]["loss"] += abs(profit)
+    by_day = _aggregate_buckets(dated, day_keys, lambda day: day, _share_contributions)
 
     keys = day_keys
 
@@ -277,28 +279,7 @@ def build_yearly_share_png(records: Iterable[dict]) -> bytes:
             y -= 1
     keys.reverse()
 
-    by_month: dict[str, dict[str, float]] = {k: {"investment": 0.0, "profit": 0.0, "loss": 0.0} for k in keys}
-
-    for d, r in dated:
-        key = f"{d.year:04d}-{d.month:02d}"
-        if key not in by_month:
-            continue
-        category = str(r.get("category") or "").strip().lower()
-        buy_sell = str(r.get("buy_sell") or "").strip().lower()
-        total = float(r.get("total_amount") or 0.0)
-        profit = float(r.get("profit_loss") or 0.0)
-        if category in {"ipo", "buy"} or (category == "sip" and buy_sell != "redeem"):
-            by_month[key]["investment"] += total
-        elif category == "sip" and buy_sell == "redeem":
-            if profit >= 0:
-                by_month[key]["profit"] += profit
-            else:
-                by_month[key]["loss"] += abs(profit)
-        elif category == "sell" or category == "dividend":
-            if profit >= 0:
-                by_month[key]["profit"] += profit
-            else:
-                by_month[key]["loss"] += abs(profit)
+    by_month = _aggregate_buckets(dated, keys, _month_key, _share_contributions)
 
     return _render_bar_chart(
         title="Yearly share investment and profit (last 12 months)",
@@ -339,40 +320,10 @@ def build_monthly_overview_png(*, bank_records: Iterable[dict], share_records: I
     start, end = _last_n_days_window(bank_dated + share_dated, 14)
     day_keys = _day_keys(start, end)
 
-    by_day: dict[date, dict[str, float]] = {
-        d: {"bank_income": 0.0, "bank_expense": 0.0, "share_investment": 0.0, "share_profit": 0.0, "share_loss": 0.0}
-        for d in day_keys
-    }
-
-    for d, r in bank_dated:
-        if d < start or d > end:
-            continue
-        category = str(r.get("category") or "").strip().lower()
-        amt = float(r.get("amount") or 0.0)
-        if _is_bank_income_category(category):
-            by_day[d]["bank_income"] += amt
-        else:
-            by_day[d]["bank_expense"] += abs(amt)
-
-    for d, r in share_dated:
-        if d < start or d > end:
-            continue
-        category = str(r.get("category") or "").strip().lower()
-        buy_sell = str(r.get("buy_sell") or "").strip().lower()
-        total = float(r.get("total_amount") or 0.0)
-        profit = float(r.get("profit_loss") or 0.0)
-        if category in {"ipo", "buy"} or (category == "sip" and buy_sell != "redeem"):
-            by_day[d]["share_investment"] += total
-        elif category == "sip" and buy_sell == "redeem":
-            if profit >= 0:
-                by_day[d]["share_profit"] += profit
-            else:
-                by_day[d]["share_loss"] += abs(profit)
-        elif category == "sell" or category == "dividend":
-            if profit >= 0:
-                by_day[d]["share_profit"] += profit
-            else:
-                by_day[d]["share_loss"] += abs(profit)
+    by_day = _aggregate_buckets(bank_dated, day_keys, lambda day: day, lambda record: _bank_contributions(record, "bank_income", "bank_expense"))
+    share_day = _aggregate_buckets(share_dated, day_keys, lambda day: day, lambda record: _share_contributions(record, "share_investment", "share_profit", "share_loss"))
+    for key in day_keys:
+        by_day[key].update(share_day[key])
 
     keys = day_keys
 
@@ -407,41 +358,10 @@ def build_yearly_overview_png(*, bank_records: Iterable[dict], share_records: It
             y -= 1
     keys.reverse()
 
-    by_month: dict[str, dict[str, float]] = {
-        k: {"bank_income": 0.0, "bank_expense": 0.0, "share_investment": 0.0, "share_profit": 0.0, "share_loss": 0.0} for k in keys
-    }
-
-    for d, r in bank_dated:
-        key = f"{d.year:04d}-{d.month:02d}"
-        if key not in by_month:
-            continue
-        category = str(r.get("category") or "").strip().lower()
-        amt = float(r.get("amount") or 0.0)
-        if _is_bank_income_category(category):
-            by_month[key]["bank_income"] += amt
-        else:
-            by_month[key]["bank_expense"] += abs(amt)
-
-    for d, r in share_dated:
-        key = f"{d.year:04d}-{d.month:02d}"
-        if key not in by_month:
-            continue
-        category = str(r.get("category") or "").strip().lower()
-        buy_sell = str(r.get("buy_sell") or "").strip().lower()
-        total = float(r.get("total_amount") or 0.0)
-        profit = float(r.get("profit_loss") or 0.0)
-        if category in {"ipo", "buy"} or (category == "sip" and buy_sell != "redeem"):
-            by_month[key]["share_investment"] += total
-        elif category == "sip" and buy_sell == "redeem":
-            if profit >= 0:
-                by_month[key]["share_profit"] += profit
-            else:
-                by_month[key]["share_loss"] += abs(profit)
-        elif category == "sell" or category == "dividend":
-            if profit >= 0:
-                by_month[key]["share_profit"] += profit
-            else:
-                by_month[key]["share_loss"] += abs(profit)
+    by_month = _aggregate_buckets(bank_dated, keys, _month_key, lambda record: _bank_contributions(record, "bank_income", "bank_expense"))
+    share_month = _aggregate_buckets(share_dated, keys, _month_key, lambda record: _share_contributions(record, "share_investment", "share_profit", "share_loss"))
+    for key in keys:
+        by_month[key].update(share_month[key])
 
     return _render_bar_chart(
         title="Yearly financial overview (last 12 months)",

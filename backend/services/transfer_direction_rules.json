@@ -1,0 +1,43 @@
+{
+  "directions": [
+    {
+      "value": "bank_to_cash",
+      "label": "Bank to Cash (Withdraw)",
+      "action_label": "Bank to Cash withdrawal",
+      "aliases": [
+        "bank_to_cash",
+        "bank to cash",
+        "bank -> cash",
+        "bank → cash",
+        "withdraw",
+        "withdrawal",
+        "withdrawn",
+        "withdraw to cash",
+        "withdrawn to cash"
+      ],
+      "origin_flow": "bank",
+      "destination_flow": "cash",
+      "origin_label": "Withdrawn to Cash",
+      "destination_label": "Received from Bank"
+    },
+    {
+      "value": "cash_to_bank",
+      "label": "Cash to Bank (Deposit)",
+      "action_label": "Cash to Bank deposit",
+      "aliases": [
+        "cash_to_bank",
+        "cash to bank",
+        "cash -> bank",
+        "cash → bank",
+        "deposit",
+        "deposited",
+        "deposit to bank",
+        "deposited to bank"
+      ],
+      "origin_flow": "cash",
+      "destination_flow": "bank",
+      "origin_label": "Deposited to Bank",
+      "destination_label": "Received from Cash"
+    }
+  ]
+}

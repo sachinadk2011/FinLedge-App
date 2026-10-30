@@ -45,4 +45,11 @@ export const GENERAL_FILE_ROWS = [
     actionLabel: "Open",
     fallback: "personal_finance_cash_flow.xlsx",
   },
+  {
+    label: "Personal Expenses - Bank/Cash Transfers",
+    pathKey: "personalFinanceTransferFile",
+    target: "pf-transfer",
+    actionLabel: "Open",
+    fallback: "personal_finance_transfer.xlsx",
+  },
 ];

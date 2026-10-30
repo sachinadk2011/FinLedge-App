@@ -1,6 +1,7 @@
 export default function HowToUseSettingsSection({}) {
-  return <section className="card settings-panel">
+  return <section className="card settings-panel settings-panel--scrollable">
           <h3>How to use FinLedge</h3>
+          <div className="settings-panel-scroll-content">
 
           <p className="subtitle">
             Every module follows the same four-step pattern:
@@ -113,5 +114,6 @@ export default function HowToUseSettingsSection({}) {
             <strong>Does FinLedge send my data anywhere?</strong><br />
             No. All data stays in Excel files on your device. The only network request FinLedge makes is a version check when you open Settings.
           </p>
+          </div>
         </section>;
 }

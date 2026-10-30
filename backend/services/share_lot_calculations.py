@@ -3,6 +3,25 @@
 from .excel_utils import to_float as _to_float, to_int as _to_int
 
 
+def add_share_lot(lots_by_share: dict[str, list[dict]], share_key: str, quantity: int, price: float, asba: float = 0.0) -> None:
+    if share_key and quantity > 0:
+        lots_by_share.setdefault(share_key, []).append({"qty": quantity, "price": price, "asba": asba})
+
+
+def consume_share_lots(lots_by_share: dict[str, list[dict]], share_key: str, sell_qty: int) -> float:
+    return _consume_lots(lots_by_share.get(share_key, []), sell_qty)
+
+
+def apply_sip_investment(investment_by_share: dict[str, float], share_key: str, amount: float, redeem: bool) -> float:
+    """Update the running SIP principal and return redemption profit/loss."""
+    if redeem:
+        outstanding = investment_by_share.get(share_key, 0.0)
+        investment_by_share[share_key] = 0.0
+        return amount - outstanding
+    investment_by_share[share_key] = investment_by_share.get(share_key, 0.0) + amount
+    return 0.0
+
+
 def _build_open_lots(sheet, share_name: str) -> list[dict]:
     lots: list[dict] = []
     target = share_name.strip().lower()
@@ -22,20 +41,11 @@ def _build_open_lots(sheet, share_name: str) -> list[dict]:
             continue
 
         if category in {"ipo", "buy"} or (category == "dividend" and buy_sell == "bonus"):
-            lots.append({"qty": qty, "price": price, "asba": asba_charge if category == "ipo" else 0.0})
+            add_share_lot({target: lots}, target, qty, price, asba_charge if category == "ipo" else 0.0)
             continue
 
         if category == "sell":
-            remaining = qty
-            for lot in lots:
-                if remaining <= 0:
-                    break
-                qty_before = lot["qty"]
-                consumed = min(qty_before, remaining)
-                if qty_before > 0 and lot.get("asba", 0.0) != 0.0:
-                    lot["asba"] -= lot["asba"] * (consumed / qty_before)
-                lot["qty"] = qty_before - consumed
-                remaining -= consumed
+            consume_share_lots({target: lots}, target, qty)
             lots = [lot for lot in lots if lot["qty"] > 0]
 
     return lots

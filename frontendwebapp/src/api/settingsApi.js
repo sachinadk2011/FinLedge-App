@@ -76,20 +76,20 @@ async function saveExportBlob(blob, filename) {
 }
 
 export async function getSettingsDataTypes() {
-  const url = `${getApiBase()}/settings/data-types`;
+  const url = `${await getApiBase()}/settings/data-types`;
   const response = await fetch(url);
   return handleResponse(response, { method: "GET", url });
 }
 
 export async function checkSettingsDataHasData(dataType) {
-  const url = `${getApiBase()}/settings/has-data/${encodeURIComponent(dataType)}`;
+  const url = `${await getApiBase()}/settings/has-data/${encodeURIComponent(dataType)}`;
   const response = await fetch(url);
   const data = await handleResponse(response, { method: "GET", url });
   return data?.has_data === true;
 }
 
 export async function importSettingsDataFile(dataType, file, mode = "replace") {
-  const url = `${getApiBase()}/settings/import/${encodeURIComponent(dataType)}`;
+  const url = `${await getApiBase()}/settings/import/${encodeURIComponent(dataType)}`;
   const formData = new FormData();
   formData.append("file", file);
   formData.append("mode", mode);
@@ -103,7 +103,7 @@ export async function importSettingsDataFile(dataType, file, mode = "replace") {
 }
 
 export async function exportSettingsDataFile(dataType) {
-  const url = `${getApiBase()}/settings/export/${encodeURIComponent(dataType)}`;
+  const url = `${await getApiBase()}/settings/export/${encodeURIComponent(dataType)}`;
   const response = await fetch(url);
   const { blob, filename } = await blobFromResponse(response, {
     method: "GET",
@@ -114,7 +114,7 @@ export async function exportSettingsDataFile(dataType) {
 }
 
 export async function exportAllSettingsDataFiles() {
-  const url = `${getApiBase()}/settings/export-all`;
+  const url = `${await getApiBase()}/settings/export-all`;
   const response = await fetch(url);
   const { blob, filename } = await blobFromResponse(response, {
     method: "GET",

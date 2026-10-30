@@ -14,6 +14,7 @@ import { formatCurrency } from "../utils/format";
 import { parseDate, isoMonthKey } from "../utils/date";
 import { BANK_INCOME_CATEGORIES } from "../constants/options";
 import { buildDashboardBuckets } from "../utils/dashboardPeriod";
+import { summarizeBankRecords, summarizePersonalRecords, summarizeShareRecords } from "../utils/summaries";
 
 const formatter = {
   format: (val) => formatCurrency(val)
@@ -48,56 +49,6 @@ function buildBreakdownRows(values = {}, { excludeIncome = false } = {}) {
     }))
     .filter((item) => item.value !== 0)
     .sort((a, b) => b.value - a.value);
-}
-
-function summarizeBankRecords(records) {
-  return records.reduce((summary, record) => {
-    const amount = Number(record.amount || 0);
-    if (isBankIncomeCategory(record.category)) summary.total_income += amount;
-    else summary.total_expenses += Math.abs(amount);
-    summary.category_totals[record.category] = (summary.category_totals[record.category] || 0) + Math.abs(amount);
-    return summary;
-  }, { total_income: 0, total_expenses: 0, net_balance: 0, category_totals: {} });
-}
-
-function summarizeShareRecords(records) {
-  const summary = { total_ipo_investment: 0, total_sip_investment: 0, total_sip_redeemed: 0, sip_profit_loss: 0, total_buy_amount: 0, total_sell_amount: 0, total_dividend: 0, total_profit: 0 };
-  records.forEach((record) => {
-    const category = String(record.category || "").trim().toLowerCase();
-    const action = String(record.buy_sell || "").trim().toLowerCase();
-    const amount = Number(record.total_amount || 0);
-    const profit = Number(record.profit_loss || 0);
-    if (category === "ipo") summary.total_ipo_investment += amount;
-    else if (category === "buy") summary.total_buy_amount += amount;
-    else if (category === "sell") { summary.total_sell_amount += amount; summary.total_profit += profit; }
-    else if (category === "sip" && ["redeem", "redeemed"].includes(action)) { summary.total_sip_redeemed += amount; summary.sip_profit_loss += profit; }
-    else if (category === "sip") summary.total_sip_investment += amount;
-    else if (category === "dividend" && action === "cash") summary.total_dividend += amount;
-  });
-  const investment = summary.total_ipo_investment + summary.total_buy_amount;
-  summary.grand_total_investment = investment + summary.total_sip_investment;
-  summary.grand_profit_loss = summary.total_profit + summary.total_dividend - investment + summary.sip_profit_loss;
-  return summary;
-}
-
-function summarizePersonalRecords(records) {
-  const summary = records.reduce((summary, record) => {
-    if (record.source === "transfer") return summary;
-    const amount = Math.abs(Number(record.amount || 0));
-    const flow = record.flow_type === "cash" ? summary.cash : summary.bank;
-    if (record.direction === "income") {
-      summary.overall_income += amount;
-      flow.income += amount;
-      flow.net += amount;
-    } else if (record.direction === "expense") {
-      summary.overall_expenses += amount;
-      flow.expenses += amount;
-      flow.net -= amount;
-    }
-    return summary;
-  }, { overall_income: 0, overall_expenses: 0, overall_net: 0, bank: { income: 0, expenses: 0, net: 0 }, cash: { income: 0, expenses: 0, net: 0 } });
-  summary.overall_net = summary.overall_income - summary.overall_expenses;
-  return summary;
 }
 
 function buildBankTrend(records, buckets) {

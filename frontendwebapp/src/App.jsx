@@ -1,20 +1,45 @@
+import { lazy, Suspense, useEffect, useState } from "react";
 import { Link, Navigate, Outlet, Route, Routes, useLocation } from "react-router-dom";
+import { loadCategoryOptions } from "./constants/options";
+import { getApiBase } from "./api/client";
 
-import BankDashboard from "./pages/BankDashboard";
 import BankPage from "./pages/BankPage";
 // import OnboardingTour from "./components/OnboardingTour"; // disabled for now
 import UpdateNotice from "./components/UpdateNotice";
 import ShortcutPrompt from "./components/ShortcutPrompt";
 import Home from "./pages/Home";
-import PersonalFinanceDashboard from "./pages/PersonalFinanceDashboard";
 import PersonalFinanceHome from "./pages/PersonalFinanceHome";
 import PersonalFinancePage from "./pages/PersonalFinancePage";
 import PersonalFinanceTransferPage from "./pages/PersonalFinanceTransferPage";
-import Settings from "./pages/Settings";
-import ShareDashboard from "./pages/ShareDashboard";
 import SharePage from "./pages/SharePage";
-import Summary from "./pages/Summary";
 
+const BankDashboard = lazy(() => import("./pages/BankDashboard"));
+const ShareDashboard = lazy(() => import("./pages/ShareDashboard"));
+const PersonalFinanceDashboard = lazy(() => import("./pages/PersonalFinanceDashboard"));
+const Summary = lazy(() => import("./pages/Summary"));
+const Settings = lazy(() => import("./pages/Settings"));
+
+function StartupConnecting() {
+  return (
+    <main className="min-h-screen grid place-items-center bg-slate-50 px-6">
+      <div className="text-center">
+        {window.financialTracker ? (
+          <img
+            src="./finledge-icon.png"
+            alt="FinLedge logo"
+            className="mx-auto mb-4 h-20 w-20 rounded-2xl object-cover shadow-lg"
+          />
+        ) : null}
+        <h1 className="text-xl font-bold text-slate-900">FinLedge</h1>
+        <p className="mt-2 text-sm text-slate-600">Connecting to FinLedge…</p>
+      </div>
+    </main>
+  );
+}
+
+function RouteLoading() {
+  return <main className="page"><p className="subtitle">Loading…</p></main>;
+}
 
 function getRouteLabel(pathname) {
   if (pathname.startsWith("/bank-dashboard")) return "Bank Services Dashboard";
@@ -101,20 +126,76 @@ function Layout() {
 }
 
 function App() {
+  const [backendConnected, setBackendConnected] = useState(false);
+  const [dataUnavailable, setDataUnavailable] = useState(false);
+
+  useEffect(() => {
+    if (window.financialTracker) document.body.classList.add("finledge-desktop");
+    else document.body.classList.remove("finledge-desktop");
+    return () => document.body.classList.remove("finledge-desktop");
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    let retryTimer = null;
+    let paintFrame = 0;
+    const reportFirstPaint = () => {
+      if (typeof window.financialTracker?.reportStartupFirstPaint === "function") {
+        window.financialTracker.reportStartupFirstPaint();
+      }
+    };
+    paintFrame = requestAnimationFrame(() => {
+      paintFrame = requestAnimationFrame(reportFirstPaint);
+    });
+
+    const connect = async () => {
+      if (typeof window.financialTracker?.getDataLocations === "function") {
+        try {
+          const locations = await window.financialTracker.getDataLocations();
+          if (active && locations?.dataDirError) {
+            setDataUnavailable(true);
+            return;
+          }
+        } catch { /* Health polling below remains the source of connection state. */ }
+      }
+
+      try {
+        const baseUrl = await getApiBase();
+        const response = await fetch(`${baseUrl}/health`, { cache: "no-store" });
+        if (response.ok) {
+          await loadCategoryOptions().catch(() => {});
+          if (active) setBackendConnected(true);
+          return;
+        }
+      } catch { /* The backend is still starting. */ }
+
+      if (active) retryTimer = setTimeout(connect, 100);
+    };
+
+    connect();
+    return () => {
+      active = false;
+      if (retryTimer) clearTimeout(retryTimer);
+      cancelAnimationFrame(paintFrame);
+    };
+  }, []);
+
+  if (!backendConnected && !dataUnavailable) return <StartupConnecting />;
+
   return (
     <Routes>
       <Route element={<Layout />}>
         <Route path="/" element={<Home />} />
         <Route path="/bank" element={<BankPage />} />
-        <Route path="/bank-dashboard" element={<BankDashboard />} />
+        <Route path="/bank-dashboard" element={<Suspense fallback={<RouteLoading />}><BankDashboard /></Suspense>} />
         <Route path="/share" element={<SharePage />} />
-        <Route path="/share-dashboard" element={<ShareDashboard />} />
+        <Route path="/share-dashboard" element={<Suspense fallback={<RouteLoading />}><ShareDashboard /></Suspense>} />
         <Route path="/personal-finance" element={<PersonalFinanceHome />} />
         <Route path="/personal-finance-entry" element={<PersonalFinancePage />} />
         <Route path="/personal-finance-transfer" element={<PersonalFinanceTransferPage />} />
-        <Route path="/personal-finance-dashboard" element={<PersonalFinanceDashboard />} />
-        <Route path="/summary" element={<Summary />} />
-        <Route path="/settings" element={<Settings />} />
+        <Route path="/personal-finance-dashboard" element={<Suspense fallback={<RouteLoading />}><PersonalFinanceDashboard /></Suspense>} />
+        <Route path="/summary" element={<Suspense fallback={<RouteLoading />}><Summary /></Suspense>} />
+        <Route path="/settings" element={<Suspense fallback={<RouteLoading />}><Settings /></Suspense>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>

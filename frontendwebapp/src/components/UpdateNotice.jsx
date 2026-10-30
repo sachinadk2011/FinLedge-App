@@ -16,6 +16,7 @@ function buildDevMockBridge() {
     window.location.hash.replace(/^#/, "")
   ).get("mock-update");
   const MOCK_STATE = hashParam === "required" ? "required" : "available";
+  const releasesUrl = String(import.meta.env.VITE_FINLEDGE_RELEASES_URL || "").trim();
 
   const mockStatus = {
     state: MOCK_STATE,
@@ -23,9 +24,9 @@ function buildDevMockBridge() {
     detail:
       MOCK_STATE === "required"
         ? "This version is no longer supported. Please install the latest release."
-        : "A new version of Finledge is ready. Download it from GitHub Releases.",
+        : "A new version of Finledge is ready. Open the release page to get it.",
     version: "1.3.0",
-    releaseUrl: "https://github.com/sachinadk2011/FinLedge-App/releases/latest",
+    releaseUrl: releasesUrl,
     releaseNotes: [
       "Improved update notification banner with dev-mode preview.",
       "Reload button removed from header for a cleaner look.",

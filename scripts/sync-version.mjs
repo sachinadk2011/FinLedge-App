@@ -1,6 +1,14 @@
 import fs from "fs";
 import path from "path";
+import { createRequire } from "module";
 import { fileURLToPath } from "url";
+
+const require = createRequire(import.meta.url);
+const {
+  buildLatestReleaseUrl,
+  buildVersionReleaseUrl,
+  resolveRepositoryConfig,
+} = require("../desktop/services/repositoryConfig.js");
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -46,6 +54,10 @@ function setLockVersion(relativePath, version, linkedRootKeys = []) {
 
 const rootPackage = readJson("package.json");
 const nextVersion = versionArg || rootPackage.version;
+const repositoryConfig = resolveRepositoryConfig({ projectRoot, env: {} });
+if (!repositoryConfig.owner || !repositoryConfig.repo) {
+  throw new Error("Could not determine the public GitHub repository from desktop/package.json.");
+}
 
 if (!versionPattern.test(nextVersion)) {
   throw new Error(`Invalid version "${nextVersion}". Use a semver value like 1.0.4.`);
@@ -66,7 +78,8 @@ setLockVersion("desktop/package-lock.json", nextVersion);
 const desktopPolicyPath = "desktop-update-policy.json";
 const desktopPolicy = readJson(desktopPolicyPath);
 desktopPolicy.latestVersion = `desktop-v${nextVersion}`;
-desktopPolicy.releaseUrl = `https://github.com/sachinadk2011/FinLedge-App/releases/tag/desktop-v${nextVersion}`;
+desktopPolicy.releaseUrl = buildVersionReleaseUrl(repositoryConfig, `desktop-v${nextVersion}`);
+desktopPolicy.appxFallbackUrl = buildLatestReleaseUrl(repositoryConfig);
 writeJson(desktopPolicyPath, desktopPolicy);
 
 // ── update-policy.json (BACKWARD-COMPAT SHIM — read by old clients v1.1.0-v1.2.0) ──
@@ -76,7 +89,7 @@ writeJson(desktopPolicyPath, desktopPolicy);
 const legacyPolicyPath = "update-policy.json";
 const legacyPolicy = readJson(legacyPolicyPath);
 legacyPolicy.latestVersion = nextVersion;          // plain semver — old clients can parse this
-legacyPolicy.releaseUrl = `https://github.com/sachinadk2011/FinLedge-App/releases/tag/desktop-v${nextVersion}`;
+legacyPolicy.releaseUrl = buildVersionReleaseUrl(repositoryConfig, `desktop-v${nextVersion}`);
 writeJson(legacyPolicyPath, legacyPolicy);
 
 console.log(`Synced FinLedge version to ${nextVersion}.`);

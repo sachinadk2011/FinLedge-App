@@ -1,3 +1,6 @@
+import { TRANSFER_DIRECTION_OPTIONS } from "./transferDirections";
+import { getJson } from "../api/client";
+
 export const BANK_CATEGORIES = [
   "Interest Earned",
   "Interest Tax",
@@ -62,3 +65,30 @@ export const PERSONAL_FINANCE_INCOME_CATEGORIES = [
   "Refund",
   "Other Income",
 ];
+
+function replaceArray(target, values) {
+  if (!Array.isArray(values) || !values.length) return;
+  target.splice(0, target.length, ...values);
+}
+
+let categoryOptionsLoad = null;
+
+/** Refresh category choices from the backend enum definitions. */
+export async function loadCategoryOptions() {
+  if (!categoryOptionsLoad) {
+    categoryOptionsLoad = getJson("/meta/categories").then((categories) => {
+      replaceArray(BANK_CATEGORIES, categories.bank_categories);
+      BANK_INCOME_CATEGORIES.clear();
+      (categories.bank_income_categories || []).forEach((category) => BANK_INCOME_CATEGORIES.add(String(category).toLowerCase()));
+      replaceArray(PERSONAL_FINANCE_EXPENSE_CATEGORIES, categories.personal_finance_expense_categories);
+      replaceArray(PERSONAL_FINANCE_INCOME_CATEGORIES, categories.personal_finance_income_categories);
+    }).catch((error) => {
+      categoryOptionsLoad = null;
+      throw error;
+    });
+  }
+  return categoryOptionsLoad;
+}
+
+export const PERSONAL_FINANCE_TRANSFER_DIRECTIONS = TRANSFER_DIRECTION_OPTIONS;
+export { destinationFlow, normalizeTransferDirection, originFlow, transferActionLabel, transferFlowLabel } from "./transferDirections";

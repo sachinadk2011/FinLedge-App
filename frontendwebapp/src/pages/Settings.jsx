@@ -146,17 +146,12 @@ function Settings() {
     }
     setImportSubmitting(true);
     try {
-      await importSettingsDataFile(importType, importFile, importMode || "replace");
-      try {
-        window.sessionStorage.setItem("finledge:pending-dashboard-import", importType);
-      } catch {
-        // The import still succeeds if session storage is unavailable.
-      }
-      setSuccess("Data imported successfully.");
+      const importResult = await importSettingsDataFile(importType, importFile, importMode || "replace");
       setImportFile(null);
       setImportMode("replace");
       setShowMergePrompt(false);
       event.target.reset();
+      setSuccess(importResult?.message || "Import completed.");
     } catch (exc) {
       setError(getSimpleImportError(exc));
     } finally {

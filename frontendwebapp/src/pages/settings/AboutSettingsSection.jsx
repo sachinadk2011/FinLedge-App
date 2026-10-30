@@ -2,8 +2,9 @@ export default function AboutSettingsSection({
   appVersion,
   bridge
 }) {
-  return <section className="card settings-panel">
+  return <section className="card settings-panel settings-panel--scrollable">
           <h3>About FinLedge</h3>
+          <div className="settings-panel-scroll-content">
 
           <p className="subtitle">
             FinLedge is an offline-first personal financial operating system. It keeps all of
@@ -75,6 +76,7 @@ export default function AboutSettingsSection({
           <div className="settings-version-row">
             <span>Current version</span>
             <strong>{appVersion || (bridge ? "Loading..." : "Web preview")}</strong>
+          </div>
           </div>
         </section>;
 }

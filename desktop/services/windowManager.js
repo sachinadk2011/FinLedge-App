@@ -5,6 +5,12 @@ const path = require("path");
 
 function createWindowManager({ BrowserWindow, screen, app, projectRoot, preloadPath, iconPath, windowIconPath, applicationName, logLine, onFrontendReady }) {
   let mainWindow = null;
+  let frontendLoaded = false;
+  let backendReady = false;
+
+  function notifyFrontendReadyIfReady() {
+    if (frontendLoaded && backendReady && mainWindow) onFrontendReady?.(mainWindow);
+  }
 
   function clampNumber(value, min, max) {
     const lowerBound = Math.min(min, max);
@@ -110,7 +116,8 @@ function createWindowManager({ BrowserWindow, screen, app, projectRoot, preloadP
     if (!mainWindow || !url) return;
     logLine("[main] Navigating to frontend", url);
     mainWindow.webContents.once("did-finish-load", () => {
-      if (mainWindow) onFrontendReady?.(mainWindow);
+      frontendLoaded = true;
+      notifyFrontendReadyIfReady();
     });
     mainWindow.loadURL(url).catch((error) => {
       logLine("[main] navigateToFrontend error", String(error && error.stack ? error.stack : error));
@@ -120,6 +127,10 @@ function createWindowManager({ BrowserWindow, screen, app, projectRoot, preloadP
   return {
     createWindow,
     navigateToFrontend,
+    notifyBackendReady: () => {
+      backendReady = true;
+      notifyFrontendReadyIfReady();
+    },
     getMainWindow: () => mainWindow,
   };
 }

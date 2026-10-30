@@ -2,18 +2,25 @@
 
 import os
 import shutil
-import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 from openpyxl import Workbook, load_workbook
 
-from ..excel_utils import get_backup_directory, readable_backup_timestamp
+from ..excel_utils import get_backup_directory, mirror_workbook_to_safety_copy, readable_backup_timestamp
 from .config import DATA_DIR, get_data_type_config
 from .normalization import (
-    _BANK_INCOME_CATEGORIES, _COLUMN_ALIASES, _migrate_bank_category,
+    _BANK_INCOME_CATEGORIES, _migrate_bank_category,
     _migrate_pf_category, _migrate_pf_direction, _migrate_share_category,
+)
+from ..workbook_headers import get_header_value, header_indexes, header_key, normalize_header
+from ..transfer_directions import normalize_transfer_direction
+from ..workbook_merge import (
+    ROW_ID_HEADER,
+    ensure_row_metadata, ensure_tombstone_and_conflict_sheets,
+    get_device_label, map_row, merge_row_sets, normalize_device_label,
+    read_conflicts, read_tombstones, recompute_derived,
 )
 
 def _to_float(value: object) -> float:
@@ -24,11 +31,7 @@ def _to_float(value: object) -> float:
 
 def _apply_aliases(headers: list[str]) -> list[str]:
     """Normalise column headers: apply aliases so old names map to current canonical names."""
-    result = []
-    for h in headers:
-        lower = h.strip().lower()
-        result.append(_COLUMN_ALIASES.get(lower, h.strip()))
-    return result
+    return [normalize_header(header) for header in headers]
 
 def _read_workbook_rows(
     source_path: Path,
@@ -52,10 +55,10 @@ def _read_workbook_rows(
 
 def _validate_required_headers(actual_headers: list[str], required_headers: list[str]) -> list[str]:
     """Return list of missing required headers (empty = OK). Case-insensitive."""
-    actual_lower = {h.lower() for h in actual_headers}
+    actual_lower = {header_key(h) for h in actual_headers}
     return [
         header for header in required_headers
-        if _apply_aliases([header])[0].lower() not in actual_lower
+        if header_key(header) not in actual_lower
     ]
 
 def _remap_bank_rows(
@@ -98,7 +101,7 @@ def _remap_bank_rows(
         # Recalculate running cumulative from the (now-signed) amount
         running_cumulative = round(running_cumulative + amount, 10)
 
-        created_ts = get("Created Timestamp") or get("Last Updated Timestamp") or import_ts
+        created_ts = get("Created Timestamp") or get("Last Updated Timestamp") or (str(date_val)[:10] if date_val else import_ts)
         updated_ts = get("Last Updated Timestamp") or created_ts
 
         remapped = []
@@ -119,7 +122,11 @@ def _remap_bank_rows(
             elif col_l == "last updated timestamp":
                 remapped.append(updated_ts)
             elif col_l == "updated device":
-                remapped.append("desktop")
+                remapped.append(normalize_device_label(get("Updated Device"), get_device_label()))
+            elif col_l == "row id":
+                remapped.append(get(ROW_ID_HEADER))
+            elif col_l == "content hash":
+                remapped.append(None)
             else:
                 remapped.append(None)
         result.append(remapped)
@@ -167,7 +174,7 @@ def _remap_share_rows(
         profit_loss = get("Profit/Loss")
         cumulative_profit = get("Cumulative Profit")
 
-        row_ts = get("Created Timestamp") or get("Last Updated Timestamp") or import_ts
+        row_ts = get("Created Timestamp") or get("Last Updated Timestamp") or (str(date_val)[:10] if date_val else import_ts)
         updated_ts = get("Last Updated Timestamp") or row_ts
         sync_ref = get("Sync Ref", None)
 
@@ -199,7 +206,11 @@ def _remap_share_rows(
             elif col_l == "last updated timestamp":
                 remapped.append(updated_ts)
             elif col_l == "updated device":
-                remapped.append("desktop")
+                remapped.append(normalize_device_label(get("Updated Device"), get_device_label()))
+            elif col_l == "row id":
+                remapped.append(get(ROW_ID_HEADER))
+            elif col_l == "content hash":
+                remapped.append(None)
             elif col_l == "sync ref":
                 remapped.append(sync_ref)
             else:
@@ -248,7 +259,7 @@ def _remap_pf_rows(
         # Always recalculate signed amount from the normalised direction
         signed_amount = amount if direction == "income" else -amount
 
-        row_ts = get("Created Timestamp") or get("Last Updated Timestamp") or import_ts
+        row_ts = get("Created Timestamp") or get("Last Updated Timestamp") or (str(date_val)[:10] if date_val else import_ts)
         updated_ts = get("Last Updated Timestamp") or row_ts
 
         remapped = []
@@ -275,9 +286,13 @@ def _remap_pf_rows(
             elif col_l == "last updated timestamp":
                 remapped.append(updated_ts)
             elif col_l == "updated device":
-                remapped.append("desktop")
+                remapped.append(normalize_device_label(get("Updated Device"), get_device_label()))
             elif col_l == "source ref":
                 remapped.append(source_ref)
+            elif col_l == "row id":
+                remapped.append(get(ROW_ID_HEADER))
+            elif col_l == "content hash":
+                remapped.append(None)
             else:
                 remapped.append(None)
         result.append(remapped)
@@ -304,7 +319,7 @@ def _remap_rows(
 
 def _validate_import_type(data_type: str, headers: list[str], rows: list[list[Any]]) -> None:
     """Reject workbooks whose recognizable schema belongs to another module."""
-    normalized = {header.strip().lower() for header in headers}
+    normalized = {header_key(header) for header in headers}
     if data_type == "bank":
         if ({"direction", "flow type", "signed amount"} & normalized):
             raise ValueError("This looks like a Personal Expenses workbook. Select Bank Flow or Cash Flow.")
@@ -315,7 +330,7 @@ def _validate_import_type(data_type: str, headers: list[str], rows: list[list[An
             raise ValueError("This file is missing the Personal Expenses Direction column.")
         if {"share name", "buy/sell"} & normalized:
             raise ValueError("This looks like a Share Portfolio workbook.")
-        flow_idx = next((i for i, value in enumerate(headers) if value.lower() == "flow type"), None)
+        flow_idx = header_indexes(headers).get(header_key("Flow Type"))
         expected = "bank" if data_type == "pf-bank" else "cash"
         if flow_idx is not None:
             observed = {
@@ -325,31 +340,27 @@ def _validate_import_type(data_type: str, headers: list[str], rows: list[list[An
             if observed - {expected}:
                 raise ValueError(f"This file contains {', '.join(sorted(observed))} flow rows. Select the matching Personal Expenses flow.")
     if data_type == "pf-transfer":
-        direction_idx = next((i for i, value in enumerate(headers) if value.lower() == "direction"), None)
-        allowed = {"bank_to_cash", "cash_to_bank"}
-        observed = {
-            _normalize_transfer_direction(row[direction_idx])
-            for row in rows if direction_idx is not None and direction_idx < len(row) and row[direction_idx] not in (None, "")
-        }
-        if observed - allowed:
-            raise ValueError("Transfer Direction must be Bank to Cash or Cash to Bank.")
-        flow_idx = next((i for i, value in enumerate(headers) if value.lower() == "flow type"), None)
-        flow_types = {
-            str(row[flow_idx]).strip().lower()
-            for row in rows if flow_idx is not None and flow_idx < len(row) and row[flow_idx] not in (None, "")
-        }
-        if flow_types - {"transfer"}:
-            raise ValueError("This does not look like a Bank/Cash transfer workbook.")
         if {"share name", "buy/sell", "per unit price"} & normalized:
-            raise ValueError("This does not look like a Bank/Cash transfer workbook.")
+            raise ValueError("This is a Share Portfolio workbook, not a Bank/Cash transfer workbook.")
+        invalid_count = sum(1 for row in rows if not _row_transfer_direction(row, headers))
+        if invalid_count:
+            row_word = "row" if invalid_count == 1 else "rows"
+            verb = "has" if invalid_count == 1 else "have"
+            raise ValueError(
+                f"{invalid_count} {row_word} {verb} a missing or invalid transfer direction. "
+                "Use Bank to Cash or Cash to Bank."
+            )
 
-def _normalize_transfer_direction(value: Any) -> str:
-    normalized = str(value or "").strip().lower().replace("→", " to ").replace("->", " to ")
-    normalized = " ".join(normalized.replace("_", " ").split())
-    return {
-        "bank to cash": "bank_to_cash",
-        "cash to bank": "cash_to_bank",
-    }.get(normalized, normalized.replace(" ", "_"))
+
+def _row_transfer_direction(row: list[Any], headers: list[str]) -> str:
+    """Find a valid direction in either FinLedge or user workbook columns."""
+    indexes = header_indexes(headers)
+    for name in ("direction", "transfer direction", "flow type"):
+        value = get_header_value(headers, row, name)
+        direction = normalize_transfer_direction(value)
+        if direction:
+            return direction
+    return ""
 
 def _remap_transfer_rows(
     rows: list[list[Any]], actual_headers: list[str], full_headers: list[str], import_ts: str,
@@ -361,18 +372,22 @@ def _remap_transfer_rows(
             position = idx.get(col.lower())
             return row[position] if position is not None and position < len(row) else default
         date_val = get("Date", "")
-        direction = _normalize_transfer_direction(get("Direction", ""))
+        direction = _row_transfer_direction(row, actual_headers)
         amount = abs(_to_float(get("Amount", 0)))
         description = str(get("Description", "") or "").strip()
-        created = get("Created Timestamp") or get("Last Updated Timestamp") or import_ts
+        created = get("Created Timestamp") or get("Last Updated Timestamp") or (str(date_val)[:10] if date_val else import_ts)
         timestamp = get("Last Updated Timestamp") or created
-        transfer_ref = str(get("Source Ref", "") or "").strip() or f"transfer:{str(date_val)[:10]}:{uuid.uuid4().hex[:8]}"
+        transfer_ref = str(get("Source Ref", "") or "").strip()
+        if not transfer_ref:
+            import hashlib
+            stable = f"{str(date_val)[:10]}|{direction}|{amount:.10g}|{description}|{created}"
+            transfer_ref = f"transfer:{hashlib.sha1(stable.encode('utf-8')).hexdigest()[:16]}"
         mapped = []
         for column in full_headers:
             key = column.lower()
             if key == "date": mapped.append(str(date_val).strip()[:10] if date_val else "")
-            elif key == "flow type": mapped.append("transfer")
-            elif key == "direction": mapped.append(direction)
+            elif key == "flow type": mapped.append(direction)
+            elif key == "direction": mapped.append("transfer")
             elif key == "category": mapped.append("Transfer")
             elif key in {"amount", "signed amount"}: mapped.append(amount)
             elif key == "description": mapped.append(description)
@@ -380,7 +395,9 @@ def _remap_transfer_rows(
             elif key == "created timestamp": mapped.append(created)
             elif key == "last updated timestamp": mapped.append(timestamp)
             elif key == "source ref": mapped.append(transfer_ref)
-            elif key == "updated device": mapped.append("desktop")
+            elif key == "updated device": mapped.append(normalize_device_label(get("Updated Device"), get_device_label()))
+            elif key == "row id": mapped.append(get(ROW_ID_HEADER))
+            elif key == "content hash": mapped.append(None)
             else: mapped.append(None)
         result.append(mapped)
     return result
@@ -389,8 +406,13 @@ def _backup_live_file(live_path: Path) -> Path | None:
     if not live_path.exists():
         return None
     tag = readable_backup_timestamp(datetime.now(timezone.utc))
-    backup_dir = get_backup_directory(live_path) / "import" / tag
-    backup_dir.mkdir(parents=True, exist_ok=True)
+    base_dir = get_backup_directory(live_path) / "import"
+    backup_dir = base_dir / tag
+    suffix = 2
+    while backup_dir.exists():
+        backup_dir = base_dir / f"{tag} ({suffix})"
+        suffix += 1
+    backup_dir.mkdir(parents=True, exist_ok=False)
     backup_file = backup_dir / live_path.name
     shutil.copy2(live_path, backup_file)
     return backup_file
@@ -434,6 +456,9 @@ def _ensure_import_workbook_ready(data_type: str) -> None:
     elif data_type == "pf-cash":
         from ..personal_finance_service import _ensure_workbook_exists
         _ensure_workbook_exists("cash")
+    elif data_type == "pf-transfer":
+        from ..personal_finance_transfers import _ensure_transfer_workbook_exists
+        _ensure_transfer_workbook_exists()
 
 def import_data_file(
     data_type: str,
@@ -485,49 +510,112 @@ def import_data_file(
 
     import_ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    # For merge mode: load existing live rows first
-    live_rows: list[list[Any]] = []
-    initial_cumulative = 0.0
     flow_type_override = "bank" if data_type == "pf-bank" else ("cash" if data_type == "pf-cash" else "")
-
-    if mode == "merge":
-        _ensure_import_workbook_ready(data_type)
-        live_rows, initial_cumulative = _read_live_rows(live_path, sheet_name, data_type)
-    else:
-        initial_cumulative = 0.0
-
-    # For bank in replace mode: cumulative starts from 0.
-    # For bank in merge mode: cumulative continues from last live row.
     remapped = _remap_rows(
         data_type,
         import_rows,
         actual_headers,
         full_headers,
         import_ts,
-        initial_cumulative=initial_cumulative,
+        initial_cumulative=0.0,
         flow_type_override=flow_type_override,
     )
 
-    backup_file = _backup_live_file(live_path)
+    if data_type in {"pf-bank", "pf-cash", "pf-transfer"}:
+        from ..personal_finance_service import _file_lock
+        lock_context = _file_lock
+    elif data_type == "bank":
+        from ..bank_service import _file_lock
+        lock_context = _file_lock
+    else:
+        from ..share_service import _file_lock
+        lock_context = _file_lock
 
-    tag = datetime.now().strftime("%Y%m%d-%H%M%S")
-    safe_stem = Path(str(config["filename"])).stem
-    staged_path = DATA_DIR / f".import-{safe_stem}-{tag}.xlsx"
+    kind = "bank" if data_type == "bank" else "share" if data_type == "share" else "transfer" if data_type == "pf-transfer" else "personal_finance"
 
-    try:
-        wb = Workbook()
-        ws = wb.active
-        ws.title = sheet_name
-        ws.append(full_headers)
-        for row in live_rows:
-            ws.append(row)
-        for row in remapped:
-            ws.append(row)
-        wb.save(staged_path)
-        os.replace(staged_path, live_path)
-    finally:
-        if staged_path.exists() and staged_path != live_path:
-            staged_path.unlink(missing_ok=True)
+    with lock_context:
+        _ensure_import_workbook_ready(data_type)
+        current_rows: list[list[Any]] = []
+        current_tombstones: list[dict[str, str]] = []
+        current_conflicts: list[list[Any]] = []
+        if mode == "merge" and live_path.exists():
+            live_wb = load_workbook(live_path, data_only=False)
+            try:
+                live_sheet = live_wb[sheet_name] if sheet_name in live_wb.sheetnames else live_wb.active
+                live_headers = [str(cell.value or "") for cell in live_sheet[1]]
+                raw_rows = [
+                    [cell.value for cell in row]
+                    for row in live_sheet.iter_rows(min_row=2, values_only=False)
+                    if any(cell.value is not None for cell in row)
+                ]
+                current_rows = [map_row(live_headers, row, full_headers) for row in raw_rows]
+                current_tombstones = read_tombstones(live_wb)
+                current_conflicts = read_conflicts(live_wb)
+            finally:
+                live_wb.close()
+
+        incoming_tombstones: list[dict[str, str]] = []
+        incoming_conflicts: list[list[Any]] = []
+        source_wb = load_workbook(uploaded_path, data_only=False)
+        try:
+            incoming_tombstones = read_tombstones(source_wb)
+            incoming_conflicts = read_conflicts(source_wb)
+        finally:
+            source_wb.close()
+
+        merge_result = merge_row_sets(
+            full_headers,
+            current_rows,
+            remapped,
+            kind,
+            current_tombstones=current_tombstones,
+            incoming_tombstones=incoming_tombstones,
+            existing_conflicts=current_conflicts + incoming_conflicts,
+        )
+        if data_type == "pf-transfer":
+            from ..personal_finance_transfers import validate_transfer_import_rows
+            # Validate the final deduplicated transfer set so re-importing an
+            # unchanged transfer does not replay the same movement twice.
+            validate_transfer_import_rows(merge_result["rows"], full_headers, "replace")
+        backup_file = _backup_live_file(live_path)
+
+        tag = datetime.now().strftime("%Y%m%d-%H%M%S")
+        safe_stem = Path(str(config["filename"])).stem
+        staged_path = live_path.parent / f".import-{safe_stem}-{tag}.xlsx"
+
+        try:
+            wb = Workbook()
+            ws = wb.active
+            ws.title = sheet_name
+            ws.append(merge_result["headers"])
+            for row in merge_result["rows"]:
+                ws.append(row)
+            ensure_tombstone_and_conflict_sheets(wb)
+            deleted_ws = wb["Deleted"]
+            for item in merge_result["tombstones"]:
+                deleted_ws.append([item["row_id"], item["deleted_timestamp"], item["deleted_by_device"]])
+            conflicts_ws = wb["Conflicts"]
+            for conflict in merge_result["conflicts"]:
+                conflicts_ws.append(conflict)
+            recompute_derived(ws, kind)
+            refresh_headers, normalized_rows = ensure_row_metadata(
+                merge_result["headers"], merge_result["rows"], kind
+            )
+            if refresh_headers != merge_result["headers"] or len(normalized_rows) != len(merge_result["rows"]):
+                raise ValueError("Imported workbook failed identity validation.")
+            wb.save(staged_path)
+            wb.close()
+            check = load_workbook(staged_path, read_only=True, data_only=True)
+            try:
+                if sheet_name not in check.sheetnames or check[sheet_name].max_row != len(merge_result["rows"]) + 1:
+                    raise ValueError("Imported workbook failed validation.")
+            finally:
+                check.close()
+            os.replace(staged_path, live_path)
+            mirror_workbook_to_safety_copy(live_path)
+        finally:
+            if staged_path.exists() and staged_path != live_path:
+                staged_path.unlink(missing_ok=True)
 
     return {
         "data_type": data_type,
@@ -536,8 +624,10 @@ def import_data_file(
         "file": str(live_path),
         "backup_file": str(backup_file) if backup_file else None,
         "imported_rows": len(remapped),
-        "merged_rows": len(live_rows),
+        "merged_rows": len(current_rows),
         "mode": mode,
+        "merge_report": merge_result["report"],
+        "message": merge_result["message"],
     }
 
 def check_live_has_data(data_type: str) -> bool:

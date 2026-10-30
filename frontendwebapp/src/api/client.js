@@ -1,11 +1,11 @@
-export function getApiBase() {
+export async function getApiBase() {
   // Re-evaluate the bridge on every call so we pick it up after Electron
   // has finished exposing it via contextBridge (it is not available at
   // module-load time, which is why a top-level snapshot always returns "").
   const bridgeBase =
     typeof window !== "undefined" &&
     typeof window.financialTracker?.getBackendBaseUrl === "function"
-      ? window.financialTracker.getBackendBaseUrl()
+      ? await window.financialTracker.getBackendBaseUrl()
       : "";
   const base = bridgeBase || import.meta.env.VITE_API_BASE_URL || "";
   if (!base) {
@@ -40,16 +40,17 @@ export async function handleResponse(response, meta) {
   const data = await readJsonSafe(response);
 
   if (!response.ok) {
-    console.error("[api] request failed", {
-      ...meta,
-      status: response.status,
-      statusText: response.statusText,
-      response: data,
-    });
-
-    if (data?.detail) {
-      console.error("[api] error detail", data.detail);
-      console.error("[api] error detail (json)", formatDetail(data.detail));
+    if (import.meta.env.DEV) {
+      console.error("[api] request failed", {
+        ...meta,
+        status: response.status,
+        statusText: response.statusText,
+        response: data,
+      });
+      if (data?.detail) {
+        console.error("[api] error detail", data.detail);
+        console.error("[api] error detail (json)", formatDetail(data.detail));
+      }
     }
 
     const message = data?.detail ? formatDetail(data.detail) : "Request failed";
@@ -60,8 +61,8 @@ export async function handleResponse(response, meta) {
 }
 
 export async function postJson(path, payload) {
-  const url = `${getApiBase()}${path}`;
-  console.log("[api] POST", url, payload);
+  const url = `${await getApiBase()}${path}`;
+  if (import.meta.env.DEV) console.log("[api] POST", url, payload);
 
   const response = await fetch(url, {
     method: "POST",
@@ -73,8 +74,8 @@ export async function postJson(path, payload) {
 }
 
 export async function putJson(path, payload) {
-  const url = `${getApiBase()}${path}`;
-  console.log("[api] PUT", url, payload);
+  const url = `${await getApiBase()}${path}`;
+  if (import.meta.env.DEV) console.log("[api] PUT", url, payload);
 
   const response = await fetch(url, {
     method: "PUT",
@@ -86,16 +87,16 @@ export async function putJson(path, payload) {
 }
 
 export async function getJson(path) {
-  const url = `${getApiBase()}${path}`;
-  console.log("[api] GET", url);
+  const url = `${await getApiBase()}${path}`;
+  if (import.meta.env.DEV) console.log("[api] GET", url);
 
   const response = await fetch(url);
   return handleResponse(response, { method: "GET", url });
 }
 
 export async function deleteJson(path) {
-  const url = `${getApiBase()}${path}`;
-  console.log("[api] DELETE", url);
+  const url = `${await getApiBase()}${path}`;
+  if (import.meta.env.DEV) console.log("[api] DELETE", url);
 
   const response = await fetch(url, { method: "DELETE" });
   return handleResponse(response, { method: "DELETE", url });

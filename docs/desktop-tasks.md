@@ -161,6 +161,28 @@ AGENTS.md §0.5: ambiguous = narrower action. PLAN.md Hard Constraints still app
 
 (append dated entries; include a "Docs touched" line per AGENTS.md §11)
 
+### 2026-10-27 — Preserve legacy data sources and reduce packaged startup time
+
+- **Data safety:** Legacy workbook migration now retains source files. Timestamped source
+  backups are still made before new or changed workbook merges, and unchanged already
+  migrated rows do not cause another migration snapshot.
+- **Startup:** The packaged Python sidecar now uses PyInstaller onedir. EXE and AppX
+  include the engine folder, avoiding repeated runtime extraction during preparation and
+  backend launches.
+- **Test-package names:** Combined EXE/AppX test builds now use stable output filenames;
+  the incrementing AppX revision remains inside the package so Windows can still perform
+  in-place test upgrades without accumulating newly revision-suffixed filenames.
+- **Data model:** Production EXE and AppX keep using `Documents\\FinLedge\\FinLedge Data`
+  outside their install folders. The cross-build lock remains necessary while both
+  builds use the same Excel files.
+- **Docs touched:** `backend/services/data_directory_service.py`,
+  `backend/tests/test_data_directory_service.py`, `.gitignore`,
+  `backend/tests/test_settings.py`,
+  `desktop/scripts/build-sidecar.ps1`, `desktop/package.json`,
+  `desktop/services/childProcessManager.js`, `desktop/tests/dataDirectory.test.cjs`,
+  `desktop/services/dataDirectoryRuntime.js`, `docs/desktop-appx-testing.md`,
+  `docs/desktop-codebase.md`, `docs/desktop-tasks.md`, `scripts/finledge.mjs`.
+
 ### 2026-10-26 — Data backup paths, import timestamps, and backend isolation
 
 - **Backup-folder investigation:** The checked migration and backup code copies existing
@@ -185,8 +207,8 @@ AGENTS.md §0.5: ambiguous = narrower action. PLAN.md Hard Constraints still app
   EXE starts at 8001, Store at 8101, test EXE at 8201, test AppX at 8301, and dev at 8401;
   development Vite uses the corresponding 8051/8151/8251/8351/8451 ranges). They retry
   within their range if a port is occupied, then request an OS-assigned port, and verify the backend using
-  a per-launch token before opening the dashboard. This works with the PyInstaller one-file
-  wrapper, whose Python worker PID can differ from the executable launcher PID. A single-instance
+  a per-launch token before opening the dashboard. The PyInstaller onedir sidecar avoids
+  unpacking its full Python payload on each launch. A single-instance
   lock prevents repeated clicks from starting overlapping copies. The splash appears before
   data/backend startup, and backend output is written to the desktop log. Desktop development
   starts its own Vite server on a separate OS-assigned port instead of attaching to an existing
@@ -640,3 +662,486 @@ AGENTS.md §0.5: ambiguous = narrower action. PLAN.md Hard Constraints still app
   advisory; Electron Builder's first sandboxed attempt was blocked at `node_modules`
   access, then the elevated retry succeeded.
 - Docs touched: `docs/desktop-tasks.md`, `docs/desktop-codebase.md`.
+
+### 2026-10-28 — Desktop workbook migration recovery
+
+- Fixed migration selection so a valid but empty destination is backed up before a
+  verified legacy workbook replaces it. Legacy data sheets are mapped by normalized
+  header names into canonical module sheets; `Timestamp`, missing last-updated time,
+  and missing device values are handled during merge. Duplicate detection uses
+  business columns while ignoring derived values and audit metadata.
+- Added physical AppX `LocalCache\Roaming` discovery for production package folders,
+  excluding Testing packages, alongside legacy AppData and Documents locations.
+  Electron now writes the migration report to its startup log.
+- Added a path/size/mtime source fingerprint. Completed migrations return early when
+  the fingerprint is unchanged and all five destination workbooks exist. Recovery
+  searches backups only when a source or destination workbook exists and is damaged;
+  legacy workbooks remain untouched.
+- Verification: `pytest backend/tests/` — 92 passed. The first run printed the
+  success summary but needed interruption during shutdown; the clean rerun exited
+  successfully. `node --test desktop/tests/dataDirectory.test.cjs` passed all 7 tests.
+- Docs touched: `docs/desktop-codebase.md`, `docs/desktop-tasks.md`.
+
+### 2026-10-30 — Separate client workbooks and synchronize safely
+
+- Testing/production EXE and AppX now resolve their own active workbook directories;
+  each Settings path, dashboard API and import/export uses that exact client path. Both
+  clients synchronize through a channel-specific Roaming folder (`Finledge Testing EXE`
+  or `Finledge`) containing shared workbooks, backups, an identity map, and a journal.
+- Legacy root migration now verifies each workbook backup by hash, sheet structure and
+  record content. After migration, background metadata backfill, shared sync and a
+  second destination/Row ID/hash check succeed, a durable cleanup manifest permits
+  removal of only migrated root-level workbook files. Cleanup resumes after crashes;
+  unrelated files and any source involved in a failure remain in place.
+- Legacy metadata upgrades run per workbook in a daemon after the API starts, with a
+  verified backup, staged write, validation, service lock and optimistic fingerprint
+  check before atomic replacement. Valid IDs/timestamps/device labels are retained;
+  old duplicate rows get distinct UUID5 IDs from canonical workbook/sheet, normalized
+  business values, Created Timestamp and a shared duplicate ordinal. Exact duplicate
+  rows have no original distinguishing information, so their ID-to-physical-row
+  pairing cannot be inferred, although the IDs remain unique and consistent between
+  clients.
+- Added isolated tests for backup/copy/validation failures, interrupted migration and
+  cleanup, repeated migration, duplicate legacy records, concurrent client sync,
+  conflict resolution, journal idempotence, locked workbooks, failed atomic commits,
+  and simultaneous user edits.
+- Verification: `pytest backend/tests/` — 151 passed. The workspace venv launcher
+  points at an unavailable base-Python location, so the run used the available Python
+  3.13 runtime with the workspace venv's packages and a fresh pytest-managed temp root.
+  `node --test desktop/tests/dataDirectory.test.cjs` — 23 passed;
+  `npm test --prefix frontendwebapp` passed; `npm run build --prefix frontendwebapp`
+  passed. Signed EXE/MSIX installation and live packaged shared-folder behavior were
+  not verified. No real user data directories were accessed.
+- Docs touched: `docs/desktop-codebase.md`, `docs/desktop-tasks.md`.
+
+### 2026-10-29 — Align AppX workbook targets and isolate client launch locks
+
+- Compared the workbook opened by AppX Settings with its live dashboard. The displayed
+  Roaming path contained one bank row, while the dashboard returned 34; those 34 rows
+  match the package-effective LocalCache workbook. AppX Settings now resolves the
+  displayed and opened locations to the same package-effective workbook.
+- The EXE launch was being rejected by Electron's shared single-instance guard while
+  AppX was running. Added a client-local lock file under each client's Electron
+  user-data folder so EXE and AppX can run together while duplicate launches of the
+  same client remain blocked.
+- Added desktop tests for AppX Settings/open-path resolution and per-client lock
+  behavior. Packaged re-verification and final test results are pending.
+- Docs touched: `docs/desktop-codebase.md`, `docs/desktop-tasks.md`.
+
+### 2026-10-29 — Bank/Cash transfer import and validation
+
+- Added a shared JSON definition for canonical transfer directions, aliases, and
+  origin/destination flows. Backend services and import mapping plus the renderer's
+  `options.js` and transfer UI consume the same rules.
+- Transfer imports now accept valid values from `Direction` or `Flow Type`, reject
+  share workbooks, report the invalid-direction row count, and save canonical rows.
+  Imports replay dated income and transfer events and reject an overdraft with the
+  side's available amount. Create/update validation now runs under the same
+  reentrant Personal Expenses lock as the workbook write; update checks the selected
+  origin after excluding the edited transfer.
+- Added the transfer workbook location to Settings and Electron's open-file map.
+  The sidecar build includes the shared JSON rules.
+- Verification: focused transfer tests passed (15); frontend production build passed.
+  Edge rendered the transfer selector and Settings row in Playwright snapshots; the
+  screenshot command timed out. `pytest backend/tests/` — 107 passed. A packaged
+  sidecar build was not run.
+- Docs touched: `docs/desktop-codebase.md`, `docs/desktop-tasks.md`.
+
+### 2026-10-29 — Desktop data safety and import visibility
+
+- Changed Personal Expenses flow moves to validate and save the destination row
+  before deleting the source row. Both workbook writes take a pre-write snapshot
+  inside the same lock. Transfer workbook initialization now copies legacy rows from
+  the old generic sheet to `Transfer Flow` while preserving the old sheet.
+- Added the `app:get-backend-port` IPC getter. Preload resolves the selected port on
+  first use, caches it, and the renderer awaits the resulting API base URL.
+- Changed day/month grouping keys to local date parts and taught date-only ISO values
+  to remain calendar dates in negative-offset time zones. Removed the frontend ignore
+  rule hiding its npm smoke-test script, and limited request-payload logs to DEV.
+- Settings now navigates to the matching dashboard after a successful import and
+  selects the all-dates range. Settings and migration notices are path-free; explicit
+  file-location fields remain available in General Settings.
+- Verification: `pytest backend/tests/` — 110 passed; `npm run build --prefix
+  frontendwebapp` passed; `npm test --prefix frontendwebapp` passed; 12 desktop
+  Node tests passed. The local Playwright CLI did not return a rendered snapshot, so
+  rendered UI verification was not completed.
+- Docs touched: `docs/desktop-codebase.md`, `docs/desktop-tasks.md`.
+
+### 2026-10-29 — Faster desktop startup
+
+- Confirmed no renderer route calls the deprecated `/summary/graphs/*` paths and
+  that Matplotlib is imported only inside the unused PNG renderer. Added PyInstaller
+  exclusions for matplotlib, numpy, PIL, and tkinter.
+- Removed Electron's blocking `spawnSync --prepare-data`. The single backend sidecar
+  now prepares/migrates data before `uvicorn.run`; `--prepare-data` remains available
+  for test use. Legacy-folder fallback is retained for a preparation failure.
+- Backend readiness now polls every 100ms with a 300ms request timeout. The renderer
+  opens as soon as the backend port is selected, shows a short connecting screen until
+  `/health` responds, and lazily loads dashboards, Summary, and Settings.
+- Added a versioned, atomic migration marker with workbook stat fingerprints so
+  unchanged migration inputs skip workbook opens. Added timestamped launch, data-ready,
+  backend-spawn, health-ok, and first-paint log phases.
+- Verification: `pytest backend/tests/` — 119 passed; `npm run desktop:test-data`
+  — 12 passed; `npm run build --prefix frontendwebapp` passed. JavaScript syntax
+  checks and `git diff --check` passed. Real startup timing requires a packaged
+  install and was not verified.
+- Docs touched: `docs/desktop-codebase.md`, `docs/desktop-tasks.md`.
+
+### 2026-10-29 — Behavior-preserving desktop refactor checkpoints
+
+- Consolidated workbook creation, row reading, and locked snapshot/save/close flows
+  in `excel_utils`; centralized workbook header aliases and name-based row mapping
+  across imports and migrations.
+- Routed Share Portfolio recalculation through shared FIFO/SIP lot helpers and
+  centralized day/month graph bucket aggregation. Marked the unused summary graph
+  routes deprecated in OpenAPI while keeping their URLs and runtime behavior.
+- Derived backend category metadata from request-model enums and added
+  `/meta/categories`; the renderer refreshes its existing option arrays from that
+  endpoint at startup. Reused the existing device and transfer direction helpers.
+- Extracted share add/update payload construction, Personal Finance labels and
+  transfer receiver expansion, and Bank/Share/Personal Finance summary functions.
+- Added shared delete confirmation state/dialog wiring and form amount/description
+  reset helpers. Replaced duplicate Electron readiness loops with `pollUntil`.
+- Verification after each item: `pytest backend/tests/` — 117 passes for items 1–6,
+  then 118 passes for items 7–13; `npm run build --prefix frontendwebapp` passed at
+  every checkpoint. Final desktop Node tests: 12 passed. Rendered UI verification
+  was not performed.
+- Docs touched: `docs/desktop-codebase.md`, `docs/desktop-tasks.md`.
+
+### 2026-10-29 — Automatic workbook merge identity and conflict handling
+
+- Added immutable row IDs, business-only SHA-1 hashes, and normalized client labels
+  to Bank, Share Portfolio, Personal Expenses, and transfer rows. Existing rows
+  receive deterministic IDs during backup-and-replace schema migration.
+- Added shared ID-based merge rules for startup migration and Settings import:
+  unchanged rows are skipped, newer conflicting edits win with the losing values
+  archived, and newer tombstones prevent deleted rows from returning.
+- Added `Deleted` and `Conflicts` sheets, tombstones for service delete paths,
+  derived-value recalculation after merges, and merge counts in Settings results.
+  The dashboard displays the import summary after navigation.
+- Added `tmp_path` tests for client copies, conflict resolution, tombstones,
+  timestamp-independent hashes, stable legacy IDs, and untouched input files.
+- Verification: `pytest backend/tests/` — 117 passed; focused merge tests — 7 passed;
+  `npm run build --prefix frontendwebapp` passed. Rendered UI behavior and packaged
+  multi-client synchronization were not verified.
+- Docs touched: `docs/desktop-codebase.md`, `docs/desktop-tasks.md`.
+
+### 2026-10-29 — Consistent desktop roaming data path and notices
+
+- Testing EXE and AppX builds now resolve to the same `Finledge Testing/FinLedge Data`
+  folder beneath the Testing AppX package's LocalCache roaming root when installed.
+  The EXE finds that package root; when unavailable, both use a common roaming fallback.
+- Migration discovery includes prior Testing AppX package folders and the older
+  `Finledge Testing AppX Test` location. Settings now reports resolved AppX filesystem
+  paths that match the path opened by its folder buttons.
+- Desktop notices again auto-dismiss after five seconds and include a close button.
+  Desktop custom-range popovers stay within the visible window, and desktop hover
+  text has sufficient contrast; these UI style changes are gated from mobile.
+- Verification: `npm run desktop:test-data` — 13 passed; `npm test --prefix
+  frontendwebapp` passed; `npm run build --prefix frontendwebapp` passed; JS syntax
+  checks and `git diff --check` passed. The backend suite stalled in the sandbox
+  before completion; no backend files changed. A browser screenshot could not run
+  because the configured Chromium executable is missing. Actual packaged AppX/EXE
+  path behavior remains unverified on an installed build.
+- Docs touched: `docs/desktop-codebase.md`, `docs/desktop-tasks.md`.
+
+### 2026-10-29 — Centralized desktop paths and public release configuration
+
+- Added Windows environment-token expansion for `FINLEDGE_DATA_DIR`. `auto` uses
+  the build's managed location, and Electron passes its resolved path to both
+  Settings and the Python backend so they address the same folder.
+- Aligned standalone desktop backend development data with the repository's
+  `.finledge-dev-data` folder and production defaults with the shared Documents
+  location. Documented that `%APPDATA%` may be AppX-redirected and recommended
+  `%USERPROFILE%/Documents/...` for custom EXE/AppX sharing.
+- Removed repeated release/update URL literals from desktop runtime and renderer
+  code. Release URLs now derive from the desktop package repository metadata, with
+  public `.env` overrides `VITE_FINLEDGE_RELEASES_URL` and
+  `FINLEDGE_UPDATE_POLICY_URL`.
+- Added tests for path token expansion, shared runtime resolution, release URL
+  overrides, and update URL configuration.
+- Verification: desktop Node tests — 19 passed; focused `test_path_utils.py` — 2
+  passed; frontend smoke test and production build passed. The full backend suite
+  stalled in the sandbox when Starlette's `TestClient` tried to create a Windows
+  asyncio socket pair; the unsandboxed retry was interrupted before it ran.
+- Docs touched: `docs/desktop-codebase.md`, `docs/desktop-tasks.md`.
+
+### 2026-10-29 — Unified data and public repository configuration
+
+- Kept Electron's resolved data directory authoritative for the desktop lifecycle:
+  Settings reports/opens the runtime path, folder selection restarts the backend
+  against the selected path, and Electron passes the absolute directory to Python.
+  Workbook services, initialization, migration, imports/exports, and desktop backups
+  derive from that root. Testing-package migration discovery remains isolated.
+- Added shared `repositoryConfig.js` resolution for public GitHub owner/repository
+  settings, releases links, and policy URL defaults. Vite emits the resolved public
+  settings into a generated config file copied into packaged resources, so packaged
+  Electron does not depend on an unbundled root `.env`. Version sync derives tagged
+  and latest policy destinations from package metadata. Electron Builder also derives
+  its GitHub publisher coordinates from the single `repository.url` field.
+- Removed 17 repeated assignments from the ignored local `.env`; each duplicate had
+  the same value, so the first occurrence was retained. Kept the local project-wide
+  release and signing entries. Added blank GitHub/AppX build credential entries to
+  `.env.example`; no secret values are included. The local-only `release` name has no
+  matching project code reference, and `FINLEDGE_TEST_CERT_PASSWORD` remains an
+  optional example entry unless the local certificate needs it.
+- Fixed legacy workbook discovery to check each supplied folder and its `FinLedge Data`
+  child. This picks up `%APPDATA%\\Finledge Testing EXE\\FinLedge Data` and covers
+  nested legacy folders among production migration candidates.
+- Settings imports now stay on the current page and show the import result there.
+  Custom-range panels keep a 20px viewport margin and close on outside click or Escape.
+- History tables now sort newest-first by transaction date, creation time, and last
+  update time rather than reversing workbook row order. About and How To Use keep their
+  headings fixed while their panel content scrolls independently.
+- Added desktop tests for one-root service writes and initialization, Settings display,
+  open and folder-selection IPC, invalid path tokens, release URL safety, package
+  defaults/overrides, packaged config without `.env`, and the nested Testing EXE path.
+- Verification: `npm run desktop:test-data` — 25 passed; focused
+  `pytest backend/tests/test_path_utils.py` — 4 passed; focused migration tests —
+  12 passed; frontend production build emitted the packaged config and
+  final `npm run build --prefix frontendwebapp` and `npm test --prefix frontendwebapp`
+  passed, including the new history ordering smoke check. Full
+  `pytest backend/tests/` stalled at `test_bank.py` when Starlette's TestClient tried
+  to create a Windows asyncio socket pair; faulthandler confirmed the wait inside
+  socket accept, so the sandbox run was interrupted. Installed EXE/AppX execution
+  remains unverified.
+- Docs touched: `docs/desktop-codebase.md`, `docs/desktop-environment.md`,
+  `docs/desktop-tasks.md`.
+
+### 2026-10-29 — Preflight packaged migration snapshot folders
+
+- A real Testing AppX launch (revision 36) selected the expected Roaming workbook
+  folder but exited during migration because the nested `backups/AppX/migration`
+  folder was missing when Python attempted to create its timestamped snapshot.
+- Electron now creates and checks that nested recovery folder before spawning the
+  sidecar. Added a desktop regression assertion for the preflight path. Rebuilt both
+  Testing packages as revision 37 for a packaged rerun.
+- Production and Testing are not identical build profiles: production defaults and
+  migration source discovery are checked in runtime tests with temporary directories;
+  the packaged install remains Testing identity and paths. No production install or
+  user workbook folder was opened or changed.
+- Verification at entry time: `npm run desktop:test-data` — 30 passed; frontend
+  production build passed; full backend suite and revision 37 packaged launch are
+  pending.
+- Docs touched: `docs/desktop-codebase.md`, `docs/desktop-tasks.md`.
+
+### 2026-10-29 — Separate Testing folders from their Documents safety copy
+
+- Testing EXE keeps its active workbooks under `%APPDATA%\\Finledge Testing EXE`;
+  Testing AppX keeps its active workbooks under `%APPDATA%\\Finledge Testing AppX`.
+  The old AppX package-private LocalCache location remains a migration source.
+- Both clients refresh separate `EXE` and `AppX` copies under the shared
+  `Documents\\FinLedge Testing\\FinLedge Data` folder. Their automatic snapshots
+  are separated under `Documents\\FinLedge Testing\\backups`. Development uses
+  its project data folder and a `Development` safety-copy subfolder under the same
+  Documents Testing root. Production retains the distinct Documents `FinLedge` root.
+- Settings and Open Folder report the active Roaming location without translating it
+  into a LocalCache path.
+- Docs touched: `docs/desktop-codebase.md`, `docs/desktop-environment.md`,
+  `docs/desktop-tasks.md`.
+
+### 2026-10-29 — Keep Testing AppX workbooks in Roaming
+
+- Removed the Testing AppX active-data override to the package's deep LocalCache
+  folder. Testing EXE and AppX now both use `%APPDATA%\\Finledge Testing\\FinLedge Data`;
+  the prior AppX LocalCache location remains a migration source.
+- Settings and Open Folder now report/open the active Roaming path directly instead
+  of rewriting it to a package-private LocalCache path. Production data paths remain
+  separated by build as configured.
+- Microsoft documents AppData write virtualization for virtualized apps; this package
+  declares `runFullTrust`, so the app can use its Roaming path. An installed-package
+  check is still needed to confirm the resulting physical path on the user's Windows.
+- Docs touched: `docs/desktop-codebase.md`, `docs/desktop-environment.md`,
+  `docs/desktop-tasks.md`.
+
+### 2026-10-29 — Keep Testing clients separate and use Documents for shared safety copies
+
+- Testing EXE active data is `%APPDATA%\\Finledge Testing EXE\\FinLedge Data`;
+  Testing AppX active data is `%APPDATA%\\Finledge Testing AppX\\FinLedge Data`.
+  These are separate client folders and do not combine each other's ongoing changes.
+- `Documents\\FinLedge Testing\\FinLedge Data\\EXE` and `...\\AppX` are the
+  shared safety-copy location, with per-client backups under
+  `Documents\\FinLedge Testing\\backups`. Development has its own safety copy
+  beneath the same Documents Testing root.
+- AppX migration still checks its old package-private LocalCache and prior Local
+  AppData locations. Those paths are sources only; Settings and Open Folder use the
+  active folder under Roaming.
+- Verification: `npm run desktop:test-data` covers exact active/safety paths and
+  confirms EXE migration does not scan AppX sources. An installed Testing AppX
+  launch and its physical Windows paths were not verified.
+- Docs touched: `docs/desktop-codebase.md`, `docs/desktop-environment.md`,
+  `docs/desktop-tasks.md`.
+
+### 2026-10-29 — Diagnose AppX startup recovery-folder failure
+
+- The startup log showed the Python sidecar exiting before the API started because
+  it could not create `Documents\\FinLedge Testing\\FinLedge Data\\AppX`. Electron
+  then retried the same data-preparation failure three times and displayed a generic
+  service-connection message.
+- Electron now creates and checks the build's safety-copy and backup folders before
+  starting Python. If that preflight fails, startup names the Documents access issue
+  and exits without attempting the same operation repeatedly. If Python still exits
+  with the data-preparation status, Electron stops retrying after the optional
+  legacy-folder fallback and reports a data-folder error rather than suggesting a
+  connection to another app.
+- A missing workbook now initializes header-only without being mislabeled as
+  corrupted or restored from an old automatic snapshot. This preserves the rule that
+  only a present-but-damaged workbook can recover from an automatic backup.
+- Added isolated desktop tests for successful recovery-folder preparation and a
+  Documents path that cannot be created. Existing real workbooks were not opened or
+  changed during verification.
+- Verification: `npm run desktop:test-data` — 27 passed; `pytest backend/tests/`
+  — 126 passed; `npm run build --prefix frontendwebapp` passed. An isolated Electron
+  development launch created all five empty workbooks in a fresh workspace folder,
+  wrote the Documents safety copies there, reached `/health` on the first backend
+  attempt, and logged `data ready`, `health ok`, and `first paint`. I clicked through
+  Bank Services, its dashboard, Personal Expenses, Transfers, Share Portfolio,
+  Financial Summary, and Settings. The installed AppX package was not rebuilt or
+  launched because it is configured to use the user's existing workbooks; its
+  physical Documents access remains unverified.
+- Docs touched: `docs/desktop-codebase.md`, `docs/desktop-tasks.md`.
+
+### 2026-10-29 — Ordered data-folder creation and workbook consolidation
+
+- Startup now creates the applicable shared safety/backup folder before preparing
+  the app's own `FinLedge Data` child. If that child is absent and recognized legacy
+  workbooks are in its parent, it makes byte-verified copies of all found workbook
+  files before allowing the destination child to be created. Migration keeps the
+  original files in place and copies validated data into the child.
+- Startup initializes missing workbook files through the owning services. A fresh
+  install therefore gets all five workbooks with headers and no transaction rows;
+  production safety copies are refreshed only after migration and initialization
+  succeed. Existing populated workbooks are never replaced from an older safety copy.
+- Startup emits the complete folder preparation report as one structured sidecar line;
+  Electron parses it into `%TEMP%\\finledge-electron.log` under `[migration]`.
+- Development now resolves desktop and Python to the same
+  `.finledge-dev-data/FinLedge Data` folder and scans the previous parent for legacy
+  workbook files. Testing EXE/AppX keep their existing shared Testing path. Production
+  safety copies and snapshots remain under `Documents/FinLedge/FinLedge Data` with
+  separate EXE/AppX subfolders.
+- Verification: `npm run desktop:test-data` — 25 passed; focused migration/path tests
+  — 17 passed, including byte-identical backups and development path resolution. The
+  full backend suite reached `test_bank.py` after six backup tests, then hung in the
+  known Windows TestClient socket setup and was interrupted. Packaged AppX redirection
+  still requires an installed build.
+- Docs touched: `docs/desktop-codebase.md`, `docs/desktop-environment.md`,
+  `docs/desktop-tasks.md`.
+
+### 2026-10-29 — Restore logo while desktop connects to backend
+
+- The native Electron startup splash already showed the logo. Restored it on the
+  later React connecting screen as well, gated on the desktop bridge so the separate
+  mobile/web renderer does not gain desktop branding behavior.
+- Verification: frontend production build passed. Static source/build check only;
+  the packaged Electron connecting screen was not rendered in this task.
+- Docs touched: `docs/desktop-codebase.md`, `docs/desktop-tasks.md`.
+
+### 2026-10-29 — Separate production roaming data with Documents safety copies
+
+- Production EXE now defaults to `%APPDATA%\\Finledge EXE\\FinLedge Data`; production
+  AppX uses `%APPDATA%\\Finledge AppX\\FinLedge Data`, which Windows redirects into
+  that package's LocalCache roaming folder. Existing Testing paths are unchanged.
+- EXE and AppX now use build-specific automatic snapshots and current workbook copies
+  under `Documents\\FinLedge\\FinLedge Data`. Workbook writes refresh the matching
+  safety copy atomically. On startup, a safety copy can restore only a missing or
+  empty workbook; a populated active workbook stays authoritative, avoiding deleted
+  rows being restored from an older copy.
+- EXE migration scans its previous Roaming locations and the common Documents data
+  folder. AppX scans its own package's redirected roaming locations and the common
+  Documents folder. The old flat Documents workbook set seeds either build once as
+  historical data; after that, the two builds no longer import each other's private
+  AppData data or ongoing safety copies.
+- Verification: JavaScript/Python syntax checks and `git diff --check` passed;
+  automated tests were not run. No packaged EXE/AppX launch or uninstall/reinstall
+  cycle was performed. Windows' AppX LocalCache redirection and access to a real
+  user's Documents folder remain unverified.
+- Docs touched: `docs/desktop-codebase.md`, `docs/desktop-environment.md`,
+  `docs/desktop-tasks.md`.
+
+### 2026-10-29 — Shorten backup and migration snapshot paths
+
+- Migration snapshots now use `YYYY-MM-DD HHMM` folders without the descriptive
+  suffix, and preserve workbook names under `src/<index>` and `dest`. Automatic,
+  import, and corrupted-workbook snapshots use compact `YYYY-MM-DD HHMMSSffffff`
+  timestamps while keeping the original workbook filename.
+- Focused snapshot and migration tests passed (24); desktop path tests passed (30),
+  and the frontend production build passed. The full backend run collected 130 tests
+  but stalled in the Windows test environment and was interrupted; the focused tests
+  covering this change passed.
+- Testing AppX revision 39 reached the Home/Financial Summary UI and `/health` returned
+  200. Its migration logs showed active workbooks under the Testing AppX Roaming
+  folder and legacy workbooks retained. Documents safety-copy refresh still logged
+  `FileNotFoundError`, so recovery-copy creation was not verified. Testing EXE revision
+  39 installed under a fresh QA program folder, but its launch was blocked while the
+  AppX instance held the shared single-instance guard; Computer Use also detected
+  active user input, so I stopped interacting with that window.
+- No production install or production data folder was opened or changed.
+- Docs touched: `docs/desktop-codebase.md`, `docs/desktop-tasks.md`.
+
+### 2026-10-29 — Preserve entry writes and align Settings file targets
+
+- When the shared automatic-backup location cannot accept a snapshot, the backend
+  now saves the required pre-write snapshot beside the active data folder before
+  allowing the workbook mutation. If both locations fail, it still aborts the write.
+  Snapshot diagnostics include the configured root and failed path in the log.
+- Settings displays and Open actions now use the same resolved per-workbook path map;
+  the Electron log records those values for comparison with the backend migration
+  destination. Tests verify all five workbook buttons open the exact displayed file.
+- Verification: 25 focused backup/migration tests passed; 30 desktop tests passed;
+  `git diff --check` passed. The currently installed Testing AppX (revision 39) predates
+  these changes. A packaged rerun is still needed to verify the user's reported
+  Settings/dashboard mismatch and the shared Documents backup permissions.
+- Docs touched: `docs/desktop-codebase.md`, `docs/desktop-tasks.md`.
+
+### 2026-10-29 — Use one shared workbook folder for EXE and AppX
+
+- Testing EXE and AppX now resolve to the same `Documents/FinLedge Testing/FinLedge Data`
+  folder. Production EXE and AppX resolve to the same `Documents/FinLedge/FinLedge Data`
+  folder. Backups and safety copies stay beneath that active shared folder, so Settings,
+  dashboards, imports, and writes all point at the same five workbooks.
+- Both clients scan the former EXE Roaming workbook set and prior AppX package-redirected
+  locations. Migration continues to fingerprint sources and merge rows by stable IDs;
+  legacy sources are retained. If preparation fails, startup no longer switches the
+  dashboard to a different legacy folder.
+- Verification: desktop data-directory tests passed. Full backend tests, frontend build,
+  and packaged AppX/EXE installation checks are pending for this change. The user will
+  install the next AppX after removing their existing Testing AppX; no user data folders
+  were opened or changed by this task.
+- Docs touched: `docs/desktop-codebase.md`, `docs/desktop-environment.md`,
+  `docs/desktop-tasks.md`.
+
+### 2026-10-30 — Keep EXE, AppX, Settings, and dashboards on the shared workbooks
+
+- Testing EXE and AppX both pass `Documents/FinLedge Testing/FinLedge Data` to the
+  backend; production EXE and AppX both pass `Documents/FinLedge/FinLedge Data`.
+  Settings file locations are built from that same runtime path, and the dashboard
+  reads through the backend using it. AppX migration source discovery includes the
+  former Testing EXE `%APPDATA%/Finledge Testing EXE/FinLedge Data` path, so an AppX
+  first launch can import those rows into the shared workbook set. Existing source
+  fingerprint and row merge behavior prevents re-importing unchanged legacy data.
+- The standalone Python fallback now uses the same Testing/production Documents
+  locations as Electron, avoiding a second Roaming workbook root when the backend is
+  launched without Electron's explicit `FINLEDGE_DATA_DIR`.
+- Verification: desktop data-path tests — 22 passed; `pytest backend/tests/` — 132
+  passed; frontend production build passed. The backend suite required an outside-
+  sandbox run because Windows `TestClient` socketpair creation hangs in the sandbox.
+  Packaged EXE/AppX installation, actual package redirection, and real-user Documents
+  access were not verified. No real data folders were opened or changed.
+- Docs touched: `docs/desktop-codebase.md`, `docs/desktop-tasks.md`.
+
+### 2026-10-30 — Isolate migration sources and commit sync checkpoints safely
+
+- AppX legacy discovery now selects only package roaming roots for the active build
+  channel. Testing EXE/AppX filter production package roots even when a Testing legacy
+  override is present; production filters Testing package roots. Development discovery
+  behavior remains unchanged.
+- Root-level source cleanup now independently validates the byte-identical backup,
+  active workbook, and shared synchronization workbook before unlinking each source.
+- Per-workbook sync checkpoints are written only after both directions report success
+  and their resulting local/shared fingerprints still match. Busy, retry, and missing
+  source cases remain eligible for a later retry.
+- Verification: `pytest backend/tests/` — 155 passed; desktop path tests — 34 passed;
+  frontend smoke test passed; frontend production build passed; `git diff --check`
+  passed. No signed package was launched, and no production or Testing data folder was
+  accessed.
+- Docs touched: `docs/desktop-codebase.md`, `docs/desktop-tasks.md`.
