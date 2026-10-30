@@ -1145,3 +1145,19 @@ AGENTS.md §0.5: ambiguous = narrower action. PLAN.md Hard Constraints still app
   passed. No signed package was launched, and no production or Testing data folder was
   accessed.
 - Docs touched: `docs/desktop-codebase.md`, `docs/desktop-tasks.md`.
+
+### 2026-10-30 — Keep AppX backup Settings on the shared channel path
+
+- AppX Settings now resolves the working workbook folder to the package's physical
+  LocalCache path while keeping the shared backup path in the channel's Roaming sync
+  directory. Open Backup Folder creates and opens the same `Backups/auto` directory
+  used by the Python backup and restore service; no package-local shadow is created.
+- Added desktop IPC coverage for AppX data/backup path parity and backend coverage for
+  snapshot creation plus recovery from the configured shared backup root.
+- Verification: backend suite `pytest backend/tests/` passed (156 tests); all four
+  desktop Node test files passed (36 tests); frontend production build passed; and
+  `git diff --check` passed. One initial Node invocation used a directory path and
+  failed to resolve it; the corrected explicit-file invocation passed.
+- Packaged Sandbox re-verification remains pending because the available package set
+  predates this IPC fix. Existing isolated Sandbox data was not modified.
+- Docs touched: `docs/desktop-codebase.md`, `docs/desktop-tasks.md`.

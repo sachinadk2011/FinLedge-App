@@ -625,14 +625,101 @@ test("Testing builds can isolate the shared sync folder and legacy-root cleanup"
   });
 });
 
-test("Settings file locations use the same resolved paths as the folder opener", () => {
+test("Settings resolves AppX working data but keeps shared backup paths physical", () => {
   const logicalRoot = path.join("C:/Users/test/AppData/Roaming", "Finledge", "FinLedge Data");
   const physicalRoot = path.join("C:/Users/test/AppData/Local/Packages/Finledge/LocalCache/Roaming", "Finledge", "FinLedge Data");
-  const locations = getFileLocations(logicalRoot, `${logicalRoot}/backups`, (candidate) =>
+  const sharedBackupRoot = path.join("C:/Users/test/AppData/Roaming", "Finledge", "FinLedge Data Shared", "Backups");
+  const locations = getFileLocations(logicalRoot, sharedBackupRoot, (candidate) =>
     candidate.replace(logicalRoot, physicalRoot));
   assert.equal(locations.dataDir, physicalRoot);
   assert.equal(locations.bankFile, path.join(physicalRoot, "bank_transactions.xlsx"));
-  assert.equal(locations.backupDir, path.join(physicalRoot, "backups", "auto"));
+  assert.equal(locations.backupDir, path.join(sharedBackupRoot, "auto"));
+});
+
+test("missing Testing AppX shared support folders initialize under the Testing EXE root", () => {
+  withTempDir((directory) => {
+    const home = path.join(directory, "Profile");
+    const appData = path.join(home, "AppData", "Roaming");
+    const packageLocalCache = path.join(directory, "Local", "Packages", "SachinAdhikari.Finledge.Testing_testfamily", "LocalCache", "Roaming");
+    const runtime = createDataDirectoryRuntime({
+      app: {
+        isPackaged: true,
+        getPath: (name) => ({
+          home,
+          appData,
+          documents: path.join(home, "Documents"),
+          userData: path.join(appData, "Finledge Testing AppX"),
+        })[name],
+      },
+      projectRoot: path.join(directory, "app"),
+      isDevelopment: false,
+      isTestingBuild: true,
+      isAppxPackage: true,
+      localAppDataPath: path.join(directory, "Local"),
+      backendHost: "127.0.0.1",
+      backendPort: 8000,
+      logLine: () => {},
+    });
+
+    const [safetyCopy, backupRoot, migrationBackup] = runtime.ensureRuntimeSupportDirectories();
+    const expectedShared = path.join(appData, "Finledge Testing EXE", "FinLedge Data Shared");
+    assert.equal(backupRoot, path.join(expectedShared, "Backups"));
+    assert.equal(safetyCopy, path.join(expectedShared, "Backups", "safety-copy"));
+    assert.equal(migrationBackup, path.join(expectedShared, "Backups", "migration"));
+    assert.ok(fs.statSync(migrationBackup).isDirectory());
+    assert.equal(fs.existsSync(path.join(packageLocalCache, "Finledge Testing EXE", "FinLedge Data Shared", "Backups")), false);
+  });
+});
+
+test("AppX Settings displays and opens the shared backup directory without creating a package-local copy", async () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "finledge-appx-shared-backup-path-"));
+  try {
+    const appDataPath = path.join(directory, "AppData", "Roaming");
+    const localAppDataPath = path.join(directory, "AppData", "Local");
+    const packageFamilyName = "SachinAdhikari.Finledge.Testing_8x98p8ab6vke2";
+    const activeDataDir = path.join(appDataPath, "Finledge Testing AppX", "FinLedge Data");
+    const sharedBackupRoot = path.join(appDataPath, "Finledge Testing EXE", "FinLedge Data Shared", "Backups");
+    const redirectedPackageRoot = path.join(localAppDataPath, "Packages", packageFamilyName, "LocalCache", "Roaming");
+    const handlers = new Map();
+    let openedPath = "";
+    registerDataHandlers({
+      ipcMain: { handle: (name, handler) => handlers.set(name, handler) },
+      app: {
+        getPath: (name) => ({
+          appData: appDataPath,
+          userData: path.join(appDataPath, "Finledge Testing AppX"),
+        })[name] || directory,
+      },
+      dialog: {},
+      shell: { openPath: async (target) => { openedPath = target; return ""; } },
+      dataRuntime: {
+        getRuntimeDataDir: () => activeDataDir,
+        getBackupDirectory: () => sharedBackupRoot,
+        getBuildTypeLabel: () => "Testing",
+        getDataDirError: () => "",
+        getCanChooseDataFolder: () => false,
+        getDataSetupStatus: () => "ready",
+      },
+      appxPackageFamilyName: packageFamilyName,
+      isAppxPackage: true,
+      localAppDataPath,
+      processManager: {},
+      getMainWindow: () => null,
+      logLine: () => {},
+    });
+
+    const locations = await handlers.get("app:get-data-locations")();
+    assert.equal(locations.dataDir, path.join(redirectedPackageRoot, "Finledge Testing AppX", "FinLedge Data"));
+    assert.equal(locations.backupDir, path.join(sharedBackupRoot, "auto"));
+
+    const result = await handlers.get("app:open-data-location")(null, "backups");
+    assert.deepEqual(result, { ok: true, path: path.join(sharedBackupRoot, "auto") });
+    assert.equal(openedPath, path.join(sharedBackupRoot, "auto"));
+    assert.ok(fs.statSync(path.join(sharedBackupRoot, "auto")).isDirectory());
+    assert.equal(fs.existsSync(path.join(redirectedPackageRoot, "Finledge Testing EXE", "FinLedge Data Shared", "Backups", "auto")), false);
+  } finally {
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
 });
 
 test("AppX Settings and file-open IPC resolve to the same active workbook directory", async () => {

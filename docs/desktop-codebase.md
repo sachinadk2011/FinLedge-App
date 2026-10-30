@@ -221,7 +221,7 @@ desktop/
 | `services/desktopShortcutManager.js` | Offers a per-AppX-version optional desktop shortcut, checks for an existing link before asking, remembers a decline until the next package version, and refreshes shortcuts with an Explorer-accessible icon path. |
 | `services/rendererPromptManager.js` | Sends first-run shortcut prompts to the React window and resolves the user's response over IPC. |
 | `services/updatePolicyService.js` | Fetches update policy for EXE releases, optional EXE-to-Store prompts, and production Store AppX update notices; tracks update status and development simulations. |
-| `ipc/dataHandlers.js` | Registers IPC actions for data folder selection, data file locations (including the transfer workbook), opening data, and saving exports; Settings display and Open actions derive from one runtime file-location map matching the path passed to the backend, with path requests logged for packaged diagnostics. |
+| `ipc/dataHandlers.js` | Registers IPC actions for data folder selection, data file locations (including the transfer workbook), opening data, and saving exports; AppX working-data display/open targets resolve to their package physical path, while backup display/open targets retain the shared channel backup path passed to Python. |
 | `ipc/updateHandlers.js` | Registers IPC actions for refresh, version and update status, and release links. |
 | `tests/dataDirectory.test.cjs` | Isolated tests for auto/custom data-folder resolution, separate EXE/AppX active paths plus one Roaming sync folder, old EXE/AppX migration sources, shared recovery paths, Settings IPC display/open parity, safe update links, write failures, and client locks. |
 | `tests/preload.test.cjs` | Confirms preload gets the selected backend port through IPC once and caches it. |
@@ -451,6 +451,10 @@ repository; do not record build outputs, caches, or local data folders.
   Electron passes to Python. `desktop/services/clientInstanceLock.js` prevents duplicate
   instances per client. The shared sync lock serializes only synchronization writes;
   the clients keep their own working workbook files.
+- AppX Settings resolves its active workbook directory to the package's actual
+  `LocalCache\Roaming` path. Its backup display and Open Backup Folder target keep the
+  channel's shared Roaming `FinLedge Data Shared\Backups\auto` path unchanged, matching
+  `FINLEDGE_BACKUP_DIR` used for backup creation and restoration by Python.
 - Before starting Python, Electron creates and checks the migration-snapshot child of
   the selected backup folder as well as the backup and safety-copy roots. Migration
   therefore fails during the visible storage preflight if that nested recovery path is

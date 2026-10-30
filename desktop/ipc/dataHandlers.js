@@ -8,7 +8,11 @@ const { resolveAppxExternalPath } = require("../services/appxPaths");
 function getFileLocations(dataDir, backupDir = path.join(dataDir, "backups"), resolvePath = (value) => value) {
   return {
     dataDir: resolvePath(dataDir),
-    backupDir: resolvePath(path.join(backupDir, "auto")),
+    // Backups are intentionally shared between EXE and AppX in the channel's
+    // Roaming sync directory. AppX path resolution is only for its private
+    // working-data directory; applying it here creates a misleading package-
+    // local backup folder that the backend never uses.
+    backupDir: path.join(backupDir, "auto"),
     bankFile: resolvePath(path.join(dataDir, "bank_transactions.xlsx")),
     shareFile: resolvePath(path.join(dataDir, "share_transactions.xlsx")),
     personalFinanceBankFile: resolvePath(path.join(dataDir, "personal_finance_bank_flow.xlsx")),
@@ -49,6 +53,7 @@ function registerDataHandlers({
     const locations = getRuntimeFileLocations();
     logLine("[main] Settings data locations", {
       dataDir: locations.dataDir,
+      backupDir: locations.backupDir,
       bankFile: locations.bankFile,
       shareFile: locations.shareFile,
       personalFinanceBankFile: locations.personalFinanceBankFile,

@@ -97,6 +97,26 @@ def test_auto_backup_recovery_returns_user_warning(tmp_path):
     assert any("recovered from a backup" in warning for warning in warnings)
 
 
+def test_shared_backup_root_is_used_for_snapshot_and_restore(tmp_path, monkeypatch):
+    live_file = tmp_path / "appx-working" / "bank_transactions.xlsx"
+    live_file.parent.mkdir()
+    _make_workbook(live_file, "shared-backup-value")
+    shared_backup_root = tmp_path / "shared-sync" / "Backups"
+    monkeypatch.setenv("FINLEDGE_BACKUP_DIR", str(shared_backup_root))
+
+    snapshot = excel_utils.snapshot_before_write(live_file)
+
+    assert snapshot is not None
+    assert snapshot.is_relative_to(shared_backup_root)
+    live_file.write_bytes(b"damaged workbook")
+    restored = excel_utils.safe_load_workbook(live_file, "Bank", ["Value"])
+    try:
+        assert restored.active.cell(2, 1).value == "shared-backup-value"
+    finally:
+        restored.close()
+    assert excel_utils.consume_recovery_warnings()
+
+
 def test_missing_workbook_starts_empty_without_restoring_stale_backup_or_warning(tmp_path):
     live_file = tmp_path / "bank_transactions.xlsx"
     backup_dir = tmp_path / "backups" / "auto" / live_file.stem
