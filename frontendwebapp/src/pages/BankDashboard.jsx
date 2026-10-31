@@ -75,7 +75,7 @@ function BankDashboard() {
   }, []);
 
   const records = data?.records || [];
-  const periodRecords = useMemo(() => period.filterRecords(records), [records, period.bounds]);
+  const periodRecords = useMemo(() => period.filterRecords(records), [records, period.range, period.bounds]);
   const periodBounds = useMemo(() => period.boundsForRecords(records), [records, period.range, period.bounds]);
   const summary = useMemo(() => summarizeBankRecords(periodRecords), [periodRecords]);
 

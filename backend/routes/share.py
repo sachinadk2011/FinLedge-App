@@ -5,7 +5,6 @@ from backend.models import (
     IpoSecondaryShareRequest,
     ShareAddRequest,
     ShareUpdateAllotmentRequest,
-    ShareUpdateSipAllotmentRequest,
     SipShareRequest,
 )
 from backend.services.share_service import (
@@ -14,7 +13,6 @@ from backend.services.share_service import (
     read_share_records,
     summarize_share_records,
     update_share_allotment,
-    update_sip_allotment,
     update_share_record,
 )
 from backend.services.excel_utils import consume_recovery_warnings
@@ -30,6 +28,7 @@ def _share_payload_to_service_args(payload: ShareAddRequest) -> dict:
             "per_unit_price": payload.total_amount,
             "allotted": 0,
             "buy_sell": payload.buy_sell,
+            "charge": payload.charge,
         }
 
     if isinstance(payload, DividendShareRequest):
@@ -50,6 +49,7 @@ def _share_payload_to_service_args(payload: ShareAddRequest) -> dict:
             "per_unit_price": payload.per_unit_price,
             "allotted": payload.allotted,
             "buy_sell": payload.buy_sell,
+            "charge": payload.charge,
         }
 
     raise ValueError("Unsupported share payload.")
@@ -85,17 +85,6 @@ def update_allotment(payload: ShareUpdateAllotmentRequest):
     try:
         result = update_share_allotment(payload.share_name, payload.allotted)
         return {"message": "IPO allotment updated", "data": result}
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
-
-
-@router.put("/update-sip-allotment")
-def update_sip_quantity(payload: ShareUpdateSipAllotmentRequest):
-    try:
-        result = update_sip_allotment(payload.share_name, payload.allotted)
-        return {"message": "SIP share quantity updated", "data": result}
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:

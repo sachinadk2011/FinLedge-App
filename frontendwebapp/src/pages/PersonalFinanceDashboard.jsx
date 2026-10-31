@@ -231,7 +231,7 @@ function PersonalFinanceDashboard() {
   }
 
   const records = data?.records || [];
-  const periodRecords = useMemo(() => period.filterRecords(records), [records, period.bounds]);
+  const periodRecords = useMemo(() => period.filterRecords(records), [records, period.range, period.bounds]);
   const periodBounds = useMemo(() => period.boundsForRecords(records), [records, period.range, period.bounds]);
   const flowRecords = useMemo(() => addTransferReceivers(periodRecords), [periodRecords]);
   const summary = useMemo(() => summarizePersonalFlowRecords(flowRecords), [flowRecords]);

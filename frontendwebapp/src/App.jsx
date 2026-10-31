@@ -18,6 +18,7 @@ const ShareDashboard = lazy(() => import("./pages/ShareDashboard"));
 const PersonalFinanceDashboard = lazy(() => import("./pages/PersonalFinanceDashboard"));
 const Summary = lazy(() => import("./pages/Summary"));
 const Settings = lazy(() => import("./pages/Settings"));
+const ImportReview = lazy(() => import("./pages/ImportReview"));
 
 function StartupConnecting() {
   return (
@@ -41,6 +42,32 @@ function RouteLoading() {
   return <main className="page"><p className="subtitle">Loading…</p></main>;
 }
 
+function AppNotices() {
+  const [notices, setNotices] = useState([]);
+  useEffect(() => {
+    const receive = (event) => {
+      const notice = event.detail;
+      if (!notice?.message) return;
+      setNotices((current) => [...current.filter((item) => item.id !== notice.id && (item.message !== notice.message || item.kind !== notice.kind)), notice]);
+      window.setTimeout(() => setNotices((current) => current.filter((item) => item.id !== notice.id)), notice.duration || 5000);
+    };
+    window.addEventListener("finledge:notice", receive);
+    return () => window.removeEventListener("finledge:notice", receive);
+  }, []);
+
+  return notices.length ? (
+    <div className="app-notice-stack" aria-live="polite">
+      {notices.map((notice) => (
+        <div className={`status-notice status-notice-${notice.kind || "error"}`} role={notice.kind === "error" ? "alert" : "status"} key={notice.id}>
+          <span>{notice.message}</span>
+          <button type="button" className="status-notice-close" aria-label="Dismiss message" onClick={() => setNotices((current) => current.filter((item) => item.id !== notice.id))}>×</button>
+          <div key={`${notice.id}-timer`} className="status-notice-progress" style={{ animationDuration: `${notice.duration || 5000}ms` }} aria-hidden="true" />
+        </div>
+      ))}
+    </div>
+  ) : null;
+}
+
 function getRouteLabel(pathname) {
   if (pathname.startsWith("/bank-dashboard")) return "Bank Services Dashboard";
   if (pathname.startsWith("/bank")) return "Bank Services";
@@ -51,6 +78,7 @@ function getRouteLabel(pathname) {
   if (pathname.startsWith("/share-dashboard")) return "Share Portfolio Dashboard";
   if (pathname.startsWith("/share")) return "Share Portfolio";
   if (pathname.startsWith("/summary")) return "Financial Summary";
+  if (pathname.startsWith("/import-review")) return "Import Review";
   if (pathname.startsWith("/settings")) return "Settings";
   return "Home";
 }
@@ -61,6 +89,7 @@ function Layout() {
 
   return (
     <div className="app-shell">
+      <AppNotices />
       <UpdateNotice />
       <ShortcutPrompt />
       {/* <OnboardingTour /> */}{/* Tour guide disabled for now — code is ready, will be enabled later */}
@@ -196,6 +225,7 @@ function App() {
         <Route path="/personal-finance-dashboard" element={<Suspense fallback={<RouteLoading />}><PersonalFinanceDashboard /></Suspense>} />
         <Route path="/summary" element={<Suspense fallback={<RouteLoading />}><Summary /></Suspense>} />
         <Route path="/settings" element={<Suspense fallback={<RouteLoading />}><Settings /></Suspense>} />
+        <Route path="/import-review" element={<Suspense fallback={<RouteLoading />}><ImportReview /></Suspense>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>

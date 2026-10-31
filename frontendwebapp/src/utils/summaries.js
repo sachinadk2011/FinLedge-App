@@ -1,4 +1,5 @@
 import { BANK_INCOME_CATEGORIES } from "../constants/options";
+import { filterShareRecordsAsOf } from "./shareClosingPosition";
 
 function isBankIncomeCategory(category) {
   return BANK_INCOME_CATEGORIES.has(String(category || "").trim().toLowerCase());
@@ -16,11 +17,11 @@ export function summarizeBankRecords(records) {
   return summary;
 }
 
-export function summarizeShareRecords(records) {
+export function summarizeShareRecords(records, allRecords = records, closingEndDate) {
   const summary = {
     total_ipo_investment: 0, total_sip_investment: 0, total_sip_redeemed: 0,
     sip_profit_loss: 0, total_buy_amount: 0, total_sell_amount: 0,
-    total_dividend: 0, total_profit: 0,
+    total_dividend: 0, total_profit: 0, bonus_shares_received: 0,
   };
   records.forEach((record) => {
     const category = String(record.category || "").trim().toLowerCase();
@@ -33,11 +34,40 @@ export function summarizeShareRecords(records) {
     else if (category === "sip" && ["redeem", "redeemed"].includes(action)) { summary.total_sip_redeemed += amount; summary.sip_profit_loss += profit; }
     else if (category === "sip") summary.total_sip_investment += amount;
     else if (category === "dividend" && action === "cash") summary.total_dividend += amount;
+    else if (category === "dividend" && action === "bonus") summary.bonus_shares_received += Number(record.allotted || 0);
   });
   summary.overall_investment = summary.total_ipo_investment + summary.total_buy_amount;
-  summary.overall_profit_loss = summary.total_profit + summary.total_dividend - summary.overall_investment;
+  const latestPositions = new Map();
+  let allSipInvestment = 0;
+  let allSipRedeemed = 0;
+  filterShareRecordsAsOf(allRecords, closingEndDate).forEach((record) => {
+    const key = String(record.share_name || "").trim().toLowerCase();
+    if (key) {
+      const prior = latestPositions.get(key);
+      const currentKey = `${String(record.date || "").slice(0, 10)}:${String(record.id || "").padStart(12, "0")}`;
+      const priorKey = prior ? `${String(prior.date || "").slice(0, 10)}:${String(prior.id || "").padStart(12, "0")}` : "";
+      if (!prior || currentKey >= priorKey) latestPositions.set(key, record);
+    }
+    if (String(record.category || "").trim().toLowerCase() === "sip") {
+      const isRedemption = ["redeem", "redeemed"].includes(String(record.buy_sell || "").trim().toLowerCase());
+      if (isRedemption) allSipRedeemed += Number(record.total_amount || 0);
+      else allSipInvestment += Number(record.total_amount || 0);
+    }
+  });
+  summary.share_holding_cost = [...latestPositions.values()].reduce((sum, record) => sum + Number(record.holding_cost || 0), 0);
+  summary.share_net_cash_result = summary.total_profit + summary.total_dividend - summary.share_holding_cost;
+  summary.overall_profit_loss = summary.share_net_cash_result;
   summary.grand_total_investment = summary.overall_investment + summary.total_sip_investment;
-  summary.grand_profit_loss = summary.overall_profit_loss + summary.sip_profit_loss;
+  summary.sip_unrecovered_capital = Math.max(allSipInvestment - allSipRedeemed, 0);
+  summary.sip_net_cash_result = summary.total_sip_redeemed - summary.total_sip_investment;
+  summary.grand_holding_cost = summary.share_holding_cost + summary.sip_unrecovered_capital;
+  summary.grand_total_received = summary.total_sell_amount + summary.total_dividend + summary.total_sip_redeemed;
+  summary.grand_net_cash_result = summary.grand_total_received - summary.grand_total_investment;
+  summary.grand_profit_loss = summary.grand_net_cash_result;
+  summary.total_share_investment = summary.overall_investment;
+  summary.total_sell_proceeds = summary.total_sell_amount;
+  summary.cash_dividends_received = summary.total_dividend;
+  summary.realized_trading_profit_loss = summary.total_profit;
   return summary;
 }
 

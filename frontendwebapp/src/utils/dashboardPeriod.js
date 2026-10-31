@@ -1,4 +1,4 @@
-import { parseDate } from "./date";
+import { parseDate } from "./date.js";
 
 function dateKey(date) {
   const year = date.getFullYear();
@@ -25,15 +25,15 @@ export function getDashboardPeriodBounds(range, customStart, customEnd, { bankMo
     return { start: new Date(start.getFullYear(), start.getMonth(), start.getDate()), end: new Date(selectedEnd.getFullYear(), selectedEnd.getMonth(), selectedEnd.getDate()) };
   }
   if (range === "week") {
+    // Calendar week starts Monday, matching the application's existing chart
+    // convention. Do not let a chart-history span leak into period totals.
+    const daysSinceMonday = (end.getDay() + 6) % 7;
     start = new Date(end);
-    start.setDate(start.getDate() - 89);
-  } else if (range === "month" && bankMode) {
-    start = new Date(end.getFullYear(), end.getMonth() - 12, 1);
+    start.setDate(end.getDate() - daysSinceMonday);
   } else if (range === "month") {
-    start = new Date(end);
-    start.setDate(start.getDate() - 399);
+    start = new Date(end.getFullYear(), end.getMonth(), 1);
   } else {
-    start = new Date(end.getFullYear(), end.getMonth() - 47, 1);
+    start = new Date(end.getFullYear(), 0, 1);
   }
   return { start, end };
 }
@@ -50,11 +50,13 @@ export function getRecordDateBounds(records, now = new Date()) {
 
 export function filterRecordsByPeriod(records, bounds) {
   if (!bounds) return [];
+  const startKey = dateKey(bounds.start);
+  const endKey = dateKey(bounds.end);
   return records.filter((record) => {
     const date = parseDate(record.date);
     if (!date) return false;
-    const localDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-    return localDate >= bounds.start && localDate <= bounds.end;
+    const key = dateKey(date);
+    return key >= startKey && key <= endKey;
   });
 }
 

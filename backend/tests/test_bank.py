@@ -49,6 +49,26 @@ def get_records(client) -> list:
     return client.get("/bank/data").json()["records"]
 
 
+def test_currency_precision_round_trips_through_workbook(tmp_path, monkeypatch):
+    from decimal import Decimal
+    from openpyxl import load_workbook
+    from backend.services import bank_service
+
+    file_path = tmp_path / "bank_transactions.xlsx"
+    monkeypatch.setattr(bank_service, "FILE_PATH", file_path)
+    monkeypatch.setattr(bank_service, "DATA_DIR", tmp_path)
+    bank_service._ensure_workbook_exists()
+    for amount, expected in [(5000, 5000.00), (4999.99, 4999.99), (0.01, 0.01), (1000.10, 1000.10)]:
+        saved = bank_service.append_bank_record(None, "Interest Earned", Decimal(str(amount)))
+        workbook = load_workbook(file_path, data_only=True, read_only=True)
+        sheet = workbook["Bank"]
+        persisted = sheet.cell(sheet.max_row, 3).value
+        workbook.close()
+        assert Decimal(str(persisted)) == Decimal(str(expected))
+        reloaded = next(row for row in bank_service.read_bank_records() if row["row_id"] == saved["row_id"])
+        assert reloaded["amount"] == expected
+
+
 # ---------------------------------------------------------------------------
 # 1. Add
 # ---------------------------------------------------------------------------

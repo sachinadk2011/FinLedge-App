@@ -14,13 +14,7 @@ from .excel_utils import (
     to_int as _to_int,
 )
 from .path_utils import get_data_dir
-from .share_lot_calculations import (
-    _build_open_lots,
-    _cost_basis_for_sell,
-    add_share_lot,
-    apply_sip_investment,
-    consume_share_lots,
-)
+from .share_lot_calculations import apply_sip_investment, apply_weighted_average_transaction
 from .share_summary import summarize_share_records
 from .workbook_merge import append_tombstone, get_device_label, new_row_id, refresh_sheet_metadata
 
@@ -32,7 +26,7 @@ HEADERS = [
     "Share Name",
     "Category",
     "Per Unit Price",
-    "ASBA Charge",
+    "Charge",
     "Allotted",
     "Buy/Sell",
     "Total Amount",
@@ -52,12 +46,11 @@ def _ensure_workbook_exists() -> None:
     ensure_workbook_exists(FILE_PATH, SHEET_NAME, HEADERS, DATA_DIR)
 
 
-def _sip_outstanding_investment(sheet, share_name: str, before_row: int | None = None) -> float:
+def _sip_outstanding_investment(sheet, share_name: str, before_date: date | None = None) -> float:
     target = share_name.strip().lower()
     outstanding = 0.0
-    max_row = before_row - 1 if before_row else sheet.max_row
-
-    for row_idx in range(2, max_row + 1):
+    rows = []
+    for row_idx in range(2, sheet.max_row + 1):
         row_share_name = str(sheet.cell(row=row_idx, column=2).value or "").strip().lower()
         if row_share_name != target:
             continue
@@ -66,13 +59,23 @@ def _sip_outstanding_investment(sheet, share_name: str, before_row: int | None =
         if category != "sip":
             continue
 
+        raw_date = str(sheet.cell(row=row_idx, column=1).value or "")[:10]
+        try:
+            row_date = date.fromisoformat(raw_date)
+        except ValueError:
+            row_date = date.max
+        if before_date is not None and row_date > before_date:
+            continue
+        rows.append((row_date, row_idx))
+
+    for _, row_idx in sorted(rows):
+
         buy_sell = str(sheet.cell(row=row_idx, column=7).value or "").strip().lower()
         total_amount = _to_float(sheet.cell(row=row_idx, column=8).value)
         profit_loss = _to_float(sheet.cell(row=row_idx, column=9).value)
 
         if buy_sell in {"redeem", "redeemed"}:
-            # SIP redemption is a full redemption: outstanding investment drops to 0
-            outstanding = 0.0
+            outstanding = max(outstanding - total_amount, 0.0)
         else:
             outstanding += total_amount
 
@@ -86,6 +89,7 @@ def append_share_record(
     per_unit_price: Decimal,
     allotted: int,
     buy_sell: str,
+    charge: Decimal | None = None,
 ) -> dict:
     with workbook_for_update(FILE_PATH, _file_lock, _ensure_workbook_exists) as workbook:
         entry_date = entry_date or date.today()
@@ -123,7 +127,13 @@ def append_share_record(
         # ASBA charge rules:
         # - ipo: 5
         # - secondary/buy/sell: 0
-        asba_charge_dec = Decimal("5") if category == "ipo" else Decimal("0")
+        if charge is not None and Decimal(str(charge)) < 0:
+            raise ValueError("Charge cannot be negative.")
+        asba_charge_dec = (
+            Decimal("5") if category == "ipo" and charge is None
+            else Decimal("0") if charge is None or category not in {"ipo", "sip"}
+            else Decimal(str(charge))
+        )
 
         # Keep currency math in Decimal to avoid float rounding surprises.
         try:
@@ -141,28 +151,21 @@ def append_share_record(
         elif category == "sip":
             if unit_price <= 0:
                 raise ValueError("SIP investment amount must be greater than 0.")
-            total_amount_dec = unit_price
+            total_amount_dec = unit_price - asba_charge_dec if buy_sell == "redeem" else unit_price + asba_charge_dec
+            if total_amount_dec < 0:
+                raise ValueError("Charge cannot exceed the SIP redemption amount.")
             if buy_sell == "redeem":
-                outstanding = _sip_outstanding_investment(sheet, share_name)
+                outstanding = _sip_outstanding_investment(sheet, share_name, entry_date)
                 if outstanding <= 0:
                     raise ValueError(f"Cannot redeem '{share_name}': no outstanding SIP investment found.")
                 # Profit = Redeemed Amount (total_amount_dec) - Total Invested (outstanding)
                 profit_loss_dec = total_amount_dec - Decimal(str(outstanding))
             else:
                 profit_loss_dec = Decimal("0")
-            if buy_sell == "installment" and int(allotted) > 0:
-                unit_price = total_amount_dec / Decimal(int(allotted))
         else:
             share_value_dec = unit_price * Decimal(int(allotted))
             total_amount_dec = share_value_dec + asba_charge_dec
             profit_loss_dec = Decimal("0")
-            if category == "sell":
-                open_lots = _build_open_lots(sheet, share_name)
-                buy_cost = _cost_basis_for_sell(open_lots, int(allotted))
-                profit_loss_dec = total_amount_dec - Decimal(str(buy_cost))
-
-        previous_cumulative = _to_float(sheet.cell(row=sheet.max_row, column=10).value) if sheet.max_row > 1 else 0.0
-        cumulative_profit = previous_cumulative + float(profit_loss_dec)
 
         sheet.append(
             [
@@ -175,7 +178,7 @@ def append_share_record(
                 buy_sell,
                 str(total_amount_dec),
                 str(profit_loss_dec),
-                cumulative_profit,
+                    0.0,
                 timestamp,
                 timestamp,
                 get_device_label(),
@@ -183,6 +186,11 @@ def append_share_record(
                 None,
             ]
         )
+        _recompute_sheet(sheet)
+        row_number = sheet.max_row
+        total_amount_dec = Decimal(str(sheet.cell(row=row_number, column=8).value or 0))
+        profit_loss_dec = Decimal(str(sheet.cell(row=row_number, column=9).value or 0))
+        cumulative_profit = _to_float(sheet.cell(row=row_number, column=10).value)
         refresh_sheet_metadata(sheet, "share", touched_row=sheet.max_row, identity_scope="share_transactions.xlsx#share")
         return {
             "id": sheet.max_row - 1,
@@ -191,6 +199,7 @@ def append_share_record(
             "category": category,
             "per_unit_price": str(unit_price),
             "asba_charge": float(asba_charge_dec),
+            "charge": float(asba_charge_dec),
             "allotted": int(allotted),
             "buy_sell": buy_sell,
             "total_amount": str(total_amount_dec),
@@ -225,7 +234,8 @@ def read_share_records() -> list[dict]:
                     "share_name": str(row.get("share name") or ""),
                     "category": str(row.get("category") or ""),
                     "per_unit_price": _to_float(row.get("per unit price")),
-                    "asba_charge": _to_float(row.get("asba charge")),
+                    "asba_charge": _to_float(row.get("charge")),
+                    "charge": _to_float(row.get("charge")),
                     "allotted": _to_int(row.get("allotted")),
                     "buy_sell": str(row.get("buy/sell") or ""),
                     "total_amount": _to_float(row.get("total amount")),
@@ -241,22 +251,69 @@ def read_share_records() -> list[dict]:
             )
 
         workbook.close()
-        return records
+        return _enrich_share_positions(records)
+
+
+def _enrich_share_positions(records: list[dict]) -> list[dict]:
+    """Attach current historical weighted-average positions to API rows."""
+    holdings_by_share: dict[str, dict[str, float]] = {}
+    ordered_records = sorted(records, key=lambda record: (str(record.get("date") or "9999-12-31")[:10], int(record.get("id") or 0)))
+    for record in ordered_records:
+        share_key = str(record.get("share_name") or "").strip().lower()
+        category = str(record.get("category") or "").strip().lower()
+        buy_sell = str(record.get("buy_sell") or "").strip().lower()
+        quantity = _to_int(record.get("allotted"))
+        if category in {"ipo", "buy"}:
+            apply_weighted_average_transaction(
+                holdings_by_share,
+                share_key,
+                category,
+                quantity,
+                acquisition_cost=_to_float(record.get("total_amount")),
+            )
+        elif category == "dividend" and buy_sell == "bonus":
+            apply_weighted_average_transaction(holdings_by_share, share_key, "dividend", quantity)
+        elif category == "sell":
+            apply_weighted_average_transaction(
+                holdings_by_share,
+                share_key,
+                "sell",
+                quantity,
+                sale_proceeds=_to_float(record.get("total_amount")),
+            )
+        holding = holdings_by_share.get(share_key, {"quantity": 0.0, "cost": 0.0})
+        record["holding_quantity"] = int(holding["quantity"])
+        record["average_cost"] = holding["cost"] / holding["quantity"] if holding["quantity"] else 0.0
+        record["holding_cost"] = holding["cost"]
+    return records
 
 
 def _recompute_sheet(sheet) -> None:
     cumulative_profit = 0.0
-    lots_by_share: dict[str, list[dict]] = {}
+    holdings_by_share: dict[str, dict[str, float]] = {}
     sip_investment_by_share: dict[str, float] = {}
 
-    for row_idx in range(2, sheet.max_row + 1):
+    def transaction_order(row_idx: int) -> tuple[str, int]:
+        raw_date = sheet.cell(row=row_idx, column=1).value
+        try:
+            parsed_date = date.fromisoformat(str(raw_date)[:10])
+            return parsed_date.isoformat(), row_idx
+        except (TypeError, ValueError):
+            # Preserve workbook order for legacy rows with unparseable dates.
+            return "9999-12-31", row_idx
+
+    ordered_rows = sorted(range(2, sheet.max_row + 1), key=transaction_order)
+
+    for row_idx in ordered_rows:
         share_name = str(sheet.cell(row=row_idx, column=2).value or "").strip()
         category = str(sheet.cell(row=row_idx, column=3).value or "").strip().lower()
         per_unit_price = _to_float(sheet.cell(row=row_idx, column=4).value)
         allotted = _to_int(sheet.cell(row=row_idx, column=6).value)
         buy_sell = str(sheet.cell(row=row_idx, column=7).value or "")
-
-        asba_charge = 5.0 if category == "ipo" else 0.0
+        stored_asba_charge = sheet.cell(row=row_idx, column=5).value
+        asba_charge = _to_float(stored_asba_charge) if category == "ipo" else 0.0
+        if category == "ipo" and stored_asba_charge in (None, ""):
+            asba_charge = 5.0
         profit_loss = 0.0
         share_key = share_name.lower()
 
@@ -282,30 +339,30 @@ def _recompute_sheet(sheet) -> None:
             else:
                 apply_sip_investment(sip_investment_by_share, share_key, total_amount, redeem=False)
                 buy_sell = "installment"
-            if normalized_buy_sell != "redeem" and allotted > 0:
-                per_unit_price = total_amount / int(allotted)
-            else:
-                per_unit_price = total_amount
         else:
             total_amount = (float(per_unit_price) * int(allotted)) + float(asba_charge)
 
-        if category in {"ipo", "buy"} or (category == "dividend" and buy_sell == "bonus"):
-            add_share_lot(
-                lots_by_share,
+        if category in {"ipo", "buy"}:
+            profit_loss = apply_weighted_average_transaction(
+                holdings_by_share,
                 share_key,
+                category,
                 allotted,
-                per_unit_price if category != "dividend" else 0.0,
-                asba_charge if category == "ipo" else 0.0,
+                acquisition_cost=total_amount,
             )
+        elif category == "dividend" and buy_sell == "bonus":
+            apply_weighted_average_transaction(holdings_by_share, share_key, "dividend", allotted)
         elif category == "sell":
-            if allotted > 0:
-                cost_basis = consume_share_lots(lots_by_share, share_key, allotted)
-                profit_loss = total_amount - cost_basis
+            profit_loss = apply_weighted_average_transaction(
+                holdings_by_share,
+                share_key,
+                "sell",
+                allotted,
+                sale_proceeds=total_amount,
+            )
 
         cumulative_profit += profit_loss
 
-        if category == "sip":
-            sheet.cell(row=row_idx, column=4).value = per_unit_price
         sheet.cell(row=row_idx, column=5).value = asba_charge
         sheet.cell(row=row_idx, column=7).value = buy_sell
         sheet.cell(row=row_idx, column=8).value = total_amount
@@ -362,60 +419,6 @@ def update_share_allotment(share_name: str, allotted: int) -> dict:
         }
 
 
-def update_sip_allotment(share_name: str, allotted: int) -> dict:
-    with workbook_for_update(FILE_PATH, _file_lock, _ensure_workbook_exists) as workbook:
-        sheet = workbook[SHEET_NAME]
-
-        target = share_name.strip().lower()
-        target_row = None
-        found_any = False
-
-        for row_idx in range(sheet.max_row, 1, -1):
-            row_share_name = str(sheet.cell(row=row_idx, column=2).value or "").strip().lower()
-            category = str(sheet.cell(row=row_idx, column=3).value or "").strip().lower()
-            buy_sell = str(sheet.cell(row=row_idx, column=7).value or "").strip().lower()
-            if row_share_name == target:
-                found_any = True
-            if row_share_name == target and category == "sip" and buy_sell not in {"redeem", "redeemed"}:
-                target_row = row_idx
-                break
-
-        if not target_row:
-            workbook.close()
-            if found_any:
-                raise ValueError("Only SIP entries can be updated from this form.")
-            raise ValueError("No SIP entry found for the provided share name.")
-
-        previous_allotted = _to_int(sheet.cell(row=target_row, column=6).value)
-        updated_date = str(sheet.cell(row=target_row, column=1).value or "")
-        normalized_share_name = str(sheet.cell(row=target_row, column=2).value or share_name).strip().upper()
-        total_investment = _to_float(sheet.cell(row=target_row, column=8).value)
-        timestamp = _current_timestamp()
-
-        sheet.cell(row=target_row, column=6).value = int(allotted)
-        if not sheet.cell(row=target_row, column=11).value:
-            sheet.cell(row=target_row, column=11).value = timestamp
-        sheet.cell(row=target_row, column=12).value = timestamp
-        sheet.cell(row=target_row, column=13).value = get_device_label()
-        _recompute_sheet(sheet)
-        refresh_sheet_metadata(sheet, "share", touched_row=target_row, identity_scope="share_transactions.xlsx#share")
-        average_price = _to_float(sheet.cell(row=target_row, column=4).value)
-        return {
-            "record_id": int(target_row - 1),
-            "date": updated_date,
-            "share_name": normalized_share_name,
-            "previous_allotted": previous_allotted,
-            "allotted": int(allotted),
-            "total_investment": total_investment,
-            "average_price": average_price,
-            "timestamp": timestamp,
-            "created_timestamp": str(sheet.cell(row=target_row, column=11).value or timestamp),
-            "last_updated_timestamp": timestamp,
-            "updated_device": get_device_label(),
-            "row_id": str(sheet.cell(target_row, 14).value or ""),
-        }
-
-
 def delete_share_record(record_id: int) -> dict:
     """
     Delete a record by its 1-based index in the data list (header excluded),
@@ -447,6 +450,7 @@ def update_share_record(
     per_unit_price: Decimal,
     allotted: int,
     buy_sell: str,
+    charge: Decimal | None = None,
 ) -> dict:
     """
     Update an existing record (1-based, header excluded) and recompute totals/profit/cumulative.
@@ -488,6 +492,8 @@ def update_share_record(
 
         if per_unit_price < 0:
             raise ValueError("Per unit price cannot be negative.")
+        if charge is not None and Decimal(str(charge)) < 0:
+            raise ValueError("Charge cannot be negative.")
 
         try:
             unit_price = per_unit_price if isinstance(per_unit_price, Decimal) else Decimal(str(per_unit_price))
@@ -501,15 +507,29 @@ def update_share_record(
             workbook.close()
             raise ValueError("record_id is out of range.")
 
+        previous_category = str(sheet.cell(row=excel_row, column=3).value or "").strip().lower()
+        previous_allotted = _to_int(sheet.cell(row=excel_row, column=6).value)
+        charge_dec = (
+            Decimal(str(charge)) if charge is not None
+            else Decimal(str(_to_float(sheet.cell(row=excel_row, column=5).value)))
+            if category == "ipo" and previous_category == "ipo"
+            else Decimal("5") if category == "ipo"
+            else Decimal("0")
+        )
+
         sheet.cell(row=excel_row, column=1).value = entry_date.isoformat()
         sheet.cell(row=excel_row, column=2).value = share_name
         sheet.cell(row=excel_row, column=3).value = category
         # Store as string to avoid client-side floating drift and keep what the user entered.
         sheet.cell(row=excel_row, column=4).value = str(unit_price)
-        sheet.cell(row=excel_row, column=6).value = int(allotted)
+        sheet.cell(row=excel_row, column=6).value = previous_allotted if category == "sip" and previous_category == "sip" else int(allotted)
         sheet.cell(row=excel_row, column=7).value = str(buy_sell or category).strip().lower()
+        sheet.cell(row=excel_row, column=5).value = float(charge_dec)
         if category == "sip":
-            sheet.cell(row=excel_row, column=8).value = str(unit_price)
+            total_amount = unit_price - charge_dec if buy_sell == "redeem" else unit_price + charge_dec
+            if total_amount < 0:
+                raise ValueError("Charge cannot exceed the SIP redemption amount.")
+            sheet.cell(row=excel_row, column=8).value = str(total_amount)
         if not sheet.cell(row=excel_row, column=11).value:
             sheet.cell(row=excel_row, column=11).value = timestamp
         sheet.cell(row=excel_row, column=12).value = timestamp
@@ -523,7 +543,7 @@ def update_share_record(
             "share_name": share_name,
             "category": category,
             "per_unit_price": str(unit_price),
-            "allotted": int(allotted),
+            "allotted": _to_int(sheet.cell(row=excel_row, column=6).value),
             "buy_sell": str(buy_sell or category).strip().lower(),
             "timestamp": timestamp,
             "created_timestamp": str(sheet.cell(row=excel_row, column=11).value or timestamp),

@@ -25,7 +25,7 @@ def _create_client_workbooks(directory: Path, bank_rows: list[list[object]]) -> 
     directory.mkdir(parents=True, exist_ok=True)
     layouts = {
         "bank_transactions.xlsx": ("Bank", BANK_HEADERS),
-        "share_transactions.xlsx": ("Share", ["Date", "Share Name", "Category", "Per Unit Price", "ASBA Charge", "Allotted", "Buy/Sell", "Total Amount", "Profit/Loss", "Cumulative Profit", "Created Timestamp", "Last Updated Timestamp", "Updated Device", "Row ID", "Content Hash"]),
+        "share_transactions.xlsx": ("Share", ["Date", "Share Name", "Category", "Per Unit Price", "Charge", "Allotted", "Buy/Sell", "Total Amount", "Profit/Loss", "Cumulative Profit", "Created Timestamp", "Last Updated Timestamp", "Updated Device", "Row ID", "Content Hash"]),
         "personal_finance_bank_flow.xlsx": ("Bank Flow", ["Date", "Flow Type", "Direction", "Category", "Amount", "Signed Amount", "Description", "Source", "Created Timestamp", "Last Updated Timestamp", "Source Ref", "Updated Device", "Row ID", "Content Hash"]),
         "personal_finance_cash_flow.xlsx": ("Cash Flow", ["Date", "Flow Type", "Direction", "Category", "Amount", "Signed Amount", "Description", "Source", "Created Timestamp", "Last Updated Timestamp", "Source Ref", "Updated Device", "Row ID", "Content Hash"]),
         "personal_finance_transfer.xlsx": ("Transfer Flow", ["Date", "Flow Type", "Direction", "Category", "Amount", "Signed Amount", "Description", "Source", "Created Timestamp", "Last Updated Timestamp", "Source Ref", "Updated Device", "Row ID", "Content Hash"]),

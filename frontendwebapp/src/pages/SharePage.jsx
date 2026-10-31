@@ -15,7 +15,8 @@ function clearShareAmountFields(current) {
     per_unit_price: "",
     total_amount: "",
     bonus_shares: "",
-    allotted: category === "sip" || (category === "dividend" && dividendType === "cash") ? "0" : "",
+    allotted: category === "ipo" || category === "sip" || (category === "dividend" && dividendType === "cash") ? "0" : "",
+    charge: category === "ipo" ? "5" : category === "sip" ? "0" : "",
     _totalAmount: "",
   });
 }
@@ -30,7 +31,8 @@ function SharePage() {
     share_name: "",
     category: "ipo",
     per_unit_price: "",
-    allotted: "",
+    allotted: "0",
+    charge: "5",
   });
   const [error, setError] = useState("");
   const [warning, setWarning] = useState("");
@@ -62,19 +64,25 @@ function SharePage() {
         setKnownShares(names);
         setSipShares(sipNames);
 
-        // Remaining shares by share name (tracker-only).
+        // The backend attaches the replayed closing quantity after each dated record.
         const remainingByName = new Map();
         for (const record of records) {
           const name = String(record.share_name || "").trim();
           if (!name) continue;
-          const category = String(record.category || "").trim().toLowerCase();
-          const qty = Number(record.allotted || 0);
-          const delta = category === "sell" ? -qty : ["ipo", "buy"].includes(category) ? qty : 0;
-          remainingByName.set(name, (remainingByName.get(name) || 0) + delta);
+          const current = remainingByName.get(name);
+          const key = `${String(record.date || "").slice(0, 10)}:${String(record.id || "").padStart(12, "0")}`;
+          const currentKey = current ? `${current.date}:${String(current.id).padStart(12, "0")}` : "";
+          if (!current || key >= currentKey) {
+            remainingByName.set(name, {
+              date: String(record.date || "").slice(0, 10),
+              id: record.id,
+              remaining: Number(record.holding_quantity || 0),
+            });
+          }
         }
 
         const rows = Array.from(remainingByName.entries())
-          .map(([share_name, remaining]) => ({ share_name, remaining }))
+          .map(([share_name, position]) => ({ share_name, remaining: position.remaining }))
           .filter((row) => row.remaining > 0)
           .sort((a, b) => a.share_name.localeCompare(b.share_name));
         setPortfolioRows(rows);
@@ -111,6 +119,7 @@ function SharePage() {
               ? String(record.allotted ?? "")
               : "",
           allotted: String(record.allotted ?? ""),
+          charge: String(record.charge ?? record.asba_charge ?? (String(record.category || "").toLowerCase() === "ipo" ? "5" : "0")),
           buy_sell: String(record.buy_sell || record.category || "").toLowerCase(),
           _sipType:
             String(record.category || "").toLowerCase() === "sip"

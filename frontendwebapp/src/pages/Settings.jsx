@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { checkSettingsDataHasData, exportAllSettingsDataFiles, exportSettingsDataFile, getSettingsDataTypes, importSettingsDataFile } from "../api/settingsApi";
+import { clearSettingsModuleData, exportAllSettingsDataFiles, exportSettingsDataFile, getSettingsDataTypes, getSettingsDevTools, previewSettingsDataFile } from "../api/settingsApi";
 import StatusNotice from "../components/StatusNotice";
 import GeneralSettingsSection from "./settings/GeneralSettingsSection.jsx";
 import InvestmentSettingsSection from "./settings/InvestmentSettingsSection.jsx";
@@ -38,12 +38,14 @@ function Settings() {
   const [dataTypes, setDataTypes] = useState([]);
   const [importType, setImportType] = useState("bank");
   const [importFile, setImportFile] = useState(null);
-  const [importMode, setImportMode] = useState("replace");
-  const [showMergePrompt, setShowMergePrompt] = useState(false);
+  const [importMode, setImportMode] = useState("merge");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [importSubmitting, setImportSubmitting] = useState(false);
   const [exportTarget, setExportTarget] = useState("");
+  const [devTools, setDevTools] = useState({ enabled: false, mode: "" });
+  const [clearTarget, setClearTarget] = useState("share");
+  const [clearSubmitting, setClearSubmitting] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -92,6 +94,15 @@ function Settings() {
       active = false;
     };
   }, []);
+  useEffect(() => {
+    let active = true;
+    getSettingsDevTools().then(value => {
+      if (active) setDevTools(value || { enabled: false, mode: "" });
+    }).catch(() => {
+      if (active) setDevTools({ enabled: false, mode: "" });
+    });
+    return () => { active = false; };
+  }, []);
   const openLocation = async target => {
     setMessage("");
     if (!bridge?.openDataLocation) {
@@ -128,30 +139,18 @@ function Settings() {
       return;
     }
 
-    // First click: check if there is existing live data that would be overwritten.
-    // If yes, show the Replace / Merge prompt and wait for the user to confirm.
-    if (!showMergePrompt) {
-      try {
-        const hasData = await checkSettingsDataHasData(importType);
-        if (hasData) {
-          setShowMergePrompt(true);
-          return;
-        }
-      } catch {
-        // Fail closed: without checking the target workbook, never proceed with
-        // a potentially destructive replace import.
-        setError("Could not check existing data. Try again.");
-        return;
-      }
-    }
     setImportSubmitting(true);
     try {
-      const importResult = await importSettingsDataFile(importType, importFile, importMode || "replace");
+      const previewResult = await previewSettingsDataFile(importType, importFile, importMode || "replace");
+      const review = {
+        ...previewResult.data,
+        filename: importFile.name,
+        currentStep: "review",
+      };
+      localStorage.setItem("finledge.import-review.v1", JSON.stringify(review));
       setImportFile(null);
-      setImportMode("replace");
-      setShowMergePrompt(false);
       event.target.reset();
-      setSuccess(importResult?.message || "Import completed.");
+      navigate("/import-review");
     } catch (exc) {
       setError(getSimpleImportError(exc));
     } finally {
@@ -175,6 +174,24 @@ function Settings() {
     }
   }
 
+  async function handleClearModule() {
+    const target = clearTarget;
+    const targetLabel = target === "share-sip" ? "SIP" : (dataTypes.find(item => item.id === target)?.label || target);
+    if (!window.confirm(`Clear all ${targetLabel} transaction records? The workbook, worksheets, headers, and other modules will remain.`)) return;
+    setError("");
+    setSuccess("");
+    setClearSubmitting(true);
+    try {
+      const result = await clearSettingsModuleData(target);
+      setSuccess(`Cleared ${result.removed_rows} ${targetLabel} transaction ${result.removed_rows === 1 ? "record" : "records"}.`);
+      window.dispatchEvent(new CustomEvent("finledge:data-changed", { detail: { dataType: target } }));
+    } catch (exc) {
+      setError(exc.message || "Could not clear module data.");
+    } finally {
+      setClearSubmitting(false);
+    }
+  }
+
   const activeLabel = SETTINGS_SECTIONS.find(section => section.id === activeSection)?.label || "Settings";
   function renderSectionContent() {
     const selectedImportType = dataTypes.find(item => item.id === importType);
@@ -190,8 +207,6 @@ function Settings() {
       setImportFile,
       importMode,
       setImportMode,
-      showMergePrompt,
-      setShowMergePrompt,
       selectedImportType,
       handleImportSubmit,
       importSubmitting,
@@ -244,6 +259,22 @@ function Settings() {
 
         <div className="settings-content">
           {renderSectionContent()}
+          {devTools.enabled ? (
+            <section className="card dev-data-clear" aria-label="Development data clearing">
+              <h2>Development / Testing data tools</h2>
+              <p>Environment: {devTools.mode}. This removes transaction rows only; workbook files, worksheets, headers, and other modules are preserved.</p>
+              <label className="field">
+                <span>Module to clear</span>
+                <select value={clearTarget} onChange={event => setClearTarget(event.target.value)}>
+                  {dataTypes.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}
+                  <option value="share-sip">SIP transactions only</option>
+                </select>
+              </label>
+              <button className="danger" type="button" disabled={clearSubmitting} onClick={handleClearModule}>
+                {clearSubmitting ? "Working…" : `Clear ${clearTarget === "share-sip" ? "SIP" : (dataTypes.find(item => item.id === clearTarget)?.label || "module")} records`}
+              </button>
+            </section>
+          ) : null}
           <StatusNotice message={success} kind="success" onDismiss={() => setSuccess("")} />
           <StatusNotice message={error} onDismiss={() => setError("")} />
         </div>

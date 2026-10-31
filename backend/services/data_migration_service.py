@@ -55,7 +55,7 @@ SHARE_HEADERS = [
     "Share Name",
     "Category",
     "Per Unit Price",
-    "ASBA Charge",
+    "Charge",
     "Allotted",
     "Buy/Sell",
     "Total Amount",
@@ -64,6 +64,8 @@ SHARE_HEADERS = [
     "Created Timestamp",
     "Last Updated Timestamp",
     "Updated Device",
+    "Row ID",
+    "Content Hash",
 ]
 PERSONAL_FINANCE_HEADERS = [
     "Date",
@@ -254,6 +256,9 @@ def _migrate_share_rows(source: Path) -> list[list[Any]]:
     try:
         sheet = workbook["Share"] if "Share" in workbook.sheetnames else workbook.active
         source_headers = [str(cell.value or "").strip() for cell in sheet[1]]
+        normalized_headers = [header.strip().casefold() for header in source_headers]
+        charge_index = next((index for index, name in enumerate(normalized_headers) if name == "charge"), None)
+        legacy_charge_index = next((index for index, name in enumerate(normalized_headers) if name == "asba charge"), None)
         rows: list[list[Any]] = []
         timestamp = datetime.now().isoformat(timespec="seconds")
         for row in sheet.iter_rows(min_row=2, values_only=True):
@@ -262,12 +267,21 @@ def _migrate_share_rows(source: Path) -> list[list[Any]]:
             created_at = str(_value_for_header(row, source_headers, "Created Timestamp") or _value_for_header(row, source_headers, "Timestamp") or "")
             last_updated_at = str(_value_for_header(row, source_headers, "Last Updated Timestamp") or created_at or "")
             updated_device = str(_value_for_header(row, source_headers, "Updated Device") or "legacy")
+            current_charge = row[charge_index] if charge_index is not None and charge_index < len(row) else None
+            legacy_charge = row[legacy_charge_index] if legacy_charge_index is not None and legacy_charge_index < len(row) else None
+            if current_charge not in (None, "") and legacy_charge not in (None, ""):
+                if _amount(current_charge) != _amount(legacy_charge):
+                    raise ValueError(
+                        f"Conflicting Charge and ASBA Charge values in {source.name}; "
+                        "the workbook was left unchanged for review."
+                    )
+            charge = current_charge if current_charge not in (None, "") else legacy_charge
             rows.append([
                 row[0] if len(row) > 0 else "",
                 row[1] if len(row) > 1 else "",
                 row[2] if len(row) > 2 else "",
                 row[3] if len(row) > 3 else "",
-                row[4] if len(row) > 4 else 0,
+                charge if charge not in (None, "") else (row[4] if len(row) > 4 else 0),
                 row[5] if len(row) > 5 else 0,
                 row[6] if len(row) > 6 else "",
                 row[7] if len(row) > 7 else "",
@@ -276,6 +290,8 @@ def _migrate_share_rows(source: Path) -> list[list[Any]]:
                 created_at or timestamp,
                 last_updated_at or created_at or timestamp,
                 updated_device,
+                _value_for_header(row, source_headers, "Row ID"),
+                _value_for_header(row, source_headers, "Content Hash"),
             ])
         return rows
     finally:
@@ -350,7 +366,16 @@ def migrate_share_workbook(data_dir: Path) -> dict[str, Any]:
     source = data_dir / "share_transactions.xlsx"
     if not source.exists():
         return {"status": "not-found", "source_file": str(source), "migration": MIGRATION_VERSION}
-    if not _workbook_needs_header_migration(source, "Share", SHARE_HEADERS):
+    workbook = load_workbook(source, read_only=True, data_only=True)
+    try:
+        sheet = workbook["Share"] if "Share" in workbook.sheetnames else workbook.active
+        has_legacy_charge_header = any(
+            str(cell.value or "").strip().casefold() == "asba charge"
+            for cell in sheet[1]
+        )
+    finally:
+        workbook.close()
+    if not has_legacy_charge_header and not _workbook_needs_header_migration(source, "Share", SHARE_HEADERS):
         return {"status": "not-needed", "source_file": str(source), "migration": MIGRATION_VERSION}
     return _migrate_header_workbook(data_dir, source, "Share", SHARE_HEADERS, _migrate_share_rows(source), "share-updated-device")
 

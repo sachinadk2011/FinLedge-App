@@ -515,6 +515,61 @@ body.finledge-desktop .ghost:hover:not(:disabled) {
   border: 1px solid #edf1f7;
 }
 
+.import-review-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+  gap: 14px;
+}
+
+.import-review-grid .field {
+  min-width: 0;
+}
+
+.import-row-icon-button {
+  width: 40px;
+  height: 40px;
+  padding: 8px;
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+}
+
+.import-row-icon-button svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.import-review-footer {
+  display: grid;
+  gap: 12px;
+  margin-top: 20px;
+}
+
+.import-review-footer .subtitle {
+  margin: 0;
+}
+
+.import-review-footer button {
+  width: 100%;
+}
+
+.import-row-moved {
+  border-color: #2563eb;
+  background: #eff6ff;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.2);
+  animation: import-row-highlight 1.8s ease-out;
+}
+
+@keyframes import-row-highlight {
+  from { background: #dbeafe; }
+  to { background: #eff6ff; }
+}
+
 .stat-label {
   color: var(--muted);
   font-size: 0.78rem;
@@ -1071,6 +1126,22 @@ pre {
   overflow: hidden;
 }
 
+.app-notice-stack {
+  position: fixed;
+  z-index: 1200;
+  top: 1rem;
+  right: 1rem;
+  display: grid;
+  gap: 0.6rem;
+  width: min(430px, calc(100vw - 2rem));
+}
+
+.app-notice-stack .status-notice {
+  position: relative;
+  inset: auto;
+  width: 100%;
+}
+
 .status-notice-error {
   --notice-border: rgba(185, 28, 28, 0.26);
   --notice-background: #fff7f7;
@@ -1376,6 +1447,12 @@ pre {
 .settings-actions {
   align-items: center;
   flex-wrap: wrap;
+}
+
+@media (max-width: 640px) {
+  .import-review-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .toggle-row {

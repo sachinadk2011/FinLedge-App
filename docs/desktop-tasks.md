@@ -1161,3 +1161,12 @@ AGENTS.md §0.5: ambiguous = narrower action. PLAN.md Hard Constraints still app
 - Packaged Sandbox re-verification remains pending because the available package set
   predates this IPC fix. Existing isolated Sandbox data was not modified.
 - Docs touched: `docs/desktop-codebase.md`, `docs/desktop-tasks.md`.
+
+### 2026-10-31 — Calendar filters, import review, precision, notices, and test clearing
+
+- Desktop dashboard period bounds now use the selected calendar Week/Month/Year and inclusive Custom dates. Share summaries keep period cash flow separate from historical closing positions, and memo dependencies include the selected range.
+- Excel import now goes directly from its Import action to one editable/reorderable review page with the Confirm action there. Merge is the safe default; Replace remains explicit. Success stays on Import with an added/updated count. Backend import timing logs cover input read, validation/remapping, live reads, merge, backup, stage write, staged validation, atomic commit/refresh, and total time.
+- Bank currency parsing and cumulative totals use Decimal and persist to two currency decimals. Share Charge default values select on focus. Desktop notifications are held in the app shell across route unmounts.
+- Added Development/Testing-only module clearing with a strict explicit backend mode guard, user confirmation, per-workbook snapshots, row tombstones, and a SIP-only option. It keeps workbook and worksheet structure.
+- Verification: frontend build/smoke passed; focused regressions 14/14; backup/restore 10/10; shared-sync/data-directory 31/31. Weighted-average tests reproduce expected All Time values. Synthetic timings are recorded in `docs/TASKS.md`; no comparable pre-change baseline exists. TestClient API calls hang in Windows local socket-pair setup before app routing. Rendered UI and current EXE/AppX Sandbox install/launch were not verified.
+- Docs touched: `docs/desktop-codebase.md`, `docs/desktop-tasks.md`, `docs/TASKS.md`.

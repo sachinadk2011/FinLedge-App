@@ -426,4 +426,17 @@
 
 - **Backups**: original `package.json` / `package-lock.json` for both `frontendwebapp` and `desktop` copied to `%TEMP%\opencode\finance_backup\` before any dependency changes. Nothing committed.
 
+## Regression work (2026-10-31)
+
+- Calendar Week, Month, and Year boundaries now control actual desktop dashboard rows; custom range remains inclusive and All Time retains all rows. Share closing calculations continue to use the full history through the selected end date.
+- Excel import uses one Import action to open the staged review, keeps merge/replace choice with the file form, confirms on the review page, preserves reviewed row order, highlights moved rows, reports the imported count, and stays on the Import page after success.
+- Bank currency inputs use Decimal validation and two-decimal currency persistence. Charge defaults select on focus so first typing replaces the default.
+- Desktop notices now live in the app shell across route changes. Added a guarded module-row clearing utility for explicit Development/Testing only, including a SIP-only choice and workbook snapshots/tombstones.
+- Added isolated regression coverage for calendar boundaries, bank precision, reviewed import order/atomic validation, and development clear safeguards/structure preservation.
+- **Docs touched**: `docs/desktop-codebase.md`, `docs/TASKS.md`.
+- **Verification**: pending final regression and Sandbox/package checks.
+
+- **Verification update (2026-10-31)**: frontend production build and smoke tests passed; focused backend regressions passed (14/14), backup/restore tests passed (10/10), and shared-sync/data-directory tests passed (31/31). Weighted-average tests include the expected All Time totals and historical end-date replay. Synthetic performance samples measured: cold data preparation 1.768 s, warm 0.036 s; 1,000 Share rows read/replayed 0.553 s and summary 0.001 s; 1,000-row Bank import 0.382 s overall (input read 0.058 s, validation/remap 0.007 s, live read 0.063 s, merge 0.055 s, backup 0.004 s, staged write 0.188 s, staged validation 0.005 s, atomic commit/refresh 0.001 s). These are current synthetic timings; a comparable pre-change benchmark was not captured.
+- API-level TestClient checks, rendered UI interaction tests, Sandbox EXE/AppX install/launch, and a package-level before/after timing comparison remain unverified. In this environment Starlette TestClient stalls while creating its local Windows socket pair before reaching the API; computer-use browser verification was unavailable in the prior Sandbox session. No current-code test packages were installed.
+
 

@@ -11,7 +11,7 @@ import StatusNotice from "../components/StatusNotice";
 import useDashboardPeriod from "../hooks/useDashboardPeriod";
 
 import { formatCurrency } from "../utils/format";
-import { parseDate, isoMonthKey } from "../utils/date";
+import { getTodayInputValue, parseDate, isoDayKey, isoMonthKey } from "../utils/date";
 import { BANK_INCOME_CATEGORIES } from "../constants/options";
 import { buildDashboardBuckets } from "../utils/dashboardPeriod";
 import { summarizeBankRecords, summarizePersonalRecords, summarizeShareRecords } from "../utils/summaries";
@@ -209,14 +209,16 @@ function Summary() {
   const overallPeriodShareRecords = overallPeriod.filterRecords(shareRecords);
   const overallPeriodPersonalRecords = overallPeriod.filterRecords(personalRecords);
   const bankSummary = summarizeBankRecords(bankPeriodRecords);
-  const shareSummary = summarizeShareRecords(sharePeriodRecords);
+  const shareClosingEndDate = isoDayKey(sharePeriod.bounds?.end) || getTodayInputValue();
+  const shareSummary = summarizeShareRecords(sharePeriodRecords, shareRecords, shareClosingEndDate);
   const personalSummary = summarizePersonalRecords(personalPeriodRecords);
   const overallBankSummary = summarizeBankRecords(overallPeriodBankRecords);
-  const overallShareSummary = summarizeShareRecords(overallPeriodShareRecords);
+  const overallClosingEndDate = isoDayKey(overallPeriod.bounds?.end) || getTodayInputValue();
+  const overallShareSummary = summarizeShareRecords(overallPeriodShareRecords, shareRecords, overallClosingEndDate);
   const overallManualPersonalNet = sumManualPersonalNet(overallPeriodPersonalRecords);
   const overallPeriodNet = overallBankSummary.net_balance + overallShareSummary.grand_profit_loss + overallManualPersonalNet;
   const totalShareInvestment = Number(shareSummary.grand_total_investment ?? shareSummary.overall_investment ?? 0);
-  const totalShareProfitLoss = Number(shareSummary.grand_profit_loss ?? shareSummary.overall_profit_loss ?? 0);
+  const totalShareProfitLoss = Number(shareSummary.grand_net_cash_result ?? shareSummary.grand_profit_loss ?? 0);
   const manualPersonalNet = sumManualPersonalNet(personalPeriodRecords);
   const bankBounds = useMemo(() => bankPeriod.boundsForRecords(bankRecords), [bankRecords, bankPeriod.range, bankPeriod.bounds]);
   const shareBounds = useMemo(() => sharePeriod.boundsForRecords(shareRecords), [shareRecords, sharePeriod.range, sharePeriod.bounds]);
@@ -302,7 +304,16 @@ function Summary() {
                     { label: "SIP investment", value: formatter.format(shareSummary.total_sip_investment || 0) },
                     { label: "Sell proceeds", value: formatter.format(shareSummary.total_sell_amount || 0) },
                     { label: "Dividend income", value: formatter.format(shareSummary.total_dividend || 0) },
-                    { label: "Grand profit/loss", value: formatter.format(totalShareProfitLoss) },
+                    { label: "Realized trading profit/loss", value: formatter.format(shareSummary.realized_trading_profit_loss || 0) },
+                    { label: "Bonus shares received", value: String(shareSummary.bonus_shares_received || 0) },
+                    { label: `Share holding cost as of ${shareClosingEndDate}`, value: formatter.format(shareSummary.share_holding_cost || 0) },
+                    { label: "Share net cash result", value: formatter.format(shareSummary.share_net_cash_result || 0) },
+                    { label: `SIP unrecovered capital as of ${shareClosingEndDate}`, value: formatter.format(shareSummary.sip_unrecovered_capital || 0) },
+                    { label: "SIP net cash result", value: formatter.format(shareSummary.sip_net_cash_result || 0) },
+                    { label: "Grand total investment", value: formatter.format(shareSummary.grand_total_investment || 0) },
+                    { label: `Grand holding cost as of ${shareClosingEndDate}`, value: formatter.format(shareSummary.grand_holding_cost || 0) },
+                    { label: "Grand total received", value: formatter.format(shareSummary.grand_total_received || 0) },
+                    { label: "Grand net cash result", value: formatter.format(totalShareProfitLoss) },
                   ]}
                 />
               </section>

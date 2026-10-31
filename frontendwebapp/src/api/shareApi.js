@@ -18,6 +18,8 @@ export function buildSharePayload(form) {
   const amount = Number.parseFloat(amountRaw);
   const allotted = Number.parseInt(form.allotted, 10);
   const bonusShares = Number.parseInt(form.bonus_shares ?? form.allotted, 10);
+  const chargeRaw = String(form.charge ?? (category === "ipo" ? "5" : "0")).trim();
+  const charge = Number.parseFloat(chargeRaw);
   const dividendType = String(form.buy_sell || form._dividendType || "").trim().toLowerCase();
   const sipType = String(form.buy_sell || form._sipType || "installment").trim().toLowerCase();
 
@@ -38,6 +40,9 @@ export function buildSharePayload(form) {
     if (!Number.isFinite(amount) || amount <= 0) {
       throw new Error("SIP amount must be positive.");
     }
+    if (!Number.isFinite(charge) || charge < 0) {
+      throw new Error("Charge must be zero or greater.");
+    }
   } else {
     if (!Number.isFinite(perUnitPrice)) {
       throw new Error("Per unit price must be a valid number.");
@@ -48,6 +53,9 @@ export function buildSharePayload(form) {
     if (category !== "ipo" && allotted <= 0) {
       throw new Error("Allotted must be a positive integer for buy/sell entries.");
     }
+    if (category === "ipo" && (!Number.isFinite(charge) || charge < 0)) {
+      throw new Error("Charge must be zero or greater.");
+    }
   }
 
   const payload = {
@@ -57,6 +65,7 @@ export function buildSharePayload(form) {
 
   if (category === "sip") {
     payload.total_amount = amountRaw;
+    payload.charge = chargeRaw;
     payload.buy_sell = sipType;
   } else if (category === "dividend") {
     payload.buy_sell = dividendType;
@@ -69,6 +78,7 @@ export function buildSharePayload(form) {
     payload.per_unit_price = perUnitPriceRaw;
     payload.allotted = allotted;
     payload.buy_sell = String(form.buy_sell || form.category || "").trim().toLowerCase();
+    if (category === "ipo") payload.charge = chargeRaw;
   }
 
   if (form.dates) {
@@ -91,11 +101,6 @@ export function getShareData() {
 export function updateShareAllotment(payload) {
   if (import.meta.env.DEV) console.log("[shareApi] PUT /share/update-allotment payload", payload);
   return putJson("/share/update-allotment", payload);
-}
-
-export function updateSipAllotment(payload) {
-  if (import.meta.env.DEV) console.log("[shareApi] PUT /share/update-sip-allotment payload", payload);
-  return putJson("/share/update-sip-allotment", payload);
 }
 
 export function updateShareEntry(recordId, form) {

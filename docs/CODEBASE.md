@@ -16,7 +16,8 @@ tracker financial/
 │  │  ├─ bank.py
 │  │  ├─ share.py
 │  │  ├─ summary.py
-│  │  └─ personal_finance.py
+│  │  ├─ personal_finance.py
+│  │  └─ settings.py                    — import preview and reviewed confirmation
 │  ├─ services/
 │  │  ├─ bank_service.py
 │  │  ├─ share_service.py
@@ -41,7 +42,8 @@ tracker financial/
 │  │  │  ├─ PersonalFinancePage.jsx
 │  │  │  ├─ PersonalFinanceDashboard.jsx
 │  │  │  ├─ Summary.jsx
-│  │  │  └─ Settings.jsx
+│  │  │  ├─ Settings.jsx
+│  │  │  └─ ImportReview.jsx             — staged import review and confirmation
 │  │  ├─ components/
 │  │  │  ├─ BankForm.jsx
 │  │  │  ├─ ShareForm.jsx
@@ -60,7 +62,8 @@ tracker financial/
 │  │  ├─ constants/
 │  │  │  └─ options.js               — BANK_CATEGORIES, SHARE_CATEGORIES, PF_*
 │  │  └─ utils/
-│  │     └─ date.js                  — getTodayInputValue()
+│  │     ├─ date.js                  — getTodayInputValue()
+│  │     └─ shareClosingPosition.js  — filters share position history through the selected end date
 │  └─ dist/                          — built frontend output
 │
 ├─ desktop/
@@ -101,10 +104,10 @@ tracker financial/
 | Module | Frontend Page(s) | Frontend Component | Frontend API | Backend Route | Backend Service | Data Model / Excel |
 |---|---|---|---|---|---|---|
 | **Bank Services** | `BankPage.jsx`, `BankDashboard.jsx` | `BankForm.jsx` | `bankApi.js` | `bank.py` | `bank_service.py` | `bank_transactions.xlsx` — 7 cols: Date, Category, Amount, Cumulative Amount, Description, Created Timestamp, Last Updated Timestamp |
-| **Share Portfolio** | `SharePage.jsx`, `ShareDashboard.jsx` | `ShareForm.jsx` | `shareApi.js` | `share.py` | `share_service.py` | `share_transactions.xlsx` — 10 cols: Date, Share Name, Category, Per Unit Price, ASBA Charge, Allotted, Buy/Sell, Total Amount, Profit/Loss, Cumulative Profit |
+| **Share Portfolio** | `SharePage.jsx`, `ShareDashboard.jsx` | `ShareForm.jsx` | `shareApi.js` | `share.py` | `share_service.py` | `share_transactions.xlsx` — 15 cols including Charge, audit fields, and row metadata; service computes weighted-average positions |
 | **Personal Finance** | `PersonalFinanceHome.jsx`, `PersonalFinancePage.jsx`, `PersonalFinanceDashboard.jsx` | `PersonalFinanceForm.jsx` | `personalFinanceApi.js` | `personal_finance.py` | `personal_finance_service.py` | `personal_finance_bank_flow.xlsx` + `personal_finance_cash_flow.xlsx` — 10 cols each: Date, Flow Type, Direction, Category, Amount, Signed Amount, Description, Source, Timestamp, Source Ref |
 | **Financial Summary** | `Summary.jsx` | *(uses StatGrid, BarChart, InteractiveTimelineChart)* | *(reads bankApi + shareApi + personalFinanceApi)* | `summary.py` | `summary_graph_service.py` | *(analytics-only, reads from Bank + Share + PF, writes nothing)* |
-| **Settings** | `Settings.jsx` | *(none)* | *(none)* | *(none)* | *(none)* | *(no data file; reads file paths from desktop bridge)* |
+| **Settings** | `Settings.jsx`, `ImportReview.jsx` | *(none)* | `settingsApi.js` | `settings.py` | `settings_service.py`, `settings_data/workbook_import.py` | *(imports user-selected workbook data after review)* |
 **Shared across modules:** `StatGrid.jsx`, `TransactionsTable.jsx`, `BarChart.jsx`, `InteractiveTimelineChart.jsx`, `ConfirmDialog.jsx`
 
 ---

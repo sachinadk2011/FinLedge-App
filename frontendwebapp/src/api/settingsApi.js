@@ -81,6 +81,18 @@ export async function getSettingsDataTypes() {
   return handleResponse(response, { method: "GET", url });
 }
 
+export async function getSettingsDevTools() {
+  const url = `${await getApiBase()}/settings/dev-tools`;
+  const response = await fetch(url);
+  return handleResponse(response, { method: "GET", url });
+}
+
+export async function clearSettingsModuleData(dataType) {
+  const url = `${await getApiBase()}/settings/dev-tools/clear/${encodeURIComponent(dataType)}`;
+  const response = await fetch(url, { method: "POST" });
+  return handleResponse(response, { method: "POST", url, dataType });
+}
+
 export async function checkSettingsDataHasData(dataType) {
   const url = `${await getApiBase()}/settings/has-data/${encodeURIComponent(dataType)}`;
   const response = await fetch(url);
@@ -100,6 +112,25 @@ export async function importSettingsDataFile(dataType, file, mode = "replace") {
   });
 
   return handleResponse(response, { method: "POST", url, dataType, filename: file?.name, mode });
+}
+
+export async function previewSettingsDataFile(dataType, file, mode = "replace") {
+  const url = `${await getApiBase()}/settings/preview-import/${encodeURIComponent(dataType)}`;
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("mode", mode);
+  const response = await fetch(url, { method: "POST", body: formData });
+  return handleResponse(response, { method: "POST", url, dataType, filename: file?.name, mode, preview: true });
+}
+
+export async function confirmReviewedSettingsImport(dataType, rows, mode = "replace") {
+  const url = `${await getApiBase()}/settings/import-reviewed/${encodeURIComponent(dataType)}`;
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ mode, rows }),
+  });
+  return handleResponse(response, { method: "POST", url, dataType, mode, reviewed: true });
 }
 
 export async function exportSettingsDataFile(dataType) {

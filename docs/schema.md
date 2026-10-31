@@ -39,7 +39,7 @@ Mirrors `share_transactions.xlsx` → sheet `Share`.
 | share_name | TEXT NOT NULL | Share Name |
 | category | TEXT NOT NULL | Category |
 | per_unit_price | TEXT NOT NULL | Per Unit Price |
-| asba_charge | REAL NOT NULL | ASBA Charge |
+| asba_charge | REAL NOT NULL | Charge |
 | allotted | INTEGER NOT NULL | Allotted |
 | buy_sell | TEXT NOT NULL | Buy/Sell |
 | total_amount | TEXT NOT NULL | Total Amount |
@@ -48,6 +48,11 @@ Mirrors `share_transactions.xlsx` → sheet `Share`.
 | created_timestamp | TEXT NOT NULL | Created Timestamp |
 | last_updated_timestamp | TEXT NOT NULL | Last Updated Timestamp |
 | updated_device | TEXT NOT NULL | Updated Device |
+
+For the desktop-only share update, the Excel header is now `Charge`. Desktop accepts
+legacy `ASBA Charge` workbooks and rewrites that header through its backup-first
+migration. The SQLite column remains `asba_charge`; the mobile implementation and
+its legacy export behavior are unchanged by this desktop task.
 
 ### 1.3 `personal_finance_bank_flow`
 

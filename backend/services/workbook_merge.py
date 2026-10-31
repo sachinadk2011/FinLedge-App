@@ -29,7 +29,7 @@ _identity_map_lock = threading.Lock()
 
 BUSINESS_FIELDS = {
     "bank": ("Date", "Category", "Amount", "Description"),
-    "share": ("Date", "Share Name", "Category", "Per Unit Price", "ASBA Charge", "Allotted", "Buy/Sell"),
+    "share": ("Date", "Share Name", "Category", "Per Unit Price", "Charge", "Allotted", "Buy/Sell"),
     "personal_finance": ("Date", "Flow Type", "Direction", "Category", "Amount", "Description", "Source", "Source Ref"),
     "transfer": ("Date", "Flow Type", "Amount", "Description", "Source Ref"),
 }
@@ -168,6 +168,7 @@ def ensure_row_metadata(
     kind: str,
     *,
     identity_scope: str | None = None,
+    persist_identity_map: bool = True,
 ) -> tuple[list[str], list[list[Any]]]:
     """Add stable IDs and fresh business hashes, preserving existing valid IDs.
 
@@ -210,7 +211,7 @@ def ensure_row_metadata(
         if device_index is not None:
             row[device_index] = normalize_device_label(row[device_index])
         normalized_rows.append(row[:len(headers)])
-    if identity_entries:
+    if identity_entries and persist_identity_map:
         _persist_identity_map(identity_map_path, identity_entries)
     return headers, normalized_rows
 
@@ -321,9 +322,14 @@ def merge_row_sets(
     current_tombstones: list[dict[str, str]] | None = None,
     incoming_tombstones: list[dict[str, str]] | None = None,
     existing_conflicts: list[list[Any]] | None = None,
+    persist_identity_map: bool = True,
 ) -> dict[str, Any]:
-    headers, current_rows = ensure_row_metadata(headers, current_rows, kind, identity_scope=identity_scope)
-    _, incoming_rows = ensure_row_metadata(headers, incoming_rows, kind, identity_scope=identity_scope)
+    headers, current_rows = ensure_row_metadata(
+        headers, current_rows, kind, identity_scope=identity_scope, persist_identity_map=persist_identity_map
+    )
+    _, incoming_rows = ensure_row_metadata(
+        headers, incoming_rows, kind, identity_scope=identity_scope, persist_identity_map=persist_identity_map
+    )
     indexes = {canonical_header(header): index for index, header in enumerate(headers)}
     id_index = indexes["row id"]
     hash_index = indexes["content hash"]

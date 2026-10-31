@@ -59,6 +59,7 @@ backend/
 │   ├── transfer_direction_rules.json
 │   ├── workbook_initialization.py
 │   ├── settings_service.py
+│   ├── dev_data_clear_service.py
 │   ├── settings_data/
 │   │   ├── __init__.py
 │   │   ├── config.py
@@ -101,15 +102,16 @@ backend/
 | `routes/settings.py` | Workbook import/export HTTP endpoints. |
 | `services/settings_data/__init__.py` | Package marker for focused Settings data helpers. |
 | `services/bank_service.py` | Bank Services workbook I/O, record operations, and totals. |
-| `services/share_service.py` | Share Portfolio workbook I/O and transaction recalculation, preserving the existing route-facing API. |
+| `services/share_service.py` | Share Portfolio workbook I/O, chronological weighted-average transaction recalculation, and route-facing record operations. |
 | `services/share_summary.py` | Pure aggregate calculations for Share Portfolio records, shared by the Share and Financial Summary routes. |
 | `services/personal_finance_service.py` | Personal Expenses Bank/Cash workbook operations, append-before-delete flow moves with pre-write snapshots, live sync shaping, route-facing transfer compatibility functions, and copy-only repair of rows saved under the former generic sheet name. |
 | `services/personal_finance_summary.py` | Pure Personal Expenses summary calculations and module/category filtering rules. |
 | `services/personal_finance_transfers.py` | Transfer workbook CRUD, serialized income checks, chronological import balance replay, migration from the former generic sheet into `Transfer Flow`, and shaping of Bank/Cash transfer rows. |
 | `services/transfer_directions.py` / `services/transfer_direction_rules.json` | Shared direction aliases, origin/destination flows, and labels consumed by Python and the renderer. |
-| `services/share_lot_calculations.py` | Shared FIFO lot construction/consumption and SIP investment accumulation for Share Portfolio recalculation. |
+| `services/share_lot_calculations.py` | Weighted-average share-position replay and SIP investment accumulation for desktop Share Portfolio recalculation. |
 | `services/summary_graph_service.py` | Aggregates day/month buckets through one classifier-based helper and builds Financial Summary PNGs; graph routes are deprecated while the renderer does not use them. |
 | `services/settings_service.py` | Stable compatibility facade for Settings workbook operations used by API routes. |
+| `services/dev_data_clear_service.py` | Explicit Development/Testing-only transaction-row clearing with a backend mode guard, module-scoped workbook locks, pre-write snapshots, tombstones, and structure preservation. |
 | `services/settings_data/config.py` | Canonical workbook paths, headers, and exact sheet mappings for Bank Services, Share Portfolio, Personal Expenses Bank/Cash Flow, and transfers. |
 | `services/settings_data/normalization.py` | Legacy header/category aliases and import normalization rules, including transfer direction aliases. |
 | `services/settings_data/workbook_import.py` | Module-specific validation and row mapping, followed by backup, staged merge/replace, tombstone/conflict preservation, and derived-value recalculation; transfer imports validate chronological balances. |
@@ -142,6 +144,11 @@ backend/
 Backend layering rule: routes call services; services own workbook paths and I/O.
 When a service grows across concerns, split internal helpers into focused service
 modules while preserving a clear route-facing service API.
+
+Desktop Share Portfolio accounting replays transactions chronologically using
+weighted-average acquisition cost. The mobile implementation remains unchanged
+and continues its existing FIFO behavior until a separate mobile update is requested.
+Desktop Share workbooks use the `Charge` header and safely accept legacy `ASBA Charge`.
 
 The root `.gitignore` ignores test directories, including `backend/tests/` and
 `desktop/tests/`, while explicitly exposing the focused regression files used by the

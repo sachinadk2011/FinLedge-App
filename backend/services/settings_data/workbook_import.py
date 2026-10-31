@@ -1,7 +1,10 @@
 """Excel workbook validation, row mapping, import, and live-data checks."""
 
 import os
+import logging
 import shutil
+import tempfile
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -22,6 +25,8 @@ from ..workbook_merge import (
     get_device_label, map_row, merge_row_sets, normalize_device_label,
     read_conflicts, read_tombstones, recompute_derived,
 )
+
+logger = logging.getLogger(__name__)
 
 def _to_float(value: object) -> float:
     try:
@@ -50,6 +55,9 @@ def _read_workbook_rows(
 
     raw_headers = [str(c).strip() if c is not None else "" for c in rows[0]]
     headers = _apply_aliases(raw_headers)
+    raw_keys = [header.strip().casefold() for header in raw_headers]
+    if "charge" in raw_keys and "asba charge" in raw_keys:
+        headers[raw_keys.index("asba charge")] = "Legacy ASBA Charge"
     data = [list(r) for r in rows[1:] if any(v is not None for v in r)]
     return headers, data
 
@@ -144,7 +152,7 @@ def _remap_share_rows(
     - Category is normalised to current lowercase key (ipo/sip/buy/sell/dividend).
     - Profit/Loss and Cumulative Profit are preserved from the file if present,
       otherwise set to None.
-    - ASBA Charge defaults to 0.
+    - Charge defaults to 0; legacy ASBA Charge is accepted as an alias.
     - Total Amount: calculated as Per Unit Price × Allotted if not supplied.
     - Audit timestamps record the actual import time.
     - Sync Ref defaults to None.
@@ -163,7 +171,13 @@ def _remap_share_rows(
         # Migrate category to current canonical value
         category = _migrate_share_category(raw_category)
         per_unit = _to_float(get("Per Unit Price", 0))
-        asba = _to_float(get("ASBA Charge", 0))
+        current_charge = get("Charge")
+        legacy_charge = get("Legacy ASBA Charge")
+        if current_charge not in (None, "") and legacy_charge not in (None, ""):
+            if _to_float(current_charge) != _to_float(legacy_charge):
+                raise ValueError("This workbook has conflicting Charge and ASBA Charge values. Resolve the conflict before importing.")
+        charge = current_charge if current_charge not in (None, "") else legacy_charge
+        charge = _to_float(charge)
         allotted = _to_float(get("Allotted", 0))
         buy_sell = str(get("Buy/Sell", "") or "").strip()
 
@@ -189,8 +203,8 @@ def _remap_share_rows(
                 remapped.append(category)
             elif col_l == "per unit price":
                 remapped.append(per_unit)
-            elif col_l == "asba charge":
-                remapped.append(asba)
+            elif col_l == "charge":
+                remapped.append(charge)
             elif col_l == "allotted":
                 remapped.append(int(allotted) if allotted == int(allotted) else allotted)
             elif col_l == "buy/sell":
@@ -464,6 +478,8 @@ def import_data_file(
     data_type: str,
     uploaded_path: Path,
     mode: str = "replace",
+    *,
+    dry_run: bool = False,
 ) -> dict[str, Any]:
     """
     Import an Excel file for the given data_type.
@@ -477,6 +493,7 @@ def import_data_file(
     calculated from the available data if not present in the import file.
     Missing audit timestamps use the time the import writes each row.
     """
+    total_started = time.perf_counter()
     config = get_data_type_config(data_type)
     live_path = Path(config["path"])
     full_headers: list[str] = list(config["headers"])
@@ -490,6 +507,7 @@ def import_data_file(
     if suffix not in {".xlsx", ".xlsm"}:
         raise ValueError("Import file must be an Excel workbook (.xlsx).")
 
+    read_started = time.perf_counter()
     try:
         actual_headers, import_rows = _read_workbook_rows(uploaded_path, sheet_name)
     except Exception as exc:
@@ -498,6 +516,8 @@ def import_data_file(
     if not actual_headers:
         raise ValueError("The import file appears to be empty — no header row found.")
 
+    input_read_seconds = time.perf_counter() - read_started
+    validation_started = time.perf_counter()
     _validate_import_type(data_type, actual_headers, import_rows)
 
     # Validate that all truly required columns are present (aliases already applied)
@@ -520,6 +540,7 @@ def import_data_file(
         initial_cumulative=0.0,
         flow_type_override=flow_type_override,
     )
+    validation_seconds = time.perf_counter() - validation_started
 
     if data_type in {"pf-bank", "pf-cash", "pf-transfer"}:
         from ..personal_finance_service import _file_lock
@@ -533,8 +554,10 @@ def import_data_file(
 
     kind = "bank" if data_type == "bank" else "share" if data_type == "share" else "transfer" if data_type == "pf-transfer" else "personal_finance"
 
+    live_read_started = time.perf_counter()
     with lock_context:
-        _ensure_import_workbook_ready(data_type)
+        if not dry_run:
+            _ensure_import_workbook_ready(data_type)
         current_rows: list[list[Any]] = []
         current_tombstones: list[dict[str, str]] = []
         current_conflicts: list[list[Any]] = []
@@ -563,6 +586,8 @@ def import_data_file(
         finally:
             source_wb.close()
 
+        live_read_seconds = time.perf_counter() - live_read_started
+        merge_started = time.perf_counter()
         merge_result = merge_row_sets(
             full_headers,
             current_rows,
@@ -571,18 +596,62 @@ def import_data_file(
             current_tombstones=current_tombstones,
             incoming_tombstones=incoming_tombstones,
             existing_conflicts=current_conflicts + incoming_conflicts,
+            persist_identity_map=not dry_run,
         )
+        merge_seconds = time.perf_counter() - merge_started
+        validation_error = ""
         if data_type == "pf-transfer":
             from ..personal_finance_transfers import validate_transfer_import_rows
             # Validate the final deduplicated transfer set so re-importing an
             # unchanged transfer does not replay the same movement twice.
-            validate_transfer_import_rows(merge_result["rows"], full_headers, "replace")
+            try:
+                validate_transfer_import_rows(merge_result["rows"], full_headers, "replace")
+            except ValueError as exc:
+                if not dry_run:
+                    raise
+                validation_error = str(exc)
+
+        if dry_run:
+            validation_workbook = Workbook()
+            validation_sheet = validation_workbook.active
+            validation_sheet.title = sheet_name
+            validation_sheet.append(merge_result["headers"])
+            for row in merge_result["rows"]:
+                validation_sheet.append(row)
+            try:
+                recompute_derived(validation_sheet, kind)
+            except ValueError as exc:
+                validation_error = validation_error or str(exc)
+            finally:
+                validation_workbook.close()
+
+            preview_headers, preview_rows = ensure_row_metadata(
+                full_headers,
+                remapped,
+                kind,
+                persist_identity_map=False,
+            )
+            return {
+                "data_type": data_type,
+                "label": config["label"],
+                "filename": config["filename"],
+                "headers": preview_headers,
+                "rows": [dict(zip(preview_headers, row)) for row in preview_rows],
+                "mode": mode,
+                "merge_report": merge_result["report"],
+                "message": merge_result["message"],
+                "validation_error": validation_error,
+            }
+
+        backup_started = time.perf_counter()
         backup_file = _backup_live_file(live_path)
+        backup_seconds = time.perf_counter() - backup_started
 
         tag = datetime.now().strftime("%Y%m%d-%H%M%S")
         safe_stem = Path(str(config["filename"])).stem
         staged_path = live_path.parent / f".import-{safe_stem}-{tag}.xlsx"
 
+        stage_started = time.perf_counter()
         try:
             wb = Workbook()
             ws = wb.active
@@ -605,18 +674,29 @@ def import_data_file(
                 raise ValueError("Imported workbook failed identity validation.")
             wb.save(staged_path)
             wb.close()
+            stage_seconds = time.perf_counter() - stage_started
+            verify_started = time.perf_counter()
             check = load_workbook(staged_path, read_only=True, data_only=True)
             try:
                 if sheet_name not in check.sheetnames or check[sheet_name].max_row != len(merge_result["rows"]) + 1:
                     raise ValueError("Imported workbook failed validation.")
             finally:
                 check.close()
+            verify_seconds = time.perf_counter() - verify_started
+            commit_started = time.perf_counter()
             os.replace(staged_path, live_path)
             mirror_workbook_to_safety_copy(live_path)
+            commit_seconds = time.perf_counter() - commit_started
         finally:
             if staged_path.exists() and staged_path != live_path:
                 staged_path.unlink(missing_ok=True)
 
+    logger.info(
+        "Import timing data_type=%s rows=%s input_read=%.3fs validation_remap=%.3fs live_read=%.3fs merge=%.3fs backup=%.3fs stage_write=%.3fs staged_validation=%.3fs atomic_commit_refresh=%.3fs total=%.3fs",
+        data_type, len(remapped), input_read_seconds, validation_seconds, live_read_seconds,
+        merge_seconds, backup_seconds, stage_seconds, verify_seconds, commit_seconds,
+        time.perf_counter() - total_started,
+    )
     return {
         "data_type": data_type,
         "label": config["label"],
@@ -629,6 +709,47 @@ def import_data_file(
         "merge_report": merge_result["report"],
         "message": merge_result["message"],
     }
+
+
+def import_reviewed_data_file(data_type: str, rows: list[dict[str, Any]], mode: str = "replace") -> dict[str, Any]:
+    """Commit reviewed rows through the existing validated workbook import path."""
+    if mode not in {"replace", "merge"}:
+        raise ValueError("mode must be 'replace' or 'merge'.")
+    if not rows:
+        raise ValueError("Select at least one row before confirming the import.")
+
+    config = get_data_type_config(data_type)
+    headers = list(config["headers"])
+    temp_dir = Path(tempfile.mkdtemp(prefix="finledge-reviewed-import-"))
+    temp_path = temp_dir / "reviewed-import.xlsx"
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = str(config["sheet_name"])
+    sheet.append(headers)
+    updated_at = datetime.now().isoformat(timespec="seconds")
+    for reviewed in rows:
+        row = dict(reviewed)
+        edited = bool(row.pop("_edited", False))
+        if data_type == "share" and edited and str(row.get("Category") or "").strip().lower() == "sip":
+            gross_amount = _to_float(row.get("Per Unit Price", row.get("Total Amount", 0)))
+            charge = _to_float(row.get("Charge", 0))
+            buy_sell = str(row.get("Buy/Sell") or "").strip().lower()
+            row["Total Amount"] = round(gross_amount - charge if buy_sell in {"redeem", "redeemed"} else gross_amount + charge, 2)
+        if edited:
+            if "Last Updated Timestamp" in headers:
+                row["Last Updated Timestamp"] = updated_at
+            if "Updated Device" in headers:
+                from ..workbook_merge import get_device_label
+                row["Updated Device"] = get_device_label()
+        sheet.append([row.get(header) for header in headers])
+    try:
+        workbook.save(temp_path)
+        workbook.close()
+        return import_data_file(data_type, temp_path, mode=mode)
+    finally:
+        if workbook:
+            workbook.close()
+        shutil.rmtree(temp_dir, ignore_errors=True)
 
 def check_live_has_data(data_type: str) -> bool:
     """Return True if the live file for this data_type already has at least one data row."""

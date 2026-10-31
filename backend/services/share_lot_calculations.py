@@ -1,4 +1,4 @@
-"""FIFO share-lot calculations, separated from workbook persistence."""
+"""Share position calculations, separated from workbook persistence."""
 
 from .excel_utils import to_float as _to_float, to_int as _to_int
 
@@ -16,9 +16,58 @@ def apply_sip_investment(investment_by_share: dict[str, float], share_key: str, 
     """Update the running SIP principal and return redemption profit/loss."""
     if redeem:
         outstanding = investment_by_share.get(share_key, 0.0)
-        investment_by_share[share_key] = 0.0
+        investment_by_share[share_key] = max(outstanding - amount, 0.0)
         return amount - outstanding
     investment_by_share[share_key] = investment_by_share.get(share_key, 0.0) + amount
+    return 0.0
+
+
+def apply_weighted_average_transaction(
+    holdings: dict[str, dict[str, float]],
+    share_key: str,
+    category: str,
+    quantity: int,
+    acquisition_cost: float = 0.0,
+    sale_proceeds: float = 0.0,
+) -> float:
+    """Replay one share transaction and return realized profit for a sale.
+
+    IPO and secondary purchase costs include applicable acquisition charges.
+    Bonus shares add quantity at zero cost. A sale removes the current
+    weighted-average cost per share and leaves that average unchanged.
+    """
+    if not share_key:
+        return 0.0
+
+    holding = holdings.setdefault(share_key, {"quantity": 0.0, "cost": 0.0})
+    quantity = int(quantity)
+    normalized_category = str(category or "").strip().lower()
+
+    if normalized_category in {"ipo", "buy"}:
+        if quantity > 0:
+            holding["quantity"] += quantity
+            holding["cost"] += float(acquisition_cost)
+        return 0.0
+
+    if normalized_category == "dividend":
+        if quantity > 0:
+            holding["quantity"] += quantity
+        return 0.0
+
+    if normalized_category == "sell":
+        if quantity <= 0:
+            return 0.0
+        available = int(holding["quantity"])
+        if quantity > available:
+            raise ValueError("Not enough available quantity to sell for this share.")
+        average_cost = holding["cost"] / holding["quantity"] if holding["quantity"] else 0.0
+        cost_basis = average_cost * quantity
+        holding["quantity"] -= quantity
+        holding["cost"] -= cost_basis
+        if holding["quantity"] == 0:
+            holding["cost"] = 0.0
+        return float(sale_proceeds) - cost_basis
+
     return 0.0
 
 

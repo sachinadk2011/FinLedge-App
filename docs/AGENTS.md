@@ -79,9 +79,11 @@ Financial Summary:
   backend/routes/summary.py
   backend/services/summary_graph_service.py
   frontendwebapp/src/pages/Summary.jsx
+  frontendwebapp/src/utils/shareClosingPosition.js — share closing rows as of the selected date
 
 Settings:
   frontendwebapp/src/pages/Settings.jsx
+  frontendwebapp/src/pages/ImportReview.jsx — staged import preview, edit, and confirmation
 
 App Shell:
   frontendwebapp/src/App.jsx      — Routes + Layout (top nav lives here)

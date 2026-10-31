@@ -1,5 +1,6 @@
 import threading
 from datetime import date, datetime
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from typing import Optional
 
 from openpyxl import load_workbook
@@ -29,6 +30,17 @@ BANK_SERVICE_CATEGORIES = [c.value for c in BankCategory]
 BANK_INCOME_CATEGORIES = {BankCategory.interest_earned.value.casefold(), "income"}
 
 _file_lock = threading.Lock()
+_CURRENCY_QUANTUM = Decimal("0.01")
+
+
+def _currency_amount(value: Decimal | float | int | str) -> Decimal:
+    try:
+        amount = value if isinstance(value, Decimal) else Decimal(str(value))
+        if not amount.is_finite():
+            raise InvalidOperation
+        return amount.quantize(_CURRENCY_QUANTUM, rounding=ROUND_HALF_UP)
+    except (InvalidOperation, TypeError, ValueError) as exc:
+        raise ValueError("Amount must be a valid currency value.") from exc
 
 
 def _is_income_category(category: str) -> bool:
@@ -39,21 +51,22 @@ def _ensure_workbook_exists() -> None:
     ensure_workbook_exists(FILE_PATH, SHEET_NAME, HEADERS, DATA_DIR)
 
 
-def append_bank_record(entry_date: Optional[date], category: str, amount: float, description: Optional[str] = None) -> dict:
+def append_bank_record(entry_date: Optional[date], category: str, amount: Decimal | float, description: Optional[str] = None) -> dict:
     with workbook_for_update(FILE_PATH, _file_lock, _ensure_workbook_exists, snapshotter=snapshot_before_write) as workbook:
         entry_date = entry_date or date.today()
         timestamp = _current_timestamp()
         sheet = workbook[SHEET_NAME]
 
-        previous_cumulative = _to_float(sheet.cell(row=sheet.max_row, column=4).value) if sheet.max_row > 1 else 0.0
-        cumulative_amount = previous_cumulative + float(amount)
+        amount_decimal = _currency_amount(amount)
+        previous_cumulative = _currency_amount(sheet.cell(row=sheet.max_row, column=4).value or 0) if sheet.max_row > 1 else Decimal("0.00")
+        cumulative_amount = previous_cumulative + amount_decimal
 
         sheet.append(
             [
                 entry_date.isoformat(),
                 category,
-                float(amount),
-                cumulative_amount,
+                float(amount_decimal),
+                float(cumulative_amount),
                 (description or "").strip(),
                 timestamp,
                 timestamp,
@@ -66,8 +79,8 @@ def append_bank_record(entry_date: Optional[date], category: str, amount: float,
         return {
             "date": entry_date.isoformat(),
             "category": category,
-            "amount": float(amount),
-            "cumulative_amount": cumulative_amount,
+            "amount": float(amount_decimal),
+            "cumulative_amount": float(cumulative_amount),
             "description": (description or "").strip() or None,
             "created_timestamp": timestamp,
             "last_updated_timestamp": timestamp,
@@ -110,13 +123,13 @@ def read_bank_records() -> list[dict]:
 
 
 def summarize_bank_records(records: list[dict]) -> dict:
-    total_income = 0.0
-    total_expenses = 0.0
+    total_income = Decimal("0.00")
+    total_expenses = Decimal("0.00")
     category_totals = {category: 0.0 for category in BANK_SERVICE_CATEGORIES}
 
     for record in records:
         category = str(record.get("category") or "").strip()
-        amount = _to_float(record.get("amount"))
+        amount = _currency_amount(record.get("amount") or 0)
         if _is_income_category(category):
             total_income += amount
             if category in category_totals:
@@ -131,19 +144,19 @@ def summarize_bank_records(records: list[dict]) -> dict:
     net_balance = total_income - total_expenses
 
     return {
-        "total_income": total_income,
-        "total_expenses": total_expenses,
-        "net_balance": net_balance,
-        "category_totals": category_totals,
+        "total_income": float(total_income),
+        "total_expenses": float(total_expenses),
+        "net_balance": float(net_balance),
+        "category_totals": {key: float(_currency_amount(value)) for key, value in category_totals.items()},
     }
 
 
 def _recompute_bank_sheet(sheet) -> None:
-    cumulative = 0.0
+    cumulative = Decimal("0.00")
     for row_idx in range(2, sheet.max_row + 1):
-        amount = _to_float(sheet.cell(row=row_idx, column=3).value)
+        amount = _currency_amount(sheet.cell(row=row_idx, column=3).value or 0)
         cumulative += amount
-        sheet.cell(row=row_idx, column=4).value = cumulative
+        sheet.cell(row=row_idx, column=4).value = float(cumulative)
 
 
 def delete_bank_record(record_id: int) -> dict:
@@ -173,7 +186,7 @@ def update_bank_record(
     record_id: int,
     entry_date: Optional[date],
     category: str,
-    amount: float,
+    amount: Decimal | float,
     description: Optional[str] = None,
 ) -> dict:
     """
@@ -194,7 +207,8 @@ def update_bank_record(
 
         sheet.cell(row=excel_row, column=1).value = entry_date.isoformat()
         sheet.cell(row=excel_row, column=2).value = category
-        sheet.cell(row=excel_row, column=3).value = float(amount)
+        amount_decimal = _currency_amount(amount)
+        sheet.cell(row=excel_row, column=3).value = float(amount_decimal)
         sheet.cell(row=excel_row, column=5).value = (description or "").strip()
         # Created Timestamp remains immutable; only Last Updated Timestamp changes.
         if not sheet.cell(row=excel_row, column=6).value:
@@ -208,7 +222,7 @@ def update_bank_record(
             "updated_id": int(record_id),
             "date": entry_date.isoformat(),
             "category": category,
-            "amount": float(amount),
+            "amount": float(amount_decimal),
             "description": (description or "").strip() or None,
             "created_timestamp": str(sheet.cell(row=excel_row, column=6).value or timestamp),
             "last_updated_timestamp": timestamp,

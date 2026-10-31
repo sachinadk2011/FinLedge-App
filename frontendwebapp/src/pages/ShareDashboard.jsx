@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
-import { deleteShareRecord, getShareData, updateShareAllotment, updateSipAllotment } from "../api/shareApi";
+import { deleteShareRecord, getShareData, updateShareAllotment } from "../api/shareApi";
 import BarChart from "../components/BarChart";
 import DeleteConfirmationDialog from "../components/DeleteConfirmationDialog";
 import InteractiveTimelineChart from "../components/InteractiveTimelineChart";
@@ -15,7 +15,7 @@ import useDeleteConfirmation from "../hooks/useDeleteConfirmation";
 
 import { formatCurrency } from "../utils/format";
 import { summarizeShareRecords } from "../utils/summaries";
-import { parseDate, isoDayKey, isoMonthKey } from "../utils/date";
+import { getTodayInputValue, parseDate, isoDayKey, isoMonthKey } from "../utils/date";
 import { buildDashboardBuckets } from "../utils/dashboardPeriod";
 import { sortHistoryNewestFirst } from "../utils/history";
 
@@ -57,11 +57,6 @@ function ShareDashboard() {
   const [updating, setUpdating] = useState(false);
   const [updateMessage, setUpdateMessage] = useState("");
   const [updateError, setUpdateError] = useState("");
-  const [sipSearchName, setSipSearchName] = useState("");
-  const [newSipAllotted, setNewSipAllotted] = useState("");
-  const [sipUpdating, setSipUpdating] = useState(false);
-  const [sipUpdateMessage, setSipUpdateMessage] = useState("");
-  const [sipUpdateError, setSipUpdateError] = useState("");
   const { deletingId, pendingDeleteRow, setPendingDeleteRow, runDelete } = useDeleteConfirmation();
   const [tableCategory, setTableCategory] = useState("all");
   const period = useDashboardPeriod("week");
@@ -91,13 +86,13 @@ function ShareDashboard() {
   }, []);
 
   const records = data?.records || [];
-  const periodRecords = useMemo(() => period.filterRecords(records), [records, period.bounds]);
+  const periodRecords = useMemo(() => period.filterRecords(records), [records, period.range, period.bounds]);
   const periodBounds = useMemo(() => period.boundsForRecords(records), [records, period.range, period.bounds]);
-  const summary = useMemo(() => summarizeShareRecords(periodRecords), [periodRecords]);
+  const closingEndDate = isoDayKey(period.bounds?.end) || getTodayInputValue();
+  const summary = useMemo(() => summarizeShareRecords(periodRecords, records, closingEndDate), [periodRecords, records, closingEndDate]);
   const totalIpoInvestment = Number(summary.total_ipo_investment || 0);
   const totalSipInvestment = Number(summary.total_sip_investment || 0);
   const totalSipRedeemed = Number(summary.total_sip_redeemed || 0);
-  const sipProfitLoss = Number(summary.sip_profit_loss || 0);
   const totalBuyAmount = Number(summary.total_buy_amount || 0);
   const normalInvestment = Number(summary.overall_investment ?? totalIpoInvestment + totalBuyAmount);
   const totalSellAmount = Number(summary.total_sell_amount || 0);
@@ -105,7 +100,7 @@ function ShareDashboard() {
   const totalProfit = Number(summary.total_profit || 0);
   const normalProfitLoss = Number(summary.overall_profit_loss ?? totalProfit + totalDividend - normalInvestment);
   const grandTotalInvestment = Number(summary.grand_total_investment ?? normalInvestment + totalSipInvestment);
-  const grandProfitLoss = Number(summary.grand_profit_loss ?? normalProfitLoss + sipProfitLoss);
+  const grandProfitLoss = Number(summary.grand_net_cash_result ?? summary.grand_profit_loss ?? normalProfitLoss);
 
   const normalStats = [
     { label: "Total IPO investment", value: formatter.format(totalIpoInvestment) },
@@ -113,19 +108,24 @@ function ShareDashboard() {
     { label: "IPO + secondary investment", value: formatter.format(normalInvestment) },
     { label: "Total sell amount", value: formatter.format(totalSellAmount) },
     { label: "Total dividend", value: formatter.format(totalDividend) },
+    { label: "Bonus shares received", value: String(summary.bonus_shares_received || 0) },
     { label: "Realized trading profit", value: formatter.format(totalProfit) },
-    { label: "IPO/secondary profit/loss", value: formatter.format(normalProfitLoss) },
+    { label: `Share holding cost as of ${closingEndDate}`, value: formatter.format(summary.share_holding_cost || 0) },
+    { label: "Share net cash result", value: formatter.format(summary.share_net_cash_result || 0) },
   ];
 
   const sipStats = [
     { label: "SIP investment", value: formatter.format(totalSipInvestment) },
     { label: "SIP redeemed", value: formatter.format(totalSipRedeemed) },
-    { label: "SIP profit/loss", value: formatter.format(sipProfitLoss) },
+    { label: `SIP unrecovered capital as of ${closingEndDate}`, value: formatter.format(summary.sip_unrecovered_capital || 0) },
+    { label: "SIP net cash result", value: formatter.format(summary.sip_net_cash_result || 0) },
   ];
 
   const grandStats = [
     { label: "Grand total investment", value: formatter.format(grandTotalInvestment) },
-    { label: "Grand total profit/loss", value: formatter.format(grandProfitLoss) },
+    { label: `Grand holding cost as of ${closingEndDate}`, value: formatter.format(summary.grand_holding_cost || 0) },
+    { label: "Grand total received", value: formatter.format(summary.grand_total_received || 0) },
+    { label: "Grand net cash result", value: formatter.format(grandProfitLoss) },
   ];
 
   const chartData = [
@@ -146,7 +146,7 @@ function ShareDashboard() {
     { key: "share_name", label: "Share" },
     { key: "category", label: "Category" },
     { key: "per_unit_price", label: "Price" },
-    { key: "asba_charge", label: "ASBA Charge" },
+    { key: "charge", label: "Charge" },
     { key: "allotted", label: "Allotted" },
     { key: "total_amount", label: "Total" },
     { key: "profit_loss", label: "Profit/Loss" },
@@ -172,17 +172,11 @@ function ShareDashboard() {
           : (record.category === "dividend" && record.buy_sell === "bonus")
             ? "-"
             : formatter.format(record.per_unit_price),
-      asba_charge: record.category === "dividend" || record.category === "sip" ? "-" : formatter.format(record.asba_charge),
+      charge: record.category === "dividend" ? "-" : formatter.format(record.charge ?? record.asba_charge ?? 0),
       allotted:
         record.category === "dividend" && record.buy_sell === "cash"
           ? "-"
-          // SIP redeem — no unit count, it's a full redemption by amount
-          : record.category === "sip" && record.buy_sell === "redeem"
-            ? "—"
-          // SIP installment with no units allocated yet
-          : record.category === "sip" && !record.allotted
-            ? "Pending"
-            : record.allotted,
+          : record.category === "sip" ? "-" : record.allotted,
       total_amount: record.category === "dividend" && record.buy_sell === "bonus" ? "-" : formatter.format(record.total_amount),
       profit_loss:
         record.category === "ipo" || record.category === "buy" || (record.category === "sip" && record.buy_sell !== "redeem")
@@ -221,32 +215,6 @@ function ShareDashboard() {
 
   const uniqueMatches = Array.from(new Set(matches)).slice(0, 5);
 
-  const sipRecords = useMemo(() => {
-    return records
-      .filter((record) => String(record.category || "").trim().toLowerCase() === "sip")
-      .filter((record) => String(record.buy_sell || "").trim().toLowerCase() !== "redeem")
-      .filter((record) => String(record.share_name || "").trim())
-      .map((record) => ({
-        id: record.id,
-        share_name: String(record.share_name || "").trim(),
-        date: String(record.date || "").trim(),
-        allotted: Number(record.allotted || 0),
-        total_amount: Number(record.total_amount || 0),
-      }));
-  }, [records]);
-
-  const sipNames = useMemo(() => Array.from(new Set(sipRecords.map((record) => record.share_name))), [sipRecords]);
-
-  const sipMatches = useMemo(() => {
-    const term = sipSearchName.trim().toLowerCase();
-    if (!term) {
-      return [];
-    }
-    return sipNames.filter((name) => name && name.toLowerCase().includes(term));
-  }, [sipNames, sipSearchName]);
-
-  const uniqueSipMatches = Array.from(new Set(sipMatches)).slice(0, 5);
-
   async function handleUpdate(event) {
     event.preventDefault();
     setUpdateMessage("");
@@ -284,49 +252,6 @@ function ShareDashboard() {
       }
     } finally {
       setUpdating(false);
-    }
-  }
-
-  async function handleSipUpdate(event) {
-    event.preventDefault();
-    setSipUpdateMessage("");
-    setSipUpdateError("");
-    setSipUpdating(true);
-    try {
-      const selectedName = sipSearchName.trim();
-      const matchedSip = sipRecords.find((record) => record.share_name.toLowerCase() === selectedName.toLowerCase());
-
-      if (!matchedSip) {
-        throw new Error("Select a share name that exists as a SIP entry.");
-      }
-
-      const response = await updateSipAllotment({
-        share_name: matchedSip.share_name,
-        allotted: Number(newSipAllotted),
-      });
-
-      const updated = response?.data || {};
-      const previousAllotted = Number(updated.previous_allotted ?? matchedSip.allotted ?? 0);
-      const currentAllotted = Number(updated.allotted ?? Number(newSipAllotted));
-      const averagePrice = Number(updated.average_price || 0);
-      const updatedLabel = updated.date ? `${updated.share_name} (${updated.date})` : updated.share_name || matchedSip.share_name;
-
-      setSipUpdateMessage(
-        `Updated SIP entry for ${updatedLabel}: ${previousAllotted} -> ${currentAllotted}. Average price: ${formatter.format(averagePrice)}.`
-      );
-      setSipSearchName("");
-      setNewSipAllotted("");
-      loadData({ background: true });
-    } catch (err) {
-      const rawMessage = err.message || "Unable to update SIP share quantity.";
-      const normalized = String(rawMessage).toLowerCase();
-      if (normalized.includes("no sip entry found") || normalized.includes("only sip entries")) {
-        setSipUpdateError("Only SIP entries can be updated from this form.");
-      } else {
-        setSipUpdateError(rawMessage);
-      }
-    } finally {
-      setSipUpdating(false);
     }
   }
 
@@ -374,7 +299,7 @@ function ShareDashboard() {
         <>
           <DashboardPeriodFilter {...period} />
           <section className="card">
-            <h3>IPO and secondary position</h3>
+                <h3>Share activity and closing position</h3>
             <StatGrid items={normalStats} />
           </section>
           <section className="card">
@@ -470,51 +395,6 @@ function ShareDashboard() {
               <div className="match-list">
                 {uniqueMatches.map((name) => (
                   <button key={name} type="button" className="chip" onClick={() => setSearchName(name)}>
-                    {name}
-                  </button>
-                ))}
-              </div>
-            ) : null}
-          </section>
-          <section className="card">
-            <h3>Update SIP shares</h3>
-            {sipNames.length === 0 ? (
-              <p className="subtitle">No SIP entries available to update.</p>
-            ) : (
-              <form onSubmit={handleSipUpdate} className="inline-form">
-                <label className="field">
-                  <span>Search share (SIP only)</span>
-                  <input
-                    value={sipSearchName}
-                    onChange={(e) => setSipSearchName(e.target.value)}
-                    placeholder="Type SIP share name"
-                    required
-                  />
-                </label>
-                <label className="field">
-                  <span>Total SIP shares</span>
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    pattern="[0-9]*"
-                    autoComplete="off"
-                    value={newSipAllotted}
-                    onChange={(e) => setNewSipAllotted(e.target.value)}
-                    placeholder="Share quantity"
-                    required
-                  />
-                </label>
-                <button type="submit" disabled={sipUpdating}>
-                  {sipUpdating ? "Updating..." : "Update SIP"}
-                </button>
-              </form>
-            )}
-            <StatusNotice message={sipUpdateError} onDismiss={() => setSipUpdateError("")} />
-            <StatusNotice message={sipUpdateMessage} kind="success" onDismiss={() => setSipUpdateMessage("")} />
-            {uniqueSipMatches.length > 0 ? (
-              <div className="match-list">
-                {uniqueSipMatches.map((name) => (
-                  <button key={name} type="button" className="chip" onClick={() => setSipSearchName(name)}>
                     {name}
                   </button>
                 ))}

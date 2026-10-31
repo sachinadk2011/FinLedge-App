@@ -10,6 +10,7 @@ function ShareForm({
 }) {
   const isDividend = value.category === "dividend";
   const isSip = value.category === "sip";
+  const isIpo = value.category === "ipo";
   const isSecondary = value.category === "buy" || value.category === "sell";
 
   const handleTotalQtyChange = (field, updatedText) => {
@@ -74,7 +75,8 @@ function ShareForm({
                 total_amount: "",
                 amount: "",
                 bonus_shares: "",
-                allotted: cat === "dividend" || cat === "sip" ? "0" : ""
+                allotted: cat === "ipo" || cat === "dividend" || cat === "sip" ? "0" : "",
+                charge: cat === "ipo" ? "5" : cat === "sip" ? "0" : ""
               });
             }}
           >
@@ -177,6 +179,23 @@ function ShareForm({
                 required
               />
             </label>
+            <label className="field">
+              <span>Charge</span>
+              <input
+                type="text"
+                inputMode="decimal"
+                autoComplete="off"
+                value={value.charge ?? "0"}
+                  onFocus={(event) => {
+                    if (String(value.charge ?? "0") === "0") event.currentTarget.select();
+                  }}
+                onChange={(e) => onChange({ ...value, charge: e.target.value })}
+                  onBlur={() => {
+                    if (String(value.charge ?? "").trim() === "") onChange({ ...value, charge: "0" });
+                  }}
+                required
+              />
+            </label>
           </>
         ) : isSecondary ? (
           <>
@@ -235,9 +254,34 @@ function ShareForm({
                 placeholder="Allotted"
                 value={value.allotted}
                 onChange={(e) => onChange({ ...value, allotted: e.target.value })}
+                onFocus={() => {
+                  if (isIpo && String(value.allotted) === "0") onChange({ ...value, allotted: "" });
+                }}
+                onBlur={() => {
+                  if (isIpo && String(value.allotted).trim() === "") onChange({ ...value, allotted: "0" });
+                }}
                 required
               />
             </label>
+            {isIpo ? (
+              <label className="field">
+                <span>Charge</span>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  autoComplete="off"
+                  value={value.charge ?? "5"}
+                  onFocus={(event) => {
+                    if (String(value.charge ?? "5") === "5") event.currentTarget.select();
+                  }}
+                  onChange={(e) => onChange({ ...value, charge: e.target.value })}
+                  onBlur={() => {
+                    if (String(value.charge ?? "").trim() === "") onChange({ ...value, charge: "5" });
+                  }}
+                  required
+                />
+              </label>
+            ) : null}
           </>
         )}
 
