@@ -5,7 +5,7 @@ from pathlib import Path
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 
-from backend.models import SettingsImportReviewRequest
+from backend.models import SettingsImportReviewRequest, SettingsModuleClearRequest
 from backend.services.settings_service import (
     check_live_has_data,
     export_all_data_files,
@@ -44,9 +44,9 @@ def get_settings_dev_tools():
 
 
 @router.post("/dev-tools/clear/{data_type}")
-def clear_settings_module_data(data_type: str):
+def clear_settings_module_data(data_type: str, payload: SettingsModuleClearRequest):
     try:
-        return clear_module_rows(data_type)
+        return clear_module_rows(data_type, confirmed=payload.confirmed)
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except ValueError as exc:

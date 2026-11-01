@@ -69,6 +69,23 @@ def test_currency_precision_round_trips_through_workbook(tmp_path, monkeypatch):
         assert reloaded["amount"] == expected
 
 
+def test_bank_summary_mixes_decimal_inputs_with_category_totals_safely():
+    from decimal import Decimal
+    from backend.services.bank_service import summarize_bank_records
+
+    summary = summarize_bank_records([
+        {"category": "Interest Earned", "amount": Decimal("5000.00")},
+        {"category": "Interest Earned", "amount": Decimal("0.01")},
+        {"category": "Locker", "amount": Decimal("-1000.10")},
+        {"category": "Legacy Charge", "amount": Decimal("-0.01")},
+    ])
+    assert summary["total_income"] == 5000.01
+    assert summary["total_expenses"] == 1000.11
+    assert summary["category_totals"]["Interest Earned"] == 5000.01
+    assert summary["category_totals"]["Locker"] == 1000.10
+    assert summary["category_totals"]["Legacy Charge"] == 0.01
+
+
 # ---------------------------------------------------------------------------
 # 1. Add
 # ---------------------------------------------------------------------------

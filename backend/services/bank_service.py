@@ -125,7 +125,7 @@ def read_bank_records() -> list[dict]:
 def summarize_bank_records(records: list[dict]) -> dict:
     total_income = Decimal("0.00")
     total_expenses = Decimal("0.00")
-    category_totals = {category: 0.0 for category in BANK_SERVICE_CATEGORIES}
+    category_totals = {category: Decimal("0.00") for category in BANK_SERVICE_CATEGORIES}
 
     for record in records:
         category = str(record.get("category") or "").strip()
@@ -135,11 +135,11 @@ def summarize_bank_records(records: list[dict]) -> dict:
             if category in category_totals:
                 category_totals[category] += amount
             elif category:
-                category_totals[category] = category_totals.get(category, 0.0) + amount
+                category_totals[category] = category_totals.get(category, Decimal("0.00")) + amount
         else:
             total_expenses += abs(amount)
             if category:
-                category_totals[category] = category_totals.get(category, 0.0) + abs(amount)
+                category_totals[category] = category_totals.get(category, Decimal("0.00")) + abs(amount)
 
     net_balance = total_income - total_expenses
 
@@ -147,7 +147,7 @@ def summarize_bank_records(records: list[dict]) -> dict:
         "total_income": float(total_income),
         "total_expenses": float(total_expenses),
         "net_balance": float(net_balance),
-        "category_totals": {key: float(_currency_amount(value)) for key, value in category_totals.items()},
+        "category_totals": {key: float(value) for key, value in category_totals.items()},
     }
 
 

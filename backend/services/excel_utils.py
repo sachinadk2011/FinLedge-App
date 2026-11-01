@@ -5,6 +5,7 @@ import threading
 import zipfile
 from collections.abc import Callable
 from contextlib import contextmanager
+from contextvars import ContextVar
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -16,6 +17,7 @@ logger = logging.getLogger(__name__)
 _excel_lock = threading.Lock()
 _snapshot_lock = threading.Lock()
 LAST_RECOVERY_WARNINGS: dict[str, str] = {}
+_preserve_auto_backup_history: ContextVar[bool] = ContextVar("preserve_auto_backup_history", default=False)
 
 
 def get_backup_directory(file_path: Path) -> Path:
@@ -79,7 +81,7 @@ def _prune_auto_snapshots(snapshot_dir: Path, now: datetime) -> None:
                 logger.warning("Could not prune automatic backup %s", path, exc_info=True)
 
 
-def snapshot_before_write(file_path: Path) -> Path | None:
+def snapshot_before_write(file_path: Path, *, prune: bool = True) -> Path | None:
     """Copy an existing workbook to backups/auto before a mutation.
 
     Missing workbooks have no prior state to preserve and return ``None``.
@@ -140,11 +142,22 @@ def snapshot_before_write(file_path: Path) -> Path | None:
                 f"FinLedge could not back up {file_path.name}; no changes were saved. "
                 "Check that the data folder has enough space and is writable."
             ) from last_error
-        try:
-            _prune_auto_snapshots(snapshot_dir, now)
-        except OSError:
-            logger.warning("Could not apply automatic backup retention in %s", snapshot_dir, exc_info=True)
+        if prune and not _preserve_auto_backup_history.get():
+            try:
+                _prune_auto_snapshots(snapshot_dir, now)
+            except OSError:
+                logger.warning("Could not apply automatic backup retention in %s", snapshot_dir, exc_info=True)
     return destination
+
+
+@contextmanager
+def preserve_automatic_backup_history():
+    """Prevent automatic retention pruning for a protected mutation scope."""
+    token = _preserve_auto_backup_history.set(True)
+    try:
+        yield
+    finally:
+        _preserve_auto_backup_history.reset(token)
 
 
 @contextmanager

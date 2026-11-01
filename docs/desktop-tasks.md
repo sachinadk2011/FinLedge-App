@@ -1170,3 +1170,11 @@ AGENTS.md §0.5: ambiguous = narrower action. PLAN.md Hard Constraints still app
 - Added Development/Testing-only module clearing with a strict explicit backend mode guard, user confirmation, per-workbook snapshots, row tombstones, and a SIP-only option. It keeps workbook and worksheet structure.
 - Verification: frontend build/smoke passed; focused regressions 14/14; backup/restore 10/10; shared-sync/data-directory 31/31. Weighted-average tests reproduce expected All Time values. Synthetic timings are recorded in `docs/TASKS.md`; no comparable pre-change baseline exists. TestClient API calls hang in Windows local socket-pair setup before app routing. Rendered UI and current EXE/AppX Sandbox install/launch were not verified.
 - Docs touched: `docs/desktop-codebase.md`, `docs/desktop-tasks.md`, `docs/TASKS.md`.
+
+### 2026-11-01 — Fix Bank Services dashboard summary type error
+
+- Bank summary totals and category totals now consistently aggregate `Decimal` values, preventing `float + Decimal` failures for income, known expense categories, and legacy/custom categories. Values are converted to JSON-safe floats only after aggregation.
+- Added explicit backend confirmation to the development/test-only module clearing endpoint; the frontend sends it only after its confirmation dialog.
+- Module clearing creates a full pre-clear workbook snapshot and now skips automatic-backup pruning during both workbook preparation and row removal. It records deleted row IDs in the `Deleted` worksheet so shared sync can propagate removals across desktop clients.
+- Verification: Bank summary and currency persistence tests passed (2); clear guard and workbook structure tests passed (2); `git diff --check` passed. Other summary services inspected convert inputs to float before summing; no same-type failure was found.
+- The inspected Testing EXE workbook still has 60 Bank rows. The error is in a read-only dashboard summary; no workbook data was deleted by that calculation. Other runtime data roots were not inspected, and no workbook was modified or restored.

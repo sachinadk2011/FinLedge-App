@@ -185,3 +185,7 @@ class ShareUpdateAllotmentRequest(BaseModel):
 class SettingsImportReviewRequest(BaseModel):
     mode: Literal["replace", "merge"] = "replace"
     rows: list[dict[str, Any]]
+
+
+class SettingsModuleClearRequest(BaseModel):
+    confirmed: bool = False

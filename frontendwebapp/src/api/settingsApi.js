@@ -89,7 +89,11 @@ export async function getSettingsDevTools() {
 
 export async function clearSettingsModuleData(dataType) {
   const url = `${await getApiBase()}/settings/dev-tools/clear/${encodeURIComponent(dataType)}`;
-  const response = await fetch(url, { method: "POST" });
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ confirmed: true }),
+  });
   return handleResponse(response, { method: "POST", url, dataType });
 }
 

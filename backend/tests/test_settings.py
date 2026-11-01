@@ -44,10 +44,12 @@ def test_dev_clear_tool_rejects_unknown_and_production_modes(monkeypatch):
         else:
             monkeypatch.setenv("FINLEDGE_MODE", mode)
         with pytest.raises(PermissionError):
-            clear_module_rows("share")
+            clear_module_rows("share", confirmed=True)
 
 
 def test_dev_clear_preserves_workbook_structure_and_other_share_rows(tmp_path, monkeypatch):
+    import os
+    from datetime import datetime, timedelta, timezone
     from openpyxl import Workbook, load_workbook
     from backend.services import share_service
     from backend.services.dev_data_clear_service import clear_module_rows
@@ -71,8 +73,20 @@ def test_dev_clear_preserves_workbook_structure_and_other_share_rows(tmp_path, m
     monkeypatch.setattr(share_service, "DATA_DIR", tmp_path)
     monkeypatch.setitem(settings_config.DATA_TYPE_CONFIG["share"], "path", workbook_path)
 
-    result = clear_module_rows("share-sip")
+    old_backup_dir = tmp_path / "backups" / "auto" / "share_transactions"
+    old_backup_dir.mkdir(parents=True)
+    retained_backup = old_backup_dir / "old-recovery-copy.xlsx"
+    retained_backup.write_bytes(b"preserve existing recovery backup")
+    old_time = (datetime.now(timezone.utc) - timedelta(days=400)).timestamp()
+    os.utime(retained_backup, (old_time, old_time))
+
+    with pytest.raises(ValueError, match="Confirm the selected module"):
+        clear_module_rows("share-sip")
+    result = clear_module_rows("share-sip", confirmed=True)
     assert result["removed_rows"] == 1
+    assert retained_backup.is_file()
+    snapshots = list((tmp_path / "backups" / "auto" / "share_transactions").glob("*.xlsx"))
+    assert len(snapshots) >= 2
     reopened = load_workbook(workbook_path, data_only=True)
     try:
         assert reopened.sheetnames == ["Share", "Preserved Structure", "Deleted", "Conflicts"]
