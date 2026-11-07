@@ -13,6 +13,7 @@ Mobile task → also read CODEBASE.md (Mobile Repo Structure section), TASKS-mob
 Keep Notes import task → also read keepNotesImport.md.
 Release/versioning/CI task → also read techSpec.md and the relevant update-policy-*.json.
 Any schema or column change (e.g. new Updated Device field) → also read schema.md, update it in the same task, and check rules.md for whether the change applies to desktop, mobile, or both.
+Shared EXE/AppX database, schema-version guard, import-review, device-transfer or SQLite migration task → read schema.md, rules.md, SAFETY.md, device-transfer.md, and the Part 2 roadmap in desktop-tasks.md.
 State explicitly: this table exists because desktop and mobile are diverging tracks — reading only the old sections below is not enough once a task is mobile- or release-specific.
 
 
@@ -99,6 +100,17 @@ Shared Components:
 
 ## 3. Data Layer Rules (non-negotiable)
 
+> **Phase 2 transition note (added during the Phase 1 SQLite design, 2026-11-04).**
+> These Excel rules describe the current implementation and stay in force until the
+> SQLite migration lands. They are **superseded for a module** once Phase 2 moves that
+> module to the canonical repository/service layer in `docs/schema.md` and
+> `docs/rules.md`. Do not apply the Excel pattern to new SQLite-backed modules, and do
+> not implement Phase 2 without the explicit approval recorded in
+> `docs/desktop-tasks.md`. While both exist, each module uses exactly one store, never
+> both as dual authority.
+
+>
+> **SQLite and shared-package rules (2026-11-06).** After Desktop migration, EXE and AppX share one physical SQLite database within each environment; Development, Testing and Production remain isolated. Incoming import/transfer rows are staged and shown in review before commit. Schema-version guards prevent older apps from writing to newer schemas. Mobile implementation remains outside this Desktop migration.
 Every module with its own Excel file MUST follow this exact pattern:
 
 ```python

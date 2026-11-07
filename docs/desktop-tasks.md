@@ -1178,3 +1178,1284 @@ AGENTS.md §0.5: ambiguous = narrower action. PLAN.md Hard Constraints still app
 - Module clearing creates a full pre-clear workbook snapshot and now skips automatic-backup pruning during both workbook preparation and row removal. It records deleted row IDs in the `Deleted` worksheet so shared sync can propagate removals across desktop clients.
 - Verification: Bank summary and currency persistence tests passed (2); clear guard and workbook structure tests passed (2); `git diff --check` passed. Other summary services inspected convert inputs to float before summing; no same-type failure was found.
 - The inspected Testing EXE workbook still has 60 Bank rows. The error is in a read-only dashboard summary; no workbook data was deleted by that calculation. Other runtime data roots were not inspected, and no workbook was modified or restored.
+
+# Part 2 — Desktop Storage Migration: Excel to SQLite
+
+Part 2 tracks the migration of FinLedge Desktop storage from the five Excel workbooks
+to SQLite. Part 1 above is the MSIX/.exe coexistence track and is **not changed by this
+part**; everything here is additive. Phase numbering restarts here — a "Phase N" under
+Part 2 is not the same phase as the Part 1 heading with the same number.
+
+Read before working in this part: `desktop-codebase.md`, `AGENTS.md`, `PLAN.md`,
+`SAFETY.md`, `TASKS.md`, `schema.md`, `rules.md`, `device-transfer.md`.
+`docs/schema.md` is the data-model authority, `docs/rules.md` the behaviour
+authority, `docs/SAFETY.md` the safety authority, and `docs/device-transfer.md`
+the transfer authority for everything below.
+
+Current storage, verified during the Phase 0 audit:
+
+| Workbook | Module | Worksheet |
+|---|---|---|
+| `bank_transactions.xlsx` | Bank Services | `Bank` |
+| `share_transactions.xlsx` | Share Portfolio | `Share` |
+| `personal_finance_bank_flow.xlsx` | Personal Finance — Bank Flow | `Bank Flow` |
+| `personal_finance_cash_flow.xlsx` | Personal Finance — Cash Flow | `Cash Flow` |
+| `personal_finance_transfer.xlsx` | Personal Finance — Transfers | `Transfer Flow` |
+
+Historical Part 1 storage text: its shared-folder Excel behavior is superseded for SQLite by the approved rule that EXE and AppX share one physical database within each environment. Development, Testing, and Production remain isolated. The old workbook folder is only a migration source; it is backed up in place before import.
+
+## Phase status summary
+
+| Phase | Title | Status | Entry condition |
+|---|---|---|---|
+| 0 | Existing System Audit | **COMPLETED** | — |
+| 1 | SQLite Architecture and Database Design | **IN PROGRESS — design finalization** | Phase 0 audit report reviewed; approved corrections in progress |
+| 2 | SQLite Implementation | **NOT STARTED** | Phase 1 design finalized and user explicitly approves Phase 2 |
+| 3 | Existing Data Migration and Verification | **PENDING** | Phase 2 implementation verified on test data |
+| 4 | Final Testing, Optimization and Release Readiness | **PENDING** | Phase 3 migration verified on copies of real data |
+
+Status values used in Part 2: NOT STARTED, IN PROGRESS, COMPLETED, BLOCKED.
+
+Phase 2 is **not approved to start** by this document. It begins only after the user
+explicitly approves the Phase 1 specification and says to start Phase 2.
+
+## Roadmap maintenance rules
+
+This file is the central tracking document for the migration.
+
+- Tick a checkbox only when the work is actually done and evidence exists.
+- Every completed task gets a short note: what changed and how it was verified.
+- Record test commands, pass/fail counts, and manual checks under *Verification
+  evidence*. A checkbox without evidence is a claim, not a completion.
+- Record unresolved issues under *Known issues*. When one is fixed, mark it resolved and
+  add the evidence; do not delete the original text.
+- Update the status in both the phase block and the status summary table.
+- The Phase 0 audit report is referenced, not duplicated. Summarise completed audit
+  activities only.
+- If a decision changes, append a dated entry under *Decision changes* at the end of
+  Part 2 and keep the original decision visible. Never silently rewrite history.
+- Do not mark a phase complete because its tasks are written down. Only implemented,
+  tested, and verified work completes a phase.
+
+## Cross-phase non-negotiables
+
+These apply to every phase in Part 2 and restate the standing project rules:
+
+- Never delete or overwrite an original Excel workbook or an existing backup.
+- Snapshot before any write, using the existing `snapshot_before_write` helper and the
+  backup retention rules established in Part 1.
+- Migration is additive. Excel stays available as a fallback until SQLite is verified on
+  copies of real data.
+- No schema or column change ships without updating `docs/schema.md` in the same task
+  (AGENTS.md §0).
+- Financial values are never left in binary floating point without an explicit,
+  documented rounding rule.
+- Existing API response shapes stay stable unless a Phase 1 decision explicitly changes
+  them and the frontend is updated in the same task.
+- Ambiguous instructions default to the narrower, safer action (AGENTS.md §0.5).
+
+---
+
+## Phase 0 — Existing System Audit
+
+**Status:** COMPLETED
+
+**Objective:** Understand the existing FinLedge Desktop architecture, Excel storage
+system, accounting rules, dependencies, and migration risks before designing the new
+database.
+
+### Tasks
+
+- [x] Audit the existing Electron, React/Vite, and FastAPI architecture.
+- [x] Identify the five existing Excel workbooks and their responsibilities.
+- [x] Review the existing workbook schemas and columns.
+- [x] Investigate Excel read/write operations and performance bottlenecks.
+- [x] Identify repeated workbook loading and unnecessary data reads.
+- [x] Review existing UUID, Content Hash, metadata, conflict, and deletion mechanisms.
+- [x] Investigate existing backup, restore, shared-sync, and migration mechanisms.
+- [x] Review existing Excel import/export functionality.
+- [x] Identify existing financial calculations and accounting behaviour.
+- [x] Investigate the Development, Testing EXE, Testing AppX, Production EXE, and
+      Production AppX data environments.
+- [x] Review existing API endpoints and frontend data calculations.
+- [x] Identify existing test coverage and known test failures.
+- [x] Document risks, inconsistencies, and migration considerations.
+- [x] Record baseline test results for later comparison.
+
+### Completed work
+
+- Architecture, module boundaries, and data flows mapped: Electron main/preload,
+  React/Vite renderer, FastAPI backend, per-module service layer, and the current absence
+  of a shared data-access layer.
+- Workbook inventory, worksheet names, header lists, row-identity columns, and the
+  `Deleted` / `Conflict` support sheets documented.
+- Excel dependency map produced: which module reads and writes which workbook, which
+  views derive rows read-only from other modules, and where repeated loads occur.
+- Identity, metadata, merge, and deletion mechanics traced end to end: Row ID generation,
+  Content Hash calculation, legacy identity seeding, metadata backfill, deterministic
+  merge winner ranking, tombstones, and conflict logging.
+- Backup/restore, shared-sync, data-directory resolution, installation paths, and
+  import/export flows reviewed.
+- Timestamp implementation confirmed: microseconds for Bank, seconds for Share,
+  Personal Finance, and Transfers.
+- Baseline test results recorded (see *Verification evidence*).
+- Risks, inconsistencies, and migration considerations documented in the Phase 0 audit
+  report.
+
+### Remaining work
+
+- None inside Phase 0 itself.
+- Follow-up work identified by the audit is tracked in Phases 1–4. Audit findings are
+  inputs to those phases; they are not retroactive Phase 0 fixes.
+
+### Known issues and findings (audit output — not fixed here)
+
+These were identified by the audit and are carried forward. Phase 0 did **not** fix them
+and must not be described as having fixed them.
+
+1. Excel is the source of truth and is reloaded per request; repeated workbook loads and
+   full-sheet reads are the main performance cost.
+2. Timestamp precision is inconsistent: Bank writes microseconds, while Share, Personal
+   Finance, and Transfers write seconds. Legacy rows may hold an empty value or a bare
+   date.
+3. `Content Hash` is not only identification metadata. Merge winner ranking and conflict
+   detection depend on it, so it cannot simply be dropped.
+4. `personal_finance_transfer.xlsx` has no delete endpoint and never writes a tombstone,
+   so transfer deletions are not propagated across devices today.
+5. One backend test fails on the current tree and reproduces in isolation:
+   `backend/tests/test_metadata_backfill_service.py::test_simultaneous_user_append_and_background_backfill_keep_both_rows`
+   (`ValueError: Amount must be a valid currency value.` raised at
+   `backend/services/bank_service.py:43`, where the cell holds `'legacy'`).
+6. Production EXE / Production AppX physical path sharing under MSIX virtualization is
+   **NOT VERIFIED**.
+7. `mobile/src` is absent from this checkout; mobile SQLite evidence was read from
+   `mobile/dist/src/data/schema.js`.
+
+### Verification evidence
+
+Baseline recorded before any Part 2 change:
+
+| Check | Command | Result |
+|---|---|---|
+| Backend suite | `pytest backend/tests/` | 170 passed, 1 failed (issue 5 above) |
+| Desktop data tests | `npm run desktop:test-data` | 36/36 passed |
+| Frontend smoke | `npm test` | passed against the existing `dist` |
+| Frontend production build | `npm run build` | **not run** during Phase 0 |
+| Working tree | `git status` | clean at audit start; no project files modified by Phase 0 |
+
+No workbook was modified, no SQLite database was created, and no migration was run
+during Phase 0.
+
+### Dependencies
+
+- None. Phase 0 is the entry point for Part 2.
+- The Phase 0 audit report listed above is required input for Phase 1.
+
+---
+
+## Phase 1 — SQLite Architecture and Database Design
+
+**Status:** IN PROGRESS — design finalization
+
+**Objective:** Produce an implementation-ready database architecture and migration
+design before changing application code.
+
+**Phase 1 was design-only.** No application source changes, no schema execution, no
+database creation, and no data migration. Deliverables are documents plus reviewed SQL
+DDL text. That constraint was met: the only files changed in Phase 1 are documentation.
+
+**Authority produced by this phase:**
+
+| Document | Owns |
+|---|---|
+| `docs/schema.md` | Approved Desktop schema and future Mobile target, DDL, precision, Excel and Mobile mapping, environment paths, versioning |
+| `docs/rules.md` | Identity, hashing, timestamps, ordering, financial formulas, import/export, merge/replace, conflicts, parity |
+| `docs/SAFETY.md` (Part 2) | SQLite backup, snapshots, migration, recovery, restore precedence, environment isolation, transfer safety |
+| `docs/device-transfer.md` | Transfer architecture, protocol, transports, pairing, staging, review integration, build-time flag |
+
+If code and these documents disagree during Phase 2, the code is wrong until the
+document is deliberately changed through the *Decision changes* log below.
+
+### Confirmed design decisions
+
+These decisions are settled. Phase 1 designs around them; it does not re-open them
+without a dated entry under *Decision changes*.
+
+#### Personal Finance — one table, two flows
+
+- One SQLite table for Bank Flow and Cash Flow, e.g. `personal_finance_entries`.
+- Distinguish the flows with a `flow_type` column (`bank` / `cash`).
+- Keep the separate Bank Flow and Cash Flow screens and the separate Excel exports.
+  Storage unification must not merge the UI or change export file boundaries.
+- Manually entered Personal Finance rows move to SQLite. Rows currently derived read-only
+  from Bank Services and Share Portfolio stay derived (see *Derived read-only data*).
+
+#### Share Portfolio — two canonical event tables (approved 2026-11-06 — SUPERSEDED 2026-11-06)
+
+> **Superseded 2026-11-06.** The user reviewed the SQL produced from this two-table design and reversed it the same day. The text below is kept unchanged so the decision history stays visible; the current approved design is *Share Portfolio — three canonical event tables* immediately after it.
+
+The original three-table proposal is retained in the Decision changes history. The approved canonical source tables are investment_transactions (IPO application/allotment, secondary buy/sell, SIP installment/full redemption) and dividend_events (cash dividend/bonus). transaction_type/event_type is immutable and part of the content hash. Each SIP plan has a separately generated UUID plus SIP name; SIP events reference the plan UUID. No Mobile code or schema is changed by this Desktop migration.
+
+#### Share Portfolio — three canonical event tables (approved 2026-11-06)
+
+The two-table design is superseded. The approved canonical source tables are `share_transactions` (IPO application/allotment, secondary buy/sell), `sip_transactions` (SIP installment/full redemption), and `dividend_events` (cash dividend/bonus). `transaction_type`/`event_type` is immutable and part of the content hash. Each SIP plan has a separately generated UUID plus SIP name; SIP events reference the plan UUID. No Mobile code or schema is changed by this Desktop migration.
+
+The split has three reasons: a combined table needed a long CHECK to keep two different row shapes apart and left about half of its columns NULL on every row; SIP is excluded from the share holdings and P/L replay, so SIP rows never need to be ordered against share rows; and combined name suggestions plus the combined history list are read-only UNION views (`docs/schema.md` §6.2) over the tables, with nothing duplicated in storage.
+
+Ordering: `share_transactions` and `dividend_events` share one `sequence_no` counter, replayed by `(txn_date, sequence_no)`, because bonus and dividend events change share holdings. `sip_transactions` has its own `sequence_no` counter and replay key. No counter spans SIP and shares.
+
+Master identity (added 2026-11-06): `shares` (`docs/schema.md` §4.3.3) holds one canonical name per share. `share_transactions` and `dividend_events` reference it by `share_id` with `ON DELETE RESTRICT ON UPDATE RESTRICT`; the displayed name comes from a join. SIP keeps its own `investment_name`. A `sip_plans` table (§4.3.4) is PROPOSED — AWAITING USER APPROVAL.
+
+#### Holdings summaries — derived and rebuildable
+
+share_holdings stores the derived current security position and performance values. sip_plan_summaries stores derived per-plan principal, units, pending count, redemption result, and plan status. Neither is a canonical transaction table. Both are rebuilt from canonical events, calculation-versioned, and updated atomically with changed source events.
+
+Rules:
+
+- The three canonical event tables are the only financial sources of truth.
+- Summary values are never manually edited and must be reproducible by full replay.
+- Missing, stale, corrupt, or calculation-version-incompatible summaries are rebuilt or marked invalid before use.
+- Full rebuild and incremental maintenance must agree; verify this in Phase 2 tests.
+#### Holdings maintenance — hybrid
+
+- Incremental update for safe ordinary insert operations.
+- Recalculate the affected share's complete summary for edits and deletions.
+- If an edit changes the share name, recalculate both the old and the new share.
+- Rebuild affected summaries after imports and other complex operations.
+- Provide a full holdings rebuild entry point for diagnostics and recovery.
+- Do all transaction plus summary writes inside one SQLite transaction.
+- Do **not** put financial accounting rules inside SQL triggers without a written
+  justification. Correctness lives in tested Python code.
+
+#### Unified Share Portfolio history
+
+- Present IPO, secondary, SIP, cash dividend, and bonus rows as one chronological
+  history in the application.
+- Preserve original record identity and source table on every row.
+- Preserve chronological order and a stable same-date tie-breaker, so the history does
+  not reshuffle between reads.
+- Editing and deleting happen against the original table.
+- Do **not** create a second writable unified table. The unified view is read-only.
+
+#### Transfers
+
+- Keep Transfers in its own table (`transfers`), separate from
+  `personal_finance_entries`, because transfers carry two sides and different validation.
+- Whether transfers gain tombstone/deletion support is an open decision (see *Open
+  decisions*). It is recorded as a known gap, not as settled behaviour.
+  **Resolved in Phase 1:** tombstone and delete support are added in Phase 2
+  (see *Open decisions — resolutions* #5).
+
+#### Identity
+
+- UUID primary keys for all transaction tables.
+- Preserve existing Excel Row IDs during migration wherever an ID already exists.
+- Never mint a new ID for a row that already has one.
+- Keep Row ID and content-hash pairs verifiable, so the existing data-directory
+  integrity checks retain their meaning.
+
+#### Derived read-only data
+
+Personal Finance Bank Flow currently shows read-only `bank-services-sync` and
+`share-sync` rows derived from other workbooks. These stay derived and are not copied
+into `personal_finance_entries`. Phase 1 must define the SQLite query that produces them
+with the same semantics, including the same read-only restriction in the UI.
+
+### Transaction metadata (confirmed)
+
+Every canonical transaction/event table — `bank_transactions`,
+`personal_finance_entries`, `share_transactions`, `sip_transactions`,
+`dividend_events`, and
+`transfers` — carries the same three metadata fields:
+
+| Column | Direction | Semantics |
+|---|---|---|
+| `created_timestamp` | date-time | Set once when the row is created. Never overwritten by an ordinary edit. Preserved verbatim through import and migration. |
+| `last_updated_timestamp` | date-time | Set on creation; replaced only when the row's business data actually changes. |
+| `updated_device` | text | Device label of the last writer, using the existing normalised value set. |
+
+Rules Phase 1 must encode and Phase 2 must implement:
+
+- **Create:** set `created_timestamp` and `last_updated_timestamp` to the same value and
+  set `updated_device` to the current device.
+- **Edit:** keep `created_timestamp` byte-for-byte; replace `last_updated_timestamp` and
+  `updated_device`.
+- **No-op edit:** a request that changes nothing must not bump `last_updated_timestamp`
+  or `updated_device`. This mirrors the existing "skipped unchanged" merge result.
+- **Delete:** record the deletion using the existing tombstone semantics; do not mutate
+  the deleted row's `created_timestamp`.
+- **Import merge:** preserve each source row's original metadata. Do not restamp incoming
+  rows as newly created or newly modified on the receiving device.
+- **Migration:** copy `created_timestamp` and `last_updated_timestamp` exactly.
+  **Migration alone must not make records appear newly modified.** If an original
+  timestamp is missing, apply the existing backfill rule (Date column, then `legacy`
+  device) instead of `now()`.
+- **Device normalisation:** reuse `normalize_device_label()`. `desktop` normalises to
+  `legacy`; the labels observed in code and stored data are `desktop-exe`,
+  `desktop-appx`, `desktop-dev`, `desktop-test`, `mobile`, and `legacy`. Phase 1 confirms
+  the complete set and keeps the mapping in one shared place.
+- **One behaviour everywhere:** no table may use seconds while another uses
+  microseconds, and no read path may bump timestamps. Behaviour must be identical across
+  all canonical transaction tables and enforced by one shared helper, not six copies
+  (AGENTS.md §10).
+
+`share_holdings` is derived, so it gets summary-maintenance metadata rather than
+transaction metadata:
+
+- `summary_updated_timestamp` — when this share's summary was last recalculated.
+- `summary_updated_device` — **open decision.** Recommendation: keep it, because it makes
+  stale-summary diagnosis possible without joining back to transactions.
+  **Resolved in Phase 1:** kept (see *Open decisions — resolutions* #4).
+
+### Timestamp representation — resolved in Phase 1
+
+**Resolved:** ISO-8601 UTC text with microseconds and a trailing `Z`. The evidence below
+is the reason the decision existed; it is retained for context.
+
+Current evidence, verified in the code:
+
+| Module | Helper | Precision |
+|---|---|---|
+| Bank | `current_timestamp_us()` at `backend/services/excel_utils.py:281` | microseconds |
+| Share | `current_timestamp()` at `backend/services/excel_utils.py:276` | seconds |
+| Personal Finance (both flows) | `current_timestamp()` | seconds |
+| Transfers | `current_timestamp()` | seconds |
+
+All are ISO-8601 strings. Legacy rows may be empty or hold a bare date.
+`populate_missing_audit_metadata()` fills a missing `created_timestamp` from the Date
+column, copies the created value into a missing `last_updated_timestamp`, and sets a
+missing `updated_device` to `legacy`.
+
+Phase 1 must choose one representation before any DDL is frozen — recommendation: UTC
+ISO-8601 text with microseconds, or INTEGER epoch microseconds — plus explicit coercion
+rules for empty values, date-only values, and timezone-naive values. Rationale for
+microseconds over seconds: the existing Bank helper comment states that microseconds keep
+two rapid edits distinguishable, and merge ranking compares timestamps as strings.
+
+**Resolved:** UTC ISO-8601 text with microseconds. Integer epoch microseconds was
+rejected because it loses readability in diagnostics and Excel/JSON round-trips while
+offering no benefit at this data scale.
+
+### Verified dependencies on the existing metadata fields
+
+These fields are not decorative. The behaviour below depends on them today and must keep
+working after migration.
+
+| Dependency | Location | What breaks if dropped or re-typed |
+|---|---|---|
+| Merge winner ranking `(last_updated_timestamp, updated_device, content_hash)` | `backend/services/workbook_merge.py:369-372` | Divergent rows would resolve non-deterministically instead of newest timestamp, then device, then hash |
+| Tombstone wins only when `deleted_timestamp` is newer than the winner's timestamp | `backend/services/workbook_merge.py:389-395` | A deleted row could resurrect on the next sync |
+| Legacy identity seed includes the normalised `Created Timestamp` | `backend/services/workbook_merge.py:202-209` | Re-importing a workbook would mint new Row IDs and duplicate rows |
+| Missing-metadata backfill fills all three fields | `backend/services/workbook_merge.py:219-242` | Older workbooks would fail validation and lose audit attribution |
+| Conflict record stores the losing device | `backend/services/workbook_merge.py:376-382` | Conflict history would lose attribution |
+| Integrity checks require Row ID, Content Hash, and all three metadata columns | `backend/services/data_directory_service.py:41,746`; `backend/services/data_migration_service.py:411` | Data-folder moves and migrations would fail pre-flight validation |
+| Sync journal stores `device` | `backend/services/shared_sync_service.py:246-257` | Journal/state parity checks would lose meaning |
+| Per-module stamping on create and edit | `bank_service.py:57,200`; `share_service.py:96,399,465`; `personal_finance_service.py:174,402`; `personal_finance_transfers.py:92,330` | Existing API responses would change shape |
+
+Phase 1 must therefore specify the SQLite equivalents of all of these rules:
+deterministic conflict ranking, tombstone comparison, identity seeding, metadata
+backfill, and sync-journal attribution.
+
+### Content Hash — confirmed constraint
+
+- `content_hash` is **not required as a normal SQLite transaction field merely for
+  record identification.** UUIDs plus preserved Row IDs are sufficient identity.
+- Existing synchronization and conflict-resolution behaviour **depends on it today** (see
+  the dependency table above). That behaviour must not be removed or broken.
+- Phase 1 must evaluate the options and choose one:
+  1. keep a nullable `content_hash` column, maintained on write for Excel-export
+     compatibility and merge parity;
+  2. compute the hash on demand at the sync/export boundary from the current row, with no
+     stored column, so it always matches the row;
+  3. replace hash-based tie-breaking with a deterministic rule that provably resolves the
+     same cases, backed by tests showing no regression.
+- Whichever option is chosen must preserve: compatibility with Excel files that already
+  contain `Content Hash`, deterministic merge outcomes, and the existing data-integrity
+  checks.
+
+**Resolved:** option 1 — a required, stored `content_hash` in canonical
+`sha256:<64 hex>` form, recomputed on every write and export, with legacy SHA-1 accepted
+and upgraded on import. Option 2 was rejected because export and merge need a stable,
+verifiable stored value; option 3 was rejected because it changes tested behaviour
+without evidence of equivalent outcomes.
+
+### Open decisions Phase 1 had to resolve — resolutions
+
+The original open-decision list is preserved below with the Phase 1 resolution added.
+Each resolution is recorded again, with reasoning, under *Decision changes*.
+
+| # | Decision | Options | Resolution |
+|---|---|---|---|
+| 1 | Timestamp representation | ISO-8601 text (microseconds) vs INTEGER epoch microseconds | **ISO-8601 UTC text with microseconds** (`YYYY-MM-DDTHH:MM:SS.ffffffZ`). Stored as fixed-width `TEXT`; lexical order equals chronological order, it round-trips through Excel and JSON unchanged, and it is readable in diagnostics. Legacy values are coerced, never shifted (schema §9.4, rules §3.3). |
+| 2 | `content_hash` handling | stored nullable vs computed on demand vs replaced | **Stored, required, canonical `sha256:<64 hex>`.** Recomputed on every write and on export; a provided hash is verified on import. Existing SHA-1 is recognised and upgraded (rules §2). Identity remains UUID. |
+| 3 | Numeric storage | scaled INTEGER (scale 10,000) vs REAL with Python `Decimal` | **Scaled INTEGER ×10⁴** for money, prices and charges; `INTEGER` whole shares; ppm ×10⁶ reserved for rates. Exact Decimal arithmetic in the service layer; `REAL` is banned for financial storage (schema §7). |
+| 4 | `share_holdings` device tracking | `summary_updated_device` plus timestamp vs timestamp only | **Keep both** `summary_updated_timestamp` and `summary_updated_device`. It makes stale-summary diagnosis possible without joining transactions and matches transaction metadata. |
+| 5 | `transfers` tombstone support | add vs explicitly accept no cross-device delete | **Add** tombstone and delete support in Phase 2. The previous absence is recorded as a defect, not accepted behaviour. |
+| 6 | Derived Personal Finance sync rows | live SQL view vs query-time aggregation | **Query-time service aggregation**, not a SQL view, because the rules depend on linked-module exclusion, share-only categories, and transfer labels that must be identical on both platforms. The rows are read-only and never stored (schema §6.3, rules §6.3). |
+| 7 | Migrating `Conflict` / `Deleted` history | migrate the audit trail vs start clean | **Migrate** into `record_conflicts` and `deleted_records`. Audit history is user data and is never discarded. |
+
+Additional decisions resolved during Phase 1 (not in the original list):
+
+| # | Decision | Resolution |
+|---|---|---|
+| 8 | One schema or two | **One approved target logical schema** for Desktop and future Mobile adoption. This migration changes Desktop only; Mobile's current implementation remains in place until a separate approved migration (schema §1, §10). |
+| 9 | Ordering column | **`sequence_no INTEGER NOT NULL`** per transaction table, preserving workbook/insertion order and same-date ordering. Assigned `1..N` in workbook order during migration; never renumbered by delete. |
+| 10 | Environment databases | One database per environment: Development; Testing shared by EXE/AppX; Production shared by EXE/AppX. Shared per-user folder is still proposed (schema §11, SAFETY §12). |
+| 11 | Unknown categories | **Stage for review as `unsupported`/`invalid`; never coerce or silently discard** (rules §10.4). |
+| 12 | Migration path for legacy IDs | **`legacy_identity_map` table** replaces `row-identity-map.json`, preserving deterministic UUIDs across repeated legacy imports (schema §4.13, rules §1.2). |
+| 13 | Holdings cache | **`share_holdings` is derived**, fully rebuildable, and never written without a transaction change. Incremental + full-rebuild parity is a test contract (rules §9, §18). |
+| 14 | Transfer feature exposure | **Build-time flag `FINLEDGE_ENABLE_DEVICE_TRANSFER`**, default `0`, forced `0` in production, with the code excluded — not merely hidden (device-transfer §12). |
+| 15 | Share identity | **`shares` master table** plus `share_id` foreign keys on `share_transactions` and `dividend_events` (approved 2026-11-06, reversing the earlier no-dimension-table decision). `content_hash` and transfer payload use the canonical name, never the local `share_id` (schema §4.3.3, rules §7.11). |
+| 16 | IPO quantity state | **`NULL` and `0` are the same state** (not allotted / result not entered); blank/`0` is normalized to `NULL`, the CHECK rejects `0`, and only `quantity > 0` creates a holding (schema §4.3.1, rules §7.2). |
+| 17 | SIP redemption amount | **Total net amount received**, `> 0`; `charge_scaled` is recorded separately and not subtracted again. P/L = net received − total invested (installment amount + charge) (rules §7.7). |
+| 18 | Dividend/bonus validation | **Replay the share timeline on every write path**; cash and bonus require holding `> 0`, reject with `no_holding_at_event_date`, and imports/transfers stage failures for review (rules §7.12). |
+
+### Phase 1 deliverables — prior progress; design finalization reopened
+
+Schema and data model:
+
+- [x] Final table list with every column, type, nullability, default, and unit —
+      `docs/schema.md` §4.
+- [x] Complete SQL DDL for all tables (reviewed text only, not executed) —
+      `docs/schema.md` §4.
+- [x] Primary keys, foreign keys, uniqueness constraints, and check constraints.
+- [x] Indexes justified by concrete query patterns (list, date range, per-share summary,
+      unified history ordering).
+- [x] Metadata columns and their enforcement strategy on all transaction tables.
+- [x] `share_holdings` summary columns and rebuild semantics.
+- [x] Validated domains for categories, flow types, and device labels.
+- [x] Legacy-value coercion rules (empty timestamps, date-only timestamps, blank device,
+      unknown category).
+
+Behaviour and accounting:
+
+- [x] Documented accounting formulas matching current code, with worked examples: Bank
+      cumulative totals, Share weighted-average cost and remaining cost, SIP handling,
+      dividend and bonus effect on holdings, and transfer two-sided effects —
+      `docs/rules.md` §5–§9.
+- [x] Per-field rounding and precision rules, not one global rule — `docs/schema.md` §7.
+- [x] A definition of "material change" for `last_updated_timestamp`, so no-op edits do
+      not bump it — `docs/rules.md` §3.2.
+
+Architecture:
+
+- [x] Repository/data-access layer shape, split along current service boundaries.
+- [x] API contract mapping: every existing endpoint to a SQLite-backed implementation,
+      with unchanged request/response shapes wherever possible (mapping work item carried
+      into Phase 2).
+- [x] Transaction boundaries and concurrency model (WAL, busy timeout, single writer,
+      retry policy) preserving the guarantees of the current Excel file locks —
+      `docs/SAFETY.md` §14.
+- [x] Migration strategy with idempotency rules — `docs/schema.md` §9,
+      `docs/rules.md` §17, `docs/SAFETY.md` §9.
+- [x] Backup/recovery design integrated with the existing snapshot and auto-backup
+      retention rules — `docs/SAFETY.md` §7–§11.
+- [x] Environment isolation: Development, Testing EXE, Testing AppX, Production EXE, and
+      Production AppX each resolve their own database path through one shared resolver —
+      `docs/schema.md` §11.
+- [x] Excel import/export compatibility design, including `Content Hash` and metadata
+      round-tripping — `docs/schema.md` §8.
+- [x] Testing strategy: unit, repository, migration, parity, concurrency, performance —
+      `docs/device-transfer.md` §16 and the Phase 2–4 tasks below.
+- [x] Performance targets measured against the Phase 0 baseline (targets set; measurement
+      is a Phase 2–4 task).
+- [x] Risk register and unresolved-decision list — `docs/device-transfer.md` §17,
+      `docs/rules.md` §20–§21.
+
+Additional deliverables added during Phase 1:
+
+- [x] Canonical device-transfer architecture — `docs/device-transfer.md`.
+- [x] Build-time transfer exclusion design — `docs/device-transfer.md` §12.
+- [x] Mobile schema comparison and migration plan — `docs/schema.md` §10.
+- [x] Cross-document consistency pass: all four authority documents describe the same
+      architecture and cross-reference each other.
+
+Exit criteria:
+
+- [ ] Remaining proposed design decisions reviewed and approved by the user.
+- [ ] All pending decisions have written resolution and user approval.
+- [x] No code, database, or workbook created or modified.
+
+### Completed work
+
+- `docs/schema.md` rewritten as the unified canonical schema: 14 tables (7 financial,
+  5 support/transfer, `legacy_identity_map`, `schema_migrations`), complete DDL,
+  authoritative-vs-derived classification, canonical queries, precision rules, Excel
+  mapping, legacy migration, Mobile migration, environment isolation, versioning.
+- `docs/rules.md` extended with identity lifecycle, SHA-256/SHA-1 hash rules, timestamp
+  and ordering rules, device labels, verified bank/PF/share/SIP/dividend/transfer
+  formulas with worked examples, holdings invariants, import/export, merge/replace,
+  duplicate and conflict rules, cross-platform parity, known discrepancies and
+  unresolved behaviour.
+- `docs/SAFETY.md` extended with Part 2: SQLite-safe backup mechanisms, snapshot
+  triggers, migration rehearsal/execution/rollback, corruption recovery, restore
+  precedence and the empty-database rule, environment isolation, import/Replace safety,
+  atomicity/concurrency, transfer staging/security/cleanup, recovery tests and incident
+  response.
+- `docs/device-transfer.md` created: component boundaries, both directional workflows,
+  resume and Replace, QR/pairing/security, framed versioned protocol, batching,
+  checksums, acks, errors, timeouts, transport abstraction, category dependencies,
+  conflict handling, progressive transfer, review integration, build-time flag design
+  and verification, Phase 2 checklist, Mobile plan, tests and risks.
+- This document updated with the Phase 1 completion record, resolved decisions and the
+  Phase 2–4 roadmap.
+
+### Remaining work
+
+- None inside Phase 1.
+- Phase 2 is **NOT STARTED** and requires explicit approval before any task
+  begins.
+- The unresolved questions in `docs/rules.md` §21 and `docs/device-transfer.md` §17 stay
+  open and are carried into Phase 2 as recorded decisions, not guesses.
+
+### Known issues
+
+- Carried from Phase 0 and deliberately **not fixed** in Phase 1: timestamp precision
+  inconsistency, Content Hash dependency, missing transfer tombstones, and one failing
+  backend test (`test_simultaneous_user_append_and_background_backfill_keep_both_rows`).
+- Verified contradictions are catalogued in `docs/rules.md` §20 and must be resolved in
+  Phase 2 by code changes, not by reinterpreting the documents.
+- Mobile still uses FIFO and the pre-canonical schema; transfer must reject it as
+  `SCHEMA_UNSUPPORTED` until it adopts the canonical model.
+- Production EXE / Production AppX physical path sharing remains **NOT VERIFIED**.
+
+### Verification evidence
+
+| Check | Command / method | Result |
+|---|---|---|
+| Documents exist and are non-empty | `docs/schema.md`, `docs/rules.md`, `docs/SAFETY.md`, `docs/device-transfer.md` | Present |
+| Cross-references resolve | grep for `docs/schema.md`, `docs/rules.md`, `docs/SAFETY.md`, `docs/device-transfer.md`, `docs/desktop-tasks.md` across the four authority docs | All four link to each other |
+| Architecture consistency | Manual pass: table names, column names, device labels, metadata quality values, timestamp format, hash format, environment paths, transfer flag name | Consistent across all four documents |
+| Financial rules match verified code | Manual comparison against `share_lot_calculations.py`, `share_service.py`, `share_summary.py`, `personal_finance_summary.py`, `personal_finance_transfers.py`, `bank_service.py`, `workbook_merge.py` | Matches, with contradictions recorded rather than smoothed over |
+| No app code changed | `git status --porcelain` filtered to `backend/`, `desktop/`, `frontendwebapp/`, `mobile/` | No changes |
+| No database or workbook created | Filesystem check for `*.db`, `*.db-wal`, `*.db-shm` outside existing data folders; `git status` for `*.xlsx` | None created |
+| Whitespace/conflict hygiene | `git diff --check` | Clean (recorded in the Phase 1 delivery report) |
+| Baseline tests (unchanged, for comparison) | `pytest backend/tests/`; `npm run desktop:test-data` | 170 passed / 1 pre-existing failure; 36/36 desktop data tests |
+
+Phase 1 created no SQLite database, executed no DDL, ran no migration, and modified no
+workbook.
+
+### Dependencies
+
+- Phase 0 audit report (consumed).
+- User approval of the design before Phase 2 starts — **given for the design; explicit
+  Phase 2 start approval still required**.
+
+---
+
+## Phase 2 — SQLite Implementation
+
+**Status:** NOT STARTED
+
+**Entry condition:** Phase 1 specification approved **and** the user explicitly says to
+start Phase 2. Do not begin any task below before that instruction.
+
+**Objective:** Implement the approved Phase 1 architecture inside the existing
+application without breaking current behaviour, behind the existing Excel path until
+parity is proven.
+
+The task list below is the implementation contract. It is derived from `docs/schema.md`,
+`docs/rules.md`, `docs/SAFETY.md` and `docs/device-transfer.md`; a task is complete only
+when implemented, tested, and its evidence recorded.
+
+### 2.1 Foundation and infrastructure
+
+- [ ] Add the single database module (`backend/db/connection.py`): path resolution,
+      `sqlite3.connect`, `row_factory`, WAL, `foreign_keys=ON`,
+      `synchronous=FULL`, `busy_timeout=5000`, bounded `SQLITE_BUSY` retry.
+- [ ] Add `backend/db/schema.py` and `backend/db/migrations/0001_initial.sql` exactly
+      matching `docs/schema.md` §4; apply in one transaction per migration.
+- [ ] Implement `PRAGMA user_version` read/write plus `schema_migrations` audit rows.
+- [ ] Startup self-check reads `PRAGMA foreign_keys` and refuses writes if it is not `ON`;
+      the pragma is set once in the shared connection factory before any transaction.
+- [ ] Migration verification runs `PRAGMA foreign_key_check` and requires zero rows
+      before the migration is marked complete.
+- [ ] Open a newer-than-supported database read-only with a clear error; never downgrade.
+- [ ] Add repository modules per domain: `bank_repository.py`,
+      `personal_finance_repository.py`, `share_repository.py`,
+      `dividend_repository.py`, `transfer_repository.py`, `holdings_repository.py`,
+      `support_repository.py` (tombstones, conflicts, identity map, migrations).
+- [ ] Repositories accept an existing connection so services can compose one
+      transaction; repositories never open their own long-lived connection.
+- [ ] Add one shared row-mapping module for scaled-integer ↔ `Decimal` conversion; no
+      ad-hoc `float()` on the financial path.
+- [ ] Add one shared metadata/stamping helper and one shared content-hash helper; delete
+      per-module copies after grep proves no remaining call sites.
+- [ ] Startup integrity check (`PRAGMA quick_check`) plus the recovery path from
+      `docs/SAFETY.md` §10; no auto-repair of the only copy.
+- [ ] Verify environment isolation: each of the three environments resolves its own
+      database and backup root; EXE and AppX inside one environment resolve the same
+      database, and a testing build cannot open a production path.
+
+### 2.2 Canonical writes and metadata
+
+- [ ] Implement create/edit/delete for all six canonical transaction tables with UUID identity,
+      `sequence_no`, and the metadata rules in `docs/rules.md` §1 and §3.
+- [ ] Enforce create-once `created_timestamp`; only a material change bumps
+      `last_updated_timestamp` and `updated_device`.
+- [ ] Write `content_hash` as `sha256:…` on every authoritative write; verify
+      provided hashes on import; accept and upgrade legacy SHA-1.
+- [ ] Implement `legacy_identity_map` and migrate `row-identity-map.json` data into it
+      without re-minting UUIDs.
+- [ ] Implement tombstones in `deleted_records` for all six tables, including the new
+      transfer delete endpoint and its tombstone.
+- [ ] Implement `record_conflicts` writing on the existing automatic merge path.
+- [ ] Tests: UUID stability across edit; no-op edit bumps nothing; delete writes exactly
+      one tombstone; hash changes only on business change; legacy SHA-1 import upgrades
+      to SHA-256.
+
+### 2.3 Domain storage and calculations
+
+Bank:
+
+- [ ] Move Bank Services reads/writes to `bank_transactions` with signed
+      `amount_scaled`, category-derived sign, and derived cumulative amount via the
+      window query in `docs/schema.md` §6.1.
+- [ ] Preserve the exact summary formulas in `docs/rules.md` §5.3.
+- [ ] Handle legacy `Income` category as income with a warning; do not add an enum value
+      silently.
+- [ ] Parity test: current workbook values vs SQLite values, to the cent, including
+      edits and deletes that shift cumulative amounts.
+
+Personal finance:
+
+- [ ] Move manual Bank Flow and Cash Flow rows to `personal_finance_entries` with
+      `flow_type`, signed amount, and `source='manual'`.
+- [ ] Keep derived `bank-services-sync` and `share-sync` rows query-time only, read-only,
+      and excluded from manual totals exactly as in `docs/rules.md` §6.3.
+- [ ] Preserve the separate screens and separate Excel exports.
+- [ ] Parity test: totals, per-category breakdowns, transfer effects, linked-module
+      exclusion.
+
+Shares:
+
+- [ ] Implement the `shares` master table: one canonical normalized name per share,
+      unique, created on first use, with `share_transactions.share_id` and
+      `dividend_events.share_id` foreign keys (`ON DELETE RESTRICT ON UPDATE RESTRICT`).
+      One `normalize_share_name()` function is shared by UI input, API input, Excel
+      import and transfer import (trim, collapse whitespace, upper-case, reject empty).
+- [ ] Implement IPO/buy/sell in `share_transactions` with the weighted-average rules in
+      `docs/rules.md` §7.2–§7.3.
+- [ ] IPO default charge `5.00`; secondary buy/sell charge `0`; the charge rule lives in
+      one shared function.
+- [ ] IPO status is derived, never stored: `quantity` NULL and `0` both mean not allotted /
+      result not entered; `> 0` = allotted. Blank/`0` is normalized to NULL on create, edit,
+      import and transfer; the DB CHECK rejects `0`. The allotment update targets the row by
+      `row_id`, never by name. Only `quantity > 0` creates a holding.
+- [ ] Implement `sip_transactions`: installment adds principal; redemption stores the total
+      net amount received (`amount_scaled > 0`) with the charge recorded separately, closes
+      the plan, and sets derived outstanding to zero. P/L = net amount received − total
+      invested in the plan (installment `amount` + installment `charge`).
+- [ ] Redemption rows store `units = NULL` as not applicable and never appear in pending
+      suggestions; `CHECK (transaction_type <> 'sip_redemption' OR units IS NULL)`.
+- [ ] Implement `dividend_events`: cash dividend and bonus shares with the exact
+      quantity/cost effects in `docs/rules.md` §7.4–§7.5, plus the Rule A/B/C holding replay
+      in `docs/rules.md` §7.12 on every write path.
+- [ ] Implement overselling rejection against running quantity in replay order.
+- [ ] Implement cumulative profit across share and dividend activity in
+      `(txn_date, sequence_no)` order; SIP redemption P/L stays separate in
+      `sip_plan_summaries`.
+- [ ] Implement `share_holdings` incremental update and full rebuild; both paths must
+      agree on randomized fixtures.
+- [ ] Implement the read-only unified share history view (`docs/schema.md` §6.2) with stable ordering and
+      source identity; edits/deletes address the original table.
+- [ ] Remove or explicitly deprecate the dead FIFO helpers after grep proves no call sites.
+- [ ] Parity test: every share summary value against the current implementation,
+      including bonus, cash dividend, SIP redemption and same-date ordering.
+
+Dividend/bonus validation test cases (Phase 2 — list only, do not implement here):
+
+- [ ] Dividend for an unknown share is rejected with a clear service error, not a raw FK error.
+- [ ] Dividend with no holding is rejected with `no_holding_at_event_date`.
+- [ ] Dividend dated before the first buy on the same date, when its `sequence_no` comes first, is rejected.
+- [ ] Bonus after a full sale (holding 0) is rejected.
+- [ ] Deleting a buy that a later bonus depends on is rejected and names the first invalid record.
+- [ ] Editing a date so a sell precedes its buy is rejected.
+- [ ] Frontend bypass / direct API call cannot create the invalid row.
+- [ ] Import containing such a record stages it as invalid rather than committing it.
+- [ ] A connection opened with foreign keys off is detected by the startup self-check.
+
+Transfers:
+
+- [ ] Move transfers to `transfers` with derived origin/destination flows.
+- [ ] Preserve the current validation rule against origin `total_income` (including
+      prior transfer effects and excluding linked/share-only rows), excluding the
+      transfer being edited.
+- [ ] Add delete + tombstone (new behaviour, recorded in *Decision changes*).
+- [ ] Parity test: two-sided effects, combined view, validation messages.
+
+### 2.4 Import, export and merge
+
+- [ ] Implement workbook import into SQLite for all five source files, preserving UUIDs,
+      both timestamps, device labels and `sequence_no` workbook order.
+- [ ] Implement `metadata_quality` exactly as `docs/schema.md` §9.4; never use import
+      time while a date exists; report every `imported_missing` row.
+- [ ] Stop the unconditional restamp of reviewed rows; bump only on material change.
+- [ ] Stage unknown categories as `unsupported`/`invalid`; never coerce or drop.
+- [ ] Implement Smart Merge: add, already-present, conflict, possible duplicate, with
+      review confirmation and idempotent retry.
+- [ ] Implement Replace for all selected categories in one transaction with a verified
+      pre-Replace snapshot, tombstones for replaced rows, summary rebuild, and restore on failure.
+- [ ] Implement export with authoritative fields + recomputed derived columns, canonical
+      SHA-256 hashes, and `sequence_no` order.
+- [ ] Round-trip test: seed → export all five datasets → import into a fresh database →
+      per-field equality, no authoritative value changed.
+- [ ] Legacy workbook test matrix: no Row ID, no Content Hash, both missing, malformed
+      UUID, duplicate UUID, unknown category, blank metadata.
+
+### 2.5 Backups, recovery and concurrency
+
+- [ ] Implement verified snapshots using `Connection.backup()` (or `VACUUM INTO`), never
+      a live file copy.
+- [ ] Wire the snapshot triggers in `docs/SAFETY.md` §8 (migration, import, Replace,
+      transfer commit, restore, manual rebuild).
+- [ ] Implement daily automatic snapshot on first launch, deduplicated per day.
+- [ ] Implement quota/retention mirroring the existing policy; never prune migration,
+      pre-restore or pre-Replace backups.
+- [ ] Implement restore to a temp file, atomic swap, reopen, `quick_check`, version check,
+      holdings rebuild, and quarantine of the replaced database.
+- [ ] Implement the empty-database rule: never silently replace recoverable data.
+- [ ] Concurrency tests: concurrent readers with one writer, busy timeout, rollback on
+      failure, no partial financial effects.
+
+### 2.6 Device transfer (desktop)
+
+Full design is `docs/device-transfer.md`. Phase 2 implements it only if the flag is
+enabled for the build under test.
+
+- [ ] Add `FINLEDGE_ENABLE_DEVICE_TRANSFER` to `.env.example` and the environment doc.
+- [ ] Implement the build-time flag in Vite, Electron main/preload, packaging and the
+      PyInstaller sidecar, with production fail-closed and the
+      `docs/device-transfer.md` §12.6 verification matrix.
+- [ ] Create `backend/transfer/` with the boundaries in §2.2 of the transfer document.
+- [ ] `TransferManager` as the only public entry point; no route reaches the engine
+      directly.
+- [ ] `SessionManager`: pairing, single-use token, 120-second expiry, pause, resume,
+      expiry, cancel, cleanup.
+- [ ] QR generation (Desktop always displays), TLS certificate fingerprint pinning,
+      HKDF session key, per-frame HMAC, replay defence.
+- [ ] `ProtocolCodec`: framing, canonical JSON, protocol/schema/capability negotiation,
+      typed errors.
+- [ ] `TransferEngine`: selection, batching (500 records / 1 MiB), zlib, checksums,
+      cumulative acks, retry, resume, manifest.
+- [ ] `StagingService` + `CommitService` with `transfer_staged_records`,
+      `transfer_batches`, `transfer_sessions`, progressive review and per-category
+      atomic commit.
+- [ ] Reuse `ImportReview.jsx` with `source="device-transfer"`; add
+      `GET /device-transfer/sessions/{id}/staged`,
+      `PATCH /device-transfer/staged/{id}`,
+      `POST /device-transfer/sessions/{id}/commit`.
+- [ ] Smart Merge and Replace over transfer, including pre-Replace backup and restore.
+- [ ] LAN transport adapter plus a mock adapter proving transport independence.
+- [ ] Tests: protocol round-trip, auth/replay, batching, staging classification,
+      interrupted transfer, checksum tamper, session expiry, preview/commit idempotency.
+
+### 2.7 Frontend integration
+
+- [ ] Replace frontend-recomputed summaries with API-provided authoritative values
+      (`frontendwebapp/src/utils/summaries.js` is the known duplicate).
+- [ ] Keep screens, navigation and dashboards unchanged; storage changes, UI does not.
+- [ ] Show the unified share history read-only with stable ordering.
+- [ ] Wire transfer review behind the build flag only.
+- [ ] Verify every user-facing conditional message follows AGENTS.md §14 (real values,
+      conditional presence, auto-dismiss).
+- [ ] Frontend build with the flag off must contain no transfer route, component or API
+      module (verify per `docs/device-transfer.md` §12.6).
+
+### 2.8 Performance
+
+Targets are measured, not guessed. Record actual numbers against the Phase 0 baseline:
+
+- [ ] Dashboard/list reads for a 10-year dataset must not load full history per request
+      where a derived/aggregate query is specified.
+- [ ] Bank cumulative and share summary queries use the documented indexes.
+- [ ] Import of 10,000 rows completes within a documented, measured budget with one
+      transaction per batch, not per row.
+- [ ] Holdings rebuild of 10,000 share rows completes within a measured budget.
+- [ ] Memory stays bounded during import/export and transfer (streaming, not full
+      in-memory history).
+- [ ] Record the before/after table in *Verification evidence*.
+
+### 2.9 Phase 2 exit criteria
+
+- [ ] Every existing endpoint is SQLite-backed with unchanged request/response shapes,
+      or a documented, frontend-updated change recorded in *Decision changes*.
+- [ ] Full parity on all financial values to the cent, or a documented and approved
+      difference.
+- [ ] Import/export round-trip passes for all five datasets and legacy variants.
+- [ ] Backup/restore and corruption-recovery tests pass.
+- [ ] Concurrency and interruption tests pass.
+- [ ] Transfer works end-to-end on LAN when enabled and is entirely absent when disabled.
+- [ ] No test touches real user data; all fixtures are synthetic and in per-test temp
+      directories.
+
+### Completed work
+
+- None. Phase 2 has not started.
+
+### Remaining work
+
+- Every item in §2.1–§2.9.
+
+### Known issues
+
+- Carried from Phase 0/1: the one failing backend test, Mobile FIFO divergence, and
+  Production EXE / AppX path-sharing verification.
+- New Phase 2 issues are appended here with a date; nothing is silently removed.
+
+### Verification evidence
+
+- None yet. Each task records its command and result here when it completes.
+
+### Dependencies
+
+- Phase 1 specification approved.
+- Explicit user approval to start Phase 2.
+- Copies of real workbooks available for parity testing (never the live originals).
+
+---
+
+## Phase 3 — Existing Data Migration and Verification
+
+**Status:** PENDING
+
+**Entry condition:** Phase 2 implementation verified on test data.
+
+**Objective:** Safely migrate existing Excel data into SQLite and verify the migrated
+application against the Excel baseline, using copies of real data only.
+
+**Phase 3 does not delete or rewrite the source workbooks.** Excel remains available as a
+fallback until the migrated application is verified and the user accepts the cutover.
+
+### 3.1 Rehearsal
+
+- [ ] Copy every real data directory to an isolated rehearsal location; never operate on
+      the live originals.
+- [ ] Record a pre-migration fingerprint: per-workbook row counts, per-category totals,
+      and a sample of UUIDs/timestamps.
+- [ ] Run the migration on the copy.
+- [ ] Run the migration a second time to prove idempotency (no duplicates, no changed
+      timestamps, no new UUIDs).
+- [ ] Compare source and destination counts and totals per category; investigate every
+      difference before continuing.
+- [ ] Compare a sample of rows field-by-field, including `row_id`, both timestamps,
+      `updated_device`, `content_hash` and `sequence_no`.
+- [ ] Record the rehearsal command, duration, and result in *Verification evidence*.
+
+### 3.2 Migration execution
+
+- [ ] Acquire the single-instance / data-directory lock.
+- [ ] Verify free space and write access.
+- [ ] Create and verify a pre-migration snapshot (`docs/SAFETY.md` §9.2).
+- [ ] Migrate all five workbook datasets:
+      `bank_transactions.xlsx`, `share_transactions.xlsx`,
+      `personal_finance_bank_flow.xlsx`, `personal_finance_cash_flow.xlsx`, and
+      `personal_finance_transfer.xlsx`.
+- [ ] Preserve Row IDs (UUIDs) and both original timestamps for every migrated row.
+- [ ] Verify migration does not bump `last_updated_timestamp` or change `updated_device`.
+- [ ] Populate `legacy_identity_map` from any existing `row-identity-map.json`.
+- [ ] Migrate `Deleted` and `Conflicts` sheet history into `deleted_records` and
+      `record_conflicts`.
+- [ ] Reconstruct and verify `share_holdings` from the migrated transactions.
+- [ ] Write the migration marker only after integrity and parity checks pass.
+
+### 3.3 Verification
+
+- [ ] Verify financial calculations against the Excel baseline: bank cumulative, totals,
+      weighted-average cost, remaining cost, SIP amounts, dividends, bonuses, and
+      transfers.
+- [ ] Verify every share, SIP and dividend row appears in the unified history with the
+      correct source and order.
+- [ ] Verify Excel import and export still work, including Content Hash round-tripping
+      and legacy SHA-1 inputs.
+- [ ] Test migration interruption and recovery: process killed mid-migration, partial
+      database, resumed run, quarantined temporary database.
+- [ ] Test a deliberately corrupted database: startup quarantines it and offers the
+      newest verified backup; the empty-database rule holds.
+- [ ] Verify all three application environments resolve and use the correct database and
+      backup roots, that EXE and AppX share one file inside an environment, and that no
+      environment can cross-open another environment's data.
+- [ ] Compare performance against the Phase 0 baseline.
+- [ ] Record each check and its result in *Verification evidence*.
+
+### 3.4 Cutover
+
+- [ ] Obtain explicit user approval before switching the default storage to SQLite.
+- [ ] Keep the Excel import/export path available after cutover.
+- [ ] Keep the pre-migration snapshot and the original workbooks indefinitely.
+- [ ] Do not delete any workbook, backup, or old database as part of cutover.
+
+### Completed work
+
+- None. Phase 3 has not started.
+
+### Remaining work
+
+- Every item above.
+
+### Known issues
+
+- Production EXE / Production AppX physical path sharing remains **NOT VERIFIED** until
+  this phase proves it.
+- Mobile is not migrated in Phase 3; it adopts the canonical schema later.
+- Any parity difference discovered here is a Phase 2 defect, not a Phase 3 workaround.
+
+### Verification evidence
+
+- None yet.
+
+### Dependencies
+
+- Phase 2 implementation verified on test data.
+- Copies of real data available for migration rehearsal.
+- Explicit user approval to run the migration and later to cut over.
+
+---
+
+## Phase 4 — Final Testing, Optimization and Release Readiness
+
+**Status:** PENDING
+
+**Entry condition:** Phase 3 migration verified on copies of real data.
+
+**Objective:** Ensure the SQLite-based application is stable, accurate, and ready for
+normal use and distribution across every environment.
+
+### 4.1 Regression and parity
+
+- [ ] Full backend regression suite green, including the previously failing
+      `test_simultaneous_user_append_and_background_backfill_keep_both_rows` (fixed in
+      Phase 2, verified here).
+- [ ] Frontend integration and smoke tests.
+- [ ] Golden-fixture parity for every formula in `docs/rules.md` §5–§9.
+- [ ] Excel import/export round-trip and legacy-workbook matrix green.
+- [ ] Holdings incremental-vs-rebuild parity on randomized fixtures.
+- [ ] Unified share history ordering stability across repeated reads.
+
+### 4.2 Environments and packaging
+
+- [ ] Desktop EXE testing.
+- [ ] AppX testing.
+- [ ] Testing and Production isolation verification: no cross-open, cross-migrate,
+      cross-backup.
+- [ ] Production EXE / Production AppX path verification (closes the Phase 0 unknown).
+- [ ] Packaging, installer, and sidecar verification for both channels.
+- [ ] Production build with transfer disabled: no route, IPC, preload API, asar entry,
+      or PyInstaller module (the full §12.6 checklist in `docs/device-transfer.md`).
+- [ ] Release-version and update-policy checks per the Part 1 release rules.
+
+### 4.3 Reliability and performance
+
+- [ ] Large-dataset performance tests: 10k+ rows per table, 10 years of history.
+- [ ] Dashboard loading performance against the Phase 0 baseline.
+- [ ] CRUD and concurrent-operation tests.
+- [ ] Backup, restore, migration rollback, corruption quarantine, and the empty-database
+      rule, end to end.
+- [ ] Interrupted-transfer and session-expiry tests on real LAN hardware.
+- [ ] Disk-full and permission-denied behaviour: fail safely, never corrupt.
+
+### 4.4 Documentation and release
+
+- [ ] Update `docs/schema.md`, `docs/rules.md`, `docs/SAFETY.md`,
+      `docs/device-transfer.md` if implementation changed any decision (via
+      *Decision changes*, never silent rewrites).
+- [ ] Update `docs/AGENTS.md` / `docs/CODEBASE.md` with the new modules, file map and
+      data-access layer.
+- [ ] Update this file: Phase 4 status, evidence, and any carried known issues.
+- [ ] Confirm no unresolved `pending` conflict rows or unevaluated `unsupported` records
+      remain from migration.
+- [ ] Mobile follow-up is explicitly scheduled, not claimed as delivered here.
+
+### Completed work
+
+- None. Phase 4 has not started.
+
+### Remaining work
+
+- Every item above.
+
+### Known issues
+
+- None recorded yet. Known issues are carried forward from Phases 1–3 as they appear.
+
+### Verification evidence
+
+- None yet.
+
+### Dependencies
+
+- Phase 3 migration verified on copies of real data.
+- All critical tests passing, and every known migration risk addressed or explicitly
+  accepted in writing. Do not mark the migration complete otherwise.
+
+---
+
+## Decision changes
+
+Append-only log. Each entry keeps the original decision visible and states what changed
+and why. Entries below were made during Phase 1 unless stated otherwise.
+
+### 2026-11-04 — Historical status: Phase 1 completed; Phase 2 marked next but not started
+
+**Original status:** Phase 1 `NEXT — NOT STARTED`; Phase 2 `PENDING`.
+**Historical changed status:** Phase 1 `COMPLETED`; Phase 2 `NEXT — NOT STARTED`. Superseded 2026-11-06.
+**Historical reason:** The earlier log recorded completed deliverables. Later user-approved requirements reopened design finalization; no implementation has begun.
+
+### 2026-11-04 — Timestamp representation
+
+**Original decision:** open — ISO-8601 text (microseconds) vs INTEGER epoch microseconds.
+**Resolved:** ISO-8601 UTC text, fixed width, microseconds, trailing `Z`
+(`YYYY-MM-DDTHH:MM:SS.ffffffZ`).
+**Why:** lexical order equals chronological order, it survives Excel/JSON round-trips,
+it is readable in diagnostics, and it preserves the existing merge comparison. Legacy
+values are coerced with `metadata_quality`, never shifted.
+
+### 2026-11-04 — `content_hash` handling
+
+**Original decision:** open — stored nullable vs computed on demand vs replaced.
+**Resolved:** stored, required, canonical `sha256:<64 hex>`; recomputed on write and
+export, verified on import; legacy SHA-1 recognised and upgraded.
+**Why:** merge ranking and integrity checks already depend on it, and an explicit
+algorithm prefix removes the ambiguity between SHA-1 and SHA-256. UUID remains identity.
+
+### 2026-11-04 — Numeric storage
+
+**Original decision:** open — scaled INTEGER (10⁴) vs REAL with Python `Decimal`.
+**Resolved:** scaled `INTEGER` for money and prices (×10⁴), whole-share `INTEGER` for
+quantities, ppm ×10⁶ reserved for rates; `Decimal` for arithmetic; `REAL` banned for
+financial storage.
+**Why:** exactness, indexability, sum-safety, and portability to JavaScript within the
+safe-integer range. Four decimal places match existing share prices and charges.
+
+### 2026-11-04 — `share_holdings` device tracking
+
+**Original decision:** open — `summary_updated_device` plus timestamp vs timestamp only.
+**Resolved:** keep both.
+**Why:** stale-summary diagnosis without joining transactions; consistent with
+transaction metadata.
+
+### 2026-11-04 — Transfers tombstone support
+
+**Original decision:** open — add vs accept no cross-device delete.
+**Resolved:** add tombstone and a Delete endpoint in Phase 2.
+**Why:** the absence is a data-loss gap in a multi-device feature, not a design choice.
+
+### 2026-11-04 — Derived Personal Finance sync rows
+
+**Original decision:** open — live SQL view vs query-time aggregation.
+**Resolved:** query-time service aggregation; never stored; read-only.
+**Why:** the rules depend on linked-module exclusion, share-only categories and transfer
+labels that must stay identical on both platforms; a SQL view would duplicate business
+rules in SQL.
+
+### 2026-11-04 — Migrating `Conflict` / `Deleted` history
+
+**Original decision:** open — migrate the audit trail vs start clean.
+**Resolved:** migrate into `record_conflicts` and `deleted_records`.
+**Why:** audit history is user data; starting clean would silently discard it.
+
+### 2026-11-04 — One canonical schema for Desktop and Mobile
+
+**Original decision:** implicit separate platform schemas; Mobile already had its own
+SQLite schema.
+**Changed to:** one canonical logical schema; physical paths and platform integration may
+differ; Mobile's current schema is superseded and refactored later.
+**Why:** cross-platform financial consistency and safe device transfer require the same
+tables, meanings, identity and precision. Mobile's FIFO and split PF tables are recorded
+as discrepancies, not accepted alternatives.
+
+### 2026-11-04 — Ordering column added
+
+**Original decision:** physical workbook order implied; same-date ties relied on row
+index.
+**Changed to:** explicit `sequence_no INTEGER NOT NULL` per transaction table.
+**Why:** preserves workbook and same-date ordering across migration, edits, imports and
+transfers without depending on storage order. It is ordering, not identity.
+
+### 2026-11-04 — Historical environment database isolation (superseded 2026-11-06)
+
+**Original decision:** Excel workbooks could be shared across EXE and AppX channels
+through a shared folder.
+**Historical change:** five separate databases (Development, Testing EXE, Testing AppX,
+Production EXE, Production AppX), each with its own WAL files and backup root. Superseded by the 2026-11-06 decision below.
+**Historical reason:** the former design treated a shared live SQLite file as a risk and used explicit export/import or device transfer between channels. The approved same-environment shared database supersedes that rule.
+
+### 2026-11-04 — Unknown categories
+
+**Original behaviour:** not explicitly defined; risk of coercion or silent drops.
+**Resolved:** stage for review as `unsupported`/`invalid` with a human-readable reason;
+never coerce and never silently discard.
+**Why:** unsupported financial data must remain visible and recoverable.
+
+### 2026-11-04 — Legacy identity persistence
+
+**Original implementation:** `row-identity-map.json` beside the workbooks.
+**Changed to:** `legacy_identity_map` table in the database, same deterministic identity
+key and UUID derivation.
+**Why:** one transactional store with the data it protects; repeated legacy imports keep
+stable UUIDs even if row order changes.
+
+### 2026-11-04 — Device-transfer feature exposure
+
+**Original idea:** hide the transfer UI when the feature is unavailable.
+**Changed to:** build-time `FINLEDGE_ENABLE_DEVICE_TRANSFER`, default `0`, forced `0` in
+production, with the frontend, Electron and Python code excluded from the build.
+**Why:** a hidden button is not a security boundary; routes, IPC and packages would
+otherwise remain reachable.
+
+### 2026-11-04 — Mobile FIFO retained temporarily
+
+**Original behaviour:** Mobile uses FIFO lot matching and a hardcoded IPO charge.
+**Changed to:** Desktop weighted-average is canonical; Mobile FIFO is documented as a
+discrepancy to be replaced when Mobile adopts the canonical schema.
+**Why:** silently changing Mobile financial semantics now would alter historical results;
+the replacement is scheduled and tested instead. Transfer rejects pre-canonical Mobile
+with `SCHEMA_UNSUPPORTED`.
+
+### 2026-11-06 — Share tables reversed to three canonical event tables (supersedes the two-table decision of the same date)
+
+**Original decision (approved earlier on 2026-11-06):** two canonical Share event tables —
+`investment_transactions` (IPO/buy/sell/SIP) plus `dividend_events`.
+
+**Changed to:** three canonical Share event tables —
+`share_transactions` (IPO application/allotment, secondary buy, secondary sell),
+`sip_transactions` (SIP installment, SIP full redemption), and
+`dividend_events` (cash dividend, bonus shares).
+
+**Why:** a combined table needed a long CHECK to keep two different row shapes apart, and
+about half of its columns were NULL for every row. SIP is excluded from the share
+holdings and P/L replay, so SIP rows never need to be ordered against share rows. Combined
+name suggestions and the combined history list are read-only UNION views over the three
+tables; nothing is duplicated in storage.
+
+**Also changed in this entry (superseded 2026-11-06 — see `IPO 0` and `NULL` unified below):** `ipo_status` is removed. IPO status is computed from
+`quantity` — `NULL` = pending, `0` = not allotted, `> 0` = allotted. Legacy
+`Allotted = 0` rows migrate as `quantity = 0` (not allotted) unless the user reviews
+them, and the migration report lists every such row. `transaction_type`/`event_type`
+stays immutable and part of the content hash.
+
+**Still proposed at the time — awaiting user approval:** an `applied_quantity` column
+so an IPO keeps the original applied kitta after allotment (rejected later on
+2026-11-06 — see the next entry); gross vs net SIP redemption amount;
+share/dividend replay ordering; and the shared-folder location.
+
+### 2026-11-06 — IPO quantity normalization; `applied_quantity` rejected
+
+> **Superseded 2026-11-06 — see `IPO 0` and `NULL` unified below.** The text in this entry
+> is kept for the decision history; the current rule is that `NULL` and `0` are the same
+> state and `0` is never stored.
+
+**Original proposal:** add `applied_quantity` to preserve the original applied kitta, and
+treat `quantity` as the allotted amount.
+
+**Changed to:** `applied_quantity` is not added. Only the allotment result is stored.
+`quantity` is `NULL` while the result is not entered, `0` when not allotted, and `> 0`
+when allotted. The entry form's default/untouched `Allotted` value `0` is normalized to
+`NULL` on IPO create/import; the IPO allotment update stores an explicit `0` or `> 0`.
+Buy/sell rows require `quantity > 0`.
+
+**Why:** the form cannot distinguish "not entered" from an explicit `0`, and the original
+kitta is not needed for holdings or P/L. Normalizing the form default keeps the two IPO
+states distinct without a second column.
+
+**Still proposed at the time:** gross vs net SIP redemption amount; share/dividend replay ordering;
+and the shared-folder location. The SIP amount was decided later on 2026-11-06 (see below).
+
+### 2026-11-06 — `shares` master table and real foreign keys (reverses "no dimension table")
+
+**Original decision (reversed):** there is deliberately no `shares` dimension table. A
+share was identified only by its normalised name; foreign keys were limited to the
+transfer support tables.
+
+**Changed to:** `shares` (`share_id`, canonical `name`, `created_timestamp`) is a master
+identity table. `share_transactions` and `dividend_events` replace `investment_name TEXT`
+with `share_id TEXT NOT NULL REFERENCES shares(share_id) ON DELETE RESTRICT ON UPDATE
+RESTRICT`; indexes become `(share_id, txn_date, sequence_no)`; the display name comes from
+a join. `share_holdings` is keyed by `share_id`.
+
+**Why:** a name repeated as free text has no parent row, so no foreign key can guarantee
+that a dividend or bonus belongs to a real share. The FK is the only database-level
+guarantee. The old text is kept visible in `docs/schema.md` §4.
+
+**Normalization and cross-device identity:** one function (trim, collapse whitespace,
+upper-case, reject empty) is applied on UI input, API input, Excel import and transfer
+import. `content_hash` and the transfer payload carry the canonical share **name**, never
+the local `share_id`; import resolves or creates the row by name. Every distinct normalized
+legacy `Share Name` becomes one `shares` row, and the migration report lists names merged by
+normalization rather than merging silently. Mobile is unchanged and has no `shares` table;
+its transfer payloads carry names and Desktop resolves them.
+
+**PROPOSED — AWAITING USER APPROVAL:** a share rename rule, and deterministic
+`share_id` = UUIDv5 of the canonical name (limitation: no rename).
+
+### 2026-11-06 — IPO `0` and `NULL` unified (supersedes the IPO normalization entry above)
+
+**Original decision (above):** `NULL` meant "result not entered" and `0` meant "not
+allotted", stored as two distinct states; the allotment update stored an explicit `0`.
+
+**Changed to:** `NULL` and `0` mean the same thing — not allotted / result not entered.
+Blank or `0` is normalized to `NULL` on every write path; the database CHECK is
+`quantity IS NULL OR quantity > 0`. IPO UI status is `NULL` → "Not allotted / pending",
+otherwise "Allotted". The allotment update targets the row by UUID `row_id`, never by name.
+
+**Why:** the frontend sends `0` for an untouched field, so the two states cannot be told
+apart reliably; no separate `applied_quantity` column is added.
+
+**Legacy migration:** an Excel IPO row with `Allotted = 0` or blank migrates to `NULL`.
+The earlier "legacy `Allotted = 0` is ambiguous" open item is removed.
+
+### 2026-11-06 — SIP redemption amount is net (decided)
+
+**Original proposal:** whether the entered redemption amount is gross or net was open,
+with a recommendation to enter net proceeds and store charges separately.
+
+**Changed to:** `sip_redemption.amount_scaled` is the **total net amount received**,
+`> 0`. `charge_scaled` is recorded separately with default `0` and is not subtracted again.
+A full redemption closes the plan and the derived outstanding/remaining investment becomes
+zero. P/L = net amount received − total invested in the plan, where total invested is the
+sum of each installment's `amount_scaled + charge_scaled`. No gross-vs-net PROPOSED text
+remains.
+
+### 2026-11-06 — Dividend/bonus holding validation (Rules A/B/C)
+
+**Original behaviour:** a dividend or bonus could be stored without checking the share's
+holding at that date.
+
+**Changed to:** one validation function on every write path. The share must exist and the
+holding at the event position must be `> 0`; cash and bonus both require this; bonus
+quantity must be `> 0`. Rejection uses HTTP 422 `no_holding_at_event_date` naming the share
+and date. Any edit or delete replays the whole share timeline in one `BEGIN IMMEDIATE`
+transaction and names the first invalid record. Imports and transfers apply the same rule
+in replay order; failures go to review and are never skipped or auto-corrected. See
+`docs/rules.md` §7.12.
+
+**PROPOSED — AWAITING USER APPROVAL:** database triggers as a backstop. The downside is a
+second copy of the replay logic in SQL; service validation is recommended as primary.
+
+**PROPOSED — AWAITING USER APPROVAL:** `sip_plans` (`docs/schema.md` §4.3.4) to make
+`sip_transactions.sip_plan_id` a real foreign key, with one open plan per canonical SIP
+name. If rejected, `sip_plan_id` stays a plain UUID.
+
+---
+
+## Origin of this part
+
+This part was appended to `docs/desktop-tasks.md` as a new, separately marked section.
+It preserves the entire preceding document unchanged, introduces no application source
+changes, creates no database, performs no migration, and modifies no workbook.
+
+### Phase 1 completion addendum (2026-11-04)
+
+Phase 1 had been marked completed in the earlier record; it is reopened for design finalization. It created
+`docs/device-transfer.md` and updated `docs/schema.md`, `docs/rules.md`,
+`docs/SAFETY.md` and this file. It created no database, executed no DDL, ran no
+migration, and modified no workbook, no application source file and no user data.
+Phase 2 remains NOT STARTED and requires explicit approval.
+
+### 2026-11-06 — Phase 1 reopened for design finalization
+
+**Original status:** Phase 1 COMPLETED; Phase 2 NEXT — NOT STARTED.
+**Changed to:** Phase 1 IN PROGRESS — design finalization; Phase 2 NOT STARTED.
+**Approved:** shared EXE/AppX database within each environment; user-initiated bidirectional transfer with QR or short-code pairing and staged review; two canonical Share event tables (superseded later on 2026-11-06 — see the entry below); per-installment SIP units; full-only redemption; separately generated plan UUID with SIP name; two rebuildable derived summaries.
+**Still proposed at the time:** exact shared folder, Share replay/import ordering, gross/net SIP redemption amount, pending-unit redemption handling, IPO charge/application details, opening balance, conflict policy, and Excel numeric conversion. Resolved later on 2026-11-06: gross/net SIP redemption amount (net decided), IPO `0`/`NULL` equivalence, dividend/bonus holding validation, and the `shares` master table; see the entries above. Still open: exact shared folder, same-day ordering for imported/transferred rows, pending-unit redemption handling, IPO charge/application details, opening balance, conflict policy, and Excel numeric conversion.
+**Why:** The user approved additional architecture requirements on 2026-11-06. Phase 2 remains unstarted until design finalization and explicit start approval.
