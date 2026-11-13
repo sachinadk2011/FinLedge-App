@@ -86,6 +86,22 @@ Settings:
   frontendwebapp/src/pages/Settings.jsx
   frontendwebapp/src/pages/ImportReview.jsx — staged import preview, edit, and confirmation
 
+Desktop SQLite foundation (Phase 2):
+  backend/db/connection.py — explicit-path connection factory and safety pragmas
+  backend/db/database_path.py — `FinLedge Database/finledge.db` under the shared Desktop channel root
+  backend/db/record_repository.py — allowlisted connection-scoped CRUD and summary replacement
+  backend/db/bank_repository.py, personal_finance_repository.py — core transaction repositories
+  backend/db/share_repository.py, sip_repository.py, dividend_repository.py — approved Share event tables
+  backend/db/transfer_repository.py, holdings_repository.py — transfer and derived holding persistence
+  backend/db/transactions.py — transaction boundaries and bounded lock retries
+  backend/db/metadata.py — shared timestamp and device metadata
+  backend/db/content_hash.py — canonical hashes over declared business fields
+  backend/db/row_mapping.py — exact Decimal and scaled-integer conversions
+  backend/db/migration_runner.py — checksummed forward migrations with backup gating
+  backend/db/backup.py — SQLite online snapshots with verification and manifest callback
+  backend/db/schema.py — SQLite engine guard and packaged forward migrations
+  backend/db/support_repository.py — sequence allocation, tombstones, conflicts, legacy identity
+
 App Shell:
   frontendwebapp/src/App.jsx      — Routes + Layout (top nav lives here)
   frontendwebapp/src/styles.css   — All custom CSS

@@ -12,6 +12,17 @@ backend/data/
 .env
 .finledge-dev-data/
 
+# Local financial databases and SQLite sidecars are runtime data, never source.
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
+*.sqlite3
+
 desktop/dist/
 desktop/dist-*/
 desktop/artifacts/
@@ -28,6 +39,7 @@ dist*
 .npm-cache/
 /.pytest-*/
 /.playwright-cli/
+pytest-*
 
 # OS / editor
 .DS_Store
@@ -42,6 +54,8 @@ android/
 dist/
 finledge-mobile-design-v3.html
 %TEST*
+*.sql
+!backend/db/migrations/0001_initial.sql
 
 # Keep backend and desktop test source files visible while ignoring caches/data.
 !backend/tests/

@@ -1,6 +1,6 @@
 # Schema — Unified Canonical SQLite (Desktop + Mobile)
 
-**Status:** Phase 1 design — implementation not started. Approved architectural decisions are recorded here; explicitly marked proposals remain subject to user approval.
+**Status:** Approved Desktop schema design; Desktop Phase 2 implementation in progress. Explicitly marked proposals remain subject to user approval.
 **Authority:** This file is the single source of truth for the financial data
 model. `docs/rules.md` defines behaviour; `docs/SAFETY.md` defines safety;
 `docs/device-transfer.md` defines the transfer protocol. If code and this file
@@ -1349,17 +1349,21 @@ old schema is rejected for transfer rather than silently coerced.
 
 ## 11. Database location and environment isolation
 
-One shared resolver (Python `resolve_database_path()` mirroring
-`path_utils.get_data_dir()`, exposed to Electron through the existing
-`FINLEDGE_DATA_DIR`) returns the database path. The filename is
-`finledge.db`; WAL sidecars (`finledge.db-wal`, `finledge.db-shm`) live beside
-it.
+One shared resolver (Python `resolve_database_path()` using Electron's
+`FINLEDGE_CHANNEL_DATA_ROOT`) returns the database path under
+`<channel root>/FinLedge Database/finledge.db`. In Production, the root is
+`%APPDATA%/Finledge`, matching the current EXE data root. Testing keeps its
+isolated `%APPDATA%/Finledge Testing EXE` root; Development keeps its own root.
+The `finledge.db`
+file contains the canonical tables for all desktop modules and the derived and
+supporting tables. WAL sidecars (`finledge.db-wal`, `finledge.db-shm`) live beside
+it. Backups remain in the separate configured backup root.
 
 | Environment | Data folder | Database |
 |---|---|---|
-| Development | Isolated development user-data root (proposed) | finledge.db |
-| Testing EXE + AppX | One shared per-user root (proposed) | finledge.db |
-| Production EXE + AppX | One shared per-user root (proposed) | finledge.db |
+| Development | `.finledge-dev-data` | `FinLedge Database/finledge.db` |
+| Testing EXE + AppX | `%APPDATA%/Finledge Testing EXE` | `FinLedge Database/finledge.db` |
+| Production EXE + AppX | `%APPDATA%/Finledge` | `FinLedge Database/finledge.db` |
 | Mobile development | App Directory.Data → FinLedgeDev/database | finledge_mobile_dev.db |
 | Mobile production | App Directory.Data → FinLedge/database | finledge_mobile.db |
 Rules:
@@ -1368,7 +1372,7 @@ Rules:
   path. Electron already restricts legacy roots per channel
   (`getOtherChannelProtectedRoots`); the SQLite resolver inherits the same
   restriction.
-- Within Testing and within Production, EXE and AppX use one shared physical database. Development has its own database. The three environments remain isolated. The shared root must be outside AppX package storage and AppData virtualization; its exact per-user folder is PROPOSED — AWAITING USER APPROVAL. See §11.1.
+- User direction (2026-11-13): the current Production release is EXE-only and stores its data under `%APPDATA%/Finledge`. Use that root for the Production database under `FinLedge Database/`; a future paired AppX build must use the same root instead of package-private storage. Testing uses the separate `%APPDATA%/Finledge Testing EXE` channel root and Development remains isolated. Runtime permissions and future EXE/AppX physical-path sharing require verification. Migration uses the current EXE data; package-private AppX data is only an optional legacy/test source if found.
 - Backups live outside the live database folder, under
   `FINLEDGE_BACKUP_DIR` (`<shared sync dir>/Backups`), with migration snapshots
   under `Backups/migration/<timestamp>/` and safety copies under
@@ -1380,7 +1384,7 @@ Rules:
 
 ### 11.1 Shared package path and migration gate
 
-The shared-root policy is PROPOSED — AWAITING USER APPROVAL. Select one writable per-user root for Development, one for Testing EXE/AppX, and one for Production EXE/AppX. The EXE/AppX root must be outside the package and any AppData path Windows virtualizes. The Phase 2 gate must prove both packages open the same physical file, see each other's writes, survive either package's uninstall, and pass antivirus/App Certification Kit checks. If AppData redirection occurs, move the shared root to the approved non-redirected location and keep the old EXE folder as a migration source only.
+The user selected `%APPDATA%/Finledge`, the current EXE data root, as Production's database root. A future AppX build must use this same root. The current Production release is EXE-only; its workbook files are the current migration source. Package-private AppX data is considered only if a legacy or test copy is actually found. Testing uses `%APPDATA%/Finledge Testing EXE`; Development remains isolated. The shared root must be outside the package and writable by the full-trust AppX process. The Phase 2 gate must prove both packages open the same physical file, see each other's writes, survive either package's uninstall, and pass antivirus/App Certification Kit checks. If AppX cannot access the selected path, stop before creating the database and report the resolved paths.
 
 Migration identifies the old workbook folder, creates and verifies a backup in that same folder tree first, then creates SQLite and imports from copies. AppX-only first run uses the same resolver and creates the same database/backup structure. Existing data is never deleted.
 

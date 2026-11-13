@@ -1,6 +1,6 @@
 # Device Transfer — Architecture and Protocol
 
-**Status:** Phase 1 design finalization — implementation not started.
+**Status:** Approved Desktop design; device-transfer implementation remains a later Phase 2 item.
 **Scope:** Desktop implementation in Phase 2 behind a build-time feature flag.
 Mobile integration follows once Mobile adopts the canonical schema.
 **Authority:** This file owns transfer architecture, protocol, transport,

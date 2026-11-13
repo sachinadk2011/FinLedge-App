@@ -102,7 +102,8 @@ happened.
 
 # Part 2 — SQLite, Migration and Device-Transfer Safety
 
-**Status:** Phase 1 design. Not implemented yet.
+**Status:** Phase 1 design approved; Desktop Phase 2 implementation is in progress.
+This does not authorize changes to Mobile code or data.
 This part extends Part 1; it never weakens it. Where the two overlap, the
 stricter rule applies. Data model: `docs/schema.md`. Behaviour:
 `docs/rules.md`. Transfer: `docs/device-transfer.md`.
@@ -292,11 +293,11 @@ or backups.
 | Environment | Database root | Backup root |
 |---|---|---|
 | Development | Development-only user-data root | Development Backups |
-| Testing EXE + AppX | One shared per-user root (PROPOSED location) | Testing Backups |
-| Production EXE + AppX | One shared per-user root (PROPOSED location) | Production Backups |
+| Testing EXE + AppX | `%APPDATA%/Finledge Testing EXE` | Testing Backups |
+| Production EXE + AppX | `%APPDATA%/Finledge` | Production Backups |
 Hard rules:
 
-The shared root is PROPOSED — AWAITING USER APPROVAL. It must be a writable per-user location outside AppX package-private storage and AppData virtualization. Verify both packages open the same physical file, cross-visible writes, survival after either package uninstall, and antivirus/App Certification Kit acceptance. If AppData redirection occurs, keep the old EXE folder as migration source only.
+User-approved database roots: Production `%APPDATA%/Finledge` (the current EXE data root) and Testing `%APPDATA%/Finledge Testing EXE`; Development remains isolated. The current Production release is EXE-only. A future AppX build must use the same selected channel root as its paired EXE instead of package-private storage for SQLite. Verify AppX write access, same physical file, cross-visible writes, survival after either package uninstall, and antivirus/App Certification Kit acceptance. If AppX cannot access the path, stop before creating the database and report the resolved paths. Treat package-private AppX workbooks as a migration source only if a legacy/test copy is found.
 
 Migration identifies old workbooks, creates and verifies a backup in that same source-folder tree first, then creates SQLite and imports from copies. AppX-only first run uses the same resolver and folder structure. Store schema_version and min_app_version; older apps refuse writes to newer schemas and never downgrade.
 - A testing process may not open, migrate, back up, restore, or delete a

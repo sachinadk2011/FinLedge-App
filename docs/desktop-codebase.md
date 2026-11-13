@@ -33,6 +33,28 @@ backend/
 ├── main.py
 ├── engine_main.py
 ├── models.py
+├── db/
+│   ├── __init__.py
+│   ├── connection.py
+│   ├── database_path.py
+│   ├── transactions.py
+│   ├── metadata.py
+│   ├── content_hash.py
+│   ├── row_mapping.py
+│   ├── migration_runner.py
+│   ├── backup.py
+│   ├── schema.py
+│   ├── support_repository.py
+│   ├── record_repository.py
+│   ├── bank_repository.py
+│   ├── personal_finance_repository.py
+│   ├── share_repository.py
+│   ├── sip_repository.py
+│   ├── dividend_repository.py
+│   ├── transfer_repository.py
+│   ├── holdings_repository.py
+│   └── migrations/
+│       └── 0001_initial.sql
 ├── routes/
 │   ├── __init__.py
 │   ├── bank.py
@@ -73,6 +95,7 @@ backend/
 └── tests/
     ├── __init__.py
     ├── conftest.py
+    ├── test_db_foundation.py
     ├── test_auto_backups.py
     ├── test_phase2_personal_finance.py
     ├── test_bank.py
@@ -93,6 +116,20 @@ backend/
 | `engine_main.py` | Prepares the client-specific working directory, merges initial shared workbooks, runs legacy schema migration, initializes missing files, refreshes the safety copy, and reports startup before accepting API requests. Root workbook cleanup is deferred until verified backfill and shared sync finish. Retains `--prepare-data` for tests and watches its Electron owner. |
 | `__init__.py` | Python package marker for backend imports. |
 | `models.py` | Request validation models and enums shared across API modules. |
+| `db/connection.py` | Explicit-path SQLite connection factory; configures foreign keys, WAL, durability, integrity checks, and newer-schema read-only protection. |
+| `db/database_path.py` | Resolves `FinLedge Database/finledge.db` under Electron's shared `FINLEDGE_CHANNEL_DATA_ROOT`; does not create or open the database. |
+| `db/transactions.py` | Short SQLite transactions with bounded busy/locked retries and rollback. |
+| `db/metadata.py` | Shared UTC timestamp and Desktop device-stamping helpers. |
+| `db/content_hash.py` | Canonical SHA-256 hashes over explicitly declared authoritative fields. |
+| `db/row_mapping.py` | Exact Decimal-to-scaled-integer conversion; rejects unsupported precision and binary floats. |
+| `db/migration_runner.py` | Forward-only checksummed migrations; requires a caller-provided verified-backup callback. |
+| `db/backup.py` | SQLite online backup with integrity, schema-version, foreign-key, and row-count verification before manifest recording. |
+| `db/schema.py` | SQLite 3.37+ engine guard and entry point for checksummed schema migrations. |
+| `db/support_repository.py` | Connection-scoped sequence, tombstone, conflict, and legacy-identity operations. |
+| `db/record_repository.py` | Fixed-table allowlisted CRUD; writes require caller-owned transactions; summary writes require complete rebuild rows. |
+| `db/bank_repository.py`, `db/personal_finance_repository.py` | Bank and Personal Finance canonical event persistence. |
+| `db/share_repository.py`, `db/sip_repository.py`, `db/dividend_repository.py` | The approved separate Share, SIP, and dividend event repositories. |
+| `db/transfer_repository.py`, `db/holdings_repository.py` | Transfer persistence and derived holdings summary access. |
 | `routes/__init__.py`, `services/__init__.py` | Python package markers for route and service imports. |
 | `routes/bank.py` | Bank Services HTTP endpoints. |
 | `routes/meta.py` | Category metadata endpoint backed directly by request-model enums for renderer choices. |

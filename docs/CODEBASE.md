@@ -12,6 +12,27 @@ tracker financial/
 │  ├─ main.py                        — FastAPI app, router registration, static mount
 │  ├─ engine_main.py                 — Uvicorn entrypoint
 │  ├─ models.py                      — All Pydantic models + Enums (shared across modules)
+│  ├─ db/                            — Desktop SQLite connection and transaction primitives
+│  │  ├─ connection.py               — Explicit-path connection factory and SQLite safety pragmas
+│  │  ├─ database_path.py            — `FinLedge Database/finledge.db` under shared `FINLEDGE_CHANNEL_DATA_ROOT`
+│  │  ├─ transactions.py              — Bounded lock retry and transaction context manager
+│  │  ├─ metadata.py                  — Shared UTC timestamp and device stamping
+│  │  ├─ content_hash.py              — Canonical SHA-256 business-payload hashing
+│  │  ├─ row_mapping.py               — Exact Decimal ↔ scaled-integer mapping
+│  │  ├─ migration_runner.py          — Checksummed forward migrations with backup gating
+│  │  ├─ backup.py                    — Verified SQLite online snapshots
+│  │  ├─ schema.py                    — SQLite engine guard and migration entry point
+│  │  ├─ support_repository.py        — Sequence allocation and shared support records
+│  │  ├─ record_repository.py         — Allowlisted connection-scoped CRUD and summary replacement
+│  │  ├─ bank_repository.py           — Bank transaction persistence
+│  │  ├─ personal_finance_repository.py — Personal Finance persistence
+│  │  ├─ share_repository.py          — Share master and share transactions
+│  │  ├─ sip_repository.py            — SIP transactions and plan summaries
+│  │  ├─ dividend_repository.py       — Dividend and bonus events
+│  │  ├─ transfer_repository.py       — Bank/Cash transfer persistence
+│  │  ├─ holdings_repository.py       — Derived share holdings
+│  │  └─ migrations/
+│  │     └─ 0001_initial.sql          — Initial Desktop schema migration
 │  ├─ routes/
 │  │  ├─ bank.py
 │  │  ├─ share.py
@@ -25,7 +46,9 @@ tracker financial/
 │  │  ├─ personal_finance_service.py
 │  │  ├─ data_migration_service.py
 │  │  └─ path_utils.py              — get_data_dir() resolution
-│  └─ data/                          — legacy test files (bank.xlsx, share.xlsx)
+│  ├─ data/                          — legacy test files (bank.xlsx, share.xlsx)
+│  └─ tests/
+│     └─ test_db_foundation.py       — isolated SQLite infrastructure tests
 │
 ├─ frontendwebapp/
 │  ├─ src/
@@ -115,6 +138,11 @@ tracker financial/
 ## 3. Observed Conventions
 
 ### Backend
+
+The new `backend/db/` package contains Desktop SQLite infrastructure. The
+connection factory requires an explicit database path and does not create a
+missing database unless the caller opts in. Existing Excel-backed services
+remain active until their Phase 2 migration and parity checks are complete.
 
 | Pattern | Detail |
 |---|---|

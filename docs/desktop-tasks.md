@@ -1406,6 +1406,19 @@ Ordering: `share_transactions` and `dividend_events` share one `sequence_no` cou
 
 Master identity (added 2026-11-06): `shares` (`docs/schema.md` §4.3.3) holds one canonical name per share. `share_transactions` and `dividend_events` reference it by `share_id` with `ON DELETE RESTRICT ON UPDATE RESTRICT`; the displayed name comes from a join. SIP keeps its own `investment_name`. A `sip_plans` table (§4.3.4) is PROPOSED — AWAITING USER APPROVAL.
 
+#### Share Portfolio — current approved event model (reaffirmed 2026-11-13)
+
+The user confirmed that investment events are split into two canonical tables:
+`share_transactions` stores IPO application/allotment and secondary buy/sell events;
+`sip_transactions` stores SIP installments and full redemptions. The separate third
+canonical event table, `dividend_events`, stores cash dividends and bonus shares.
+`share_transactions` and `dividend_events` share one sequence allocator because both
+affect share replay; `sip_transactions` has a separate sequence because SIP does not
+affect share holdings. `share_holdings` and `sip_plan_summaries` are approved,
+rebuildable summaries, not canonical financial sources. Each SIP plan has its own
+separately generated UUID paired with its SIP name; every SIP event references it.
+Mobile remains unchanged.
+
 #### Holdings summaries — derived and rebuildable
 
 share_holdings stores the derived current security position and performance values. sip_plan_summaries stores derived per-plan principal, units, pending count, redemption result, and plan status. Neither is a canonical transaction table. Both are rebuilt from canonical events, calculation-versioned, and updated atomically with changed source events.
@@ -1600,7 +1613,7 @@ Additional decisions resolved during Phase 1 (not in the original list):
 |---|---|---|
 | 8 | One schema or two | **One approved target logical schema** for Desktop and future Mobile adoption. This migration changes Desktop only; Mobile's current implementation remains in place until a separate approved migration (schema §1, §10). |
 | 9 | Ordering column | **`sequence_no INTEGER NOT NULL`** per transaction table, preserving workbook/insertion order and same-date ordering. Assigned `1..N` in workbook order during migration; never renumbered by delete. |
-| 10 | Environment databases | One database per environment: Development; Testing shared by EXE/AppX; Production shared by EXE/AppX. Shared per-user folder is still proposed (schema §11, SAFETY §12). |
+| 10 | Environment databases | One database per environment: Development; Testing shared by EXE/AppX at `%APPDATA%/Finledge Testing EXE`; Production shared by EXE/AppX at `%APPDATA%/Finledge` (schema §11, SAFETY §12). |
 | 11 | Unknown categories | **Stage for review as `unsupported`/`invalid`; never coerce or silently discard** (rules §10.4). |
 | 12 | Migration path for legacy IDs | **`legacy_identity_map` table** replaces `row-identity-map.json`, preserving deterministic UUIDs across repeated legacy imports (schema §4.13, rules §1.2). |
 | 13 | Holdings cache | **`share_holdings` is derived**, fully rebuildable, and never written without a transaction change. Incremental + full-rebuild parity is a test contract (rules §9, §18). |
@@ -1703,8 +1716,8 @@ Exit criteria:
 ### Remaining work
 
 - None inside Phase 1.
-- Phase 2 is **NOT STARTED** and requires explicit approval before any task
-  begins.
+- Phase 2 start approval was subsequently given on 2026-11-13 for Desktop
+  implementation only; see the Phase 2 progress record below.
 - The unresolved questions in `docs/rules.md` §21 and `docs/device-transfer.md` §17 stay
   open and are carried into Phase 2 as recorded decisions, not guesses.
 
@@ -1738,17 +1751,18 @@ workbook.
 ### Dependencies
 
 - Phase 0 audit report (consumed).
-- User approval of the design before Phase 2 starts — **given for the design; explicit
-  Phase 2 start approval still required**.
+- User approval of the design before Phase 2 starts — approved for Desktop; explicit
+  Phase 2 start approval received on 2026-11-13.
+- Copies of real workbooks available for parity testing (never the live originals).
 
 ---
 
 ## Phase 2 — SQLite Implementation
 
-**Status:** NOT STARTED
+**Status:** IN PROGRESS — Desktop database foundation and repository layer started 2026-11-13
 
 **Entry condition:** Phase 1 specification approved **and** the user explicitly says to
-start Phase 2. Do not begin any task below before that instruction.
+start Phase 2. This approval was given on 2026-11-13 for Desktop only.
 
 **Objective:** Implement the approved Phase 1 architecture inside the existing
 application without breaking current behaviour, behind the existing Excel path until
@@ -1760,32 +1774,51 @@ when implemented, tested, and its evidence recorded.
 
 ### 2.1 Foundation and infrastructure
 
-- [ ] Add the single database module (`backend/db/connection.py`): path resolution,
-      `sqlite3.connect`, `row_factory`, WAL, `foreign_keys=ON`,
-      `synchronous=FULL`, `busy_timeout=5000`, bounded `SQLITE_BUSY` retry.
-- [ ] Add `backend/db/schema.py` and `backend/db/migrations/0001_initial.sql` exactly
-      matching `docs/schema.md` §4; apply in one transaction per migration.
-- [ ] Implement `PRAGMA user_version` read/write plus `schema_migrations` audit rows.
-- [ ] Startup self-check reads `PRAGMA foreign_keys` and refuses writes if it is not `ON`;
-      the pragma is set once in the shared connection factory before any transaction.
-- [ ] Migration verification runs `PRAGMA foreign_key_check` and requires zero rows
-      before the migration is marked complete.
-- [ ] Open a newer-than-supported database read-only with a clear error; never downgrade.
-- [ ] Add repository modules per domain: `bank_repository.py`,
-      `personal_finance_repository.py`, `share_repository.py`,
-      `dividend_repository.py`, `transfer_repository.py`, `holdings_repository.py`,
-      `support_repository.py` (tombstones, conflicts, identity map, migrations).
-- [ ] Repositories accept an existing connection so services can compose one
+- [x] Add `backend/db/connection.py` with explicit-path `sqlite3.connect`, `row_factory`,
+      WAL, `foreign_keys=ON`, `synchronous=FULL`, `busy_timeout=5000`, and integrity check.
+- [x] Add `backend/db/database_path.py` to build
+      `<channel root>/FinLedge Database/finledge.db` under an explicitly supplied root
+      without creating or opening anything.
+- [x] Resolve the application path from Electron's `FINLEDGE_CHANNEL_DATA_ROOT`;
+      EXE and AppX use the same channel root while their old workbook folders remain
+      independently discoverable migration sources. Path resolution does not create
+      directories or open the database.
+- [ ] Wire database startup and verify packaged EXE/AppX resolve the same physical
+      shared data root in each environment.
+- [x] Add `backend/db/schema.py` and `backend/db/migrations/0001_initial.sql` from
+      `docs/schema.md` §4; apply each migration atomically.
+- [x] Implement `PRAGMA user_version` plus `schema_migrations` audit rows.
+- [x] Startup connection self-check reads `PRAGMA foreign_keys` and refuses writes if
+      it is not `ON`; the pragma is set before any transaction.
+- [x] Migration verification runs `PRAGMA foreign_key_check` and requires zero rows
+      before a migration is marked complete.
+- [x] Open a newer-than-supported database read-only with a clear reason; never downgrade.
+- [x] Add connection-scoped repository modules for Bank, Personal Finance, shares,
+      SIP, dividends, transfers, derived holdings, and support metadata. Canonical
+      writes, summary rebuild writes, and deletes require the caller's transaction;
+      delete writes its tombstone with the physical delete.
+- [x] Repositories accept an existing connection so services can compose one
       transaction; repositories never open their own long-lived connection.
-- [ ] Add one shared row-mapping module for scaled-integer ↔ `Decimal` conversion; no
-      ad-hoc `float()` on the financial path.
-- [ ] Add one shared metadata/stamping helper and one shared content-hash helper; delete
-      per-module copies after grep proves no remaining call sites.
-- [ ] Startup integrity check (`PRAGMA quick_check`) plus the recovery path from
-      `docs/SAFETY.md` §10; no auto-repair of the only copy.
+- [x] Add one shared row-mapping module for scaled-integer ↔ `Decimal` conversion; no
+      `float()` conversion is used by the new database mapping.
+- [x] Add shared metadata/stamping and content-hash helpers. Per-module legacy helper
+      cleanup remains a separate follow-up after call-site review.
+- [x] Run startup integrity check (`PRAGMA quick_check`); recovery/restore wiring from
+      `docs/SAFETY.md` §10 remains outstanding. No auto-repair of the only copy.
 - [ ] Verify environment isolation: each of the three environments resolves its own
       database and backup root; EXE and AppX inside one environment resolve the same
       database, and a testing build cannot open a production path.
+
+**Progress evidence (2026-11-13):** `backend/db/` contains the explicit-path
+connection and transaction primitives, checksum migration runner, online verified
+snapshot helper, scaled `Decimal` mapping, content hashing, metadata stamping,
+support repository, and initial schema migration. Domain repositories cover the six
+canonical event tables; the two derived summary tables are writable only through
+complete rebuild replacements. The focused command
+`.\\venv\\Scripts\\python.exe -m pytest --basetemp=pytest-phase2-path-20261113 backend/tests/test_db_path.py backend/tests/test_db_foundation.py backend/tests/test_db_repositories.py`
+passed **21 tests**. Database opening/migrations, service/domain calculations, migration
+from real-workbook copies, and full parity remain outstanding. No live database or
+workbook was opened; no Mobile files were changed.
 
 ### 2.2 Canonical writes and metadata
 
@@ -1991,7 +2024,22 @@ Targets are measured, not guessed. Record actual numbers against the Phase 0 bas
 
 ### Completed work
 
-- None. Phase 2 has not started.
+- None yet. Implementation tasks remain incomplete until their required
+  verification evidence is recorded.
+
+### Work in progress
+
+- Added path-injected SQLite connection, transaction, timestamp/device metadata,
+  exact Decimal/scaled-integer mapping, canonical content hashing, and a
+  backup-gated checksummed migration runner and verified online snapshots under
+  `backend/db/`, plus a first schema migration matching the active Desktop
+  three-event-table design and connection-scoped support repository operations
+  for sequence allocation, tombstones, conflicts, and legacy identities, with
+  focused isolated tests in
+  `backend/tests/test_db_foundation.py`.
+- Temporary SQLite databases were created only under pytest-managed workspace
+  directories; no live/user data path was opened or modified.
+- No Mobile files were changed.
 
 ### Remaining work
 
@@ -1999,19 +2047,47 @@ Targets are measured, not guessed. Record actual numbers against the Phase 0 bas
 
 ### Known issues
 
+- Historical decision notes contain the superseded combined
+  `investment_transactions` table. The active schema and Phase 2 implementation
+  use `share_transactions`, `sip_transactions`, and `dividend_events`; keep those
+  sections aligned and do not implement the superseded combined table.
+- User directed Production to use `%APPDATA%\Finledge`, the existing EXE data root,
+  with AppX using the same database root instead of package-private storage.
+  Testing remains isolated at `%APPDATA%\Finledge Testing EXE`. Startup wiring and
+  physical EXE/AppX path verification remain pending.
 - Carried from Phase 0/1: the one failing backend test, Mobile FIFO divergence, and
   Production EXE / AppX path-sharing verification.
 - New Phase 2 issues are appended here with a date; nothing is silently removed.
 
 ### Verification evidence
 
-- None yet. Each task records its command and result here when it completes.
+- The focused test command
+  `.\venv\Scripts\python.exe -m pytest --basetemp=pytest-phase2-support-20261113 backend/tests/test_db_foundation.py`
+  passed (13 tests), including creation of the documented schema and support
+  repository operations in a temporary database, with verification that it contains
+  `share_transactions`,
+  `sip_transactions`, `dividend_events`, and both derived summaries. The default pytest temp location was unavailable in the
+  sandbox; the workspace-local temp root kept all generated databases isolated.
+  The full backend suite collected 182 tests, passed the auto-backup tests, then
+  stalled in `test_bank.py` after two reported cases. It was interrupted before a
+  final result; no build has been run.
 
 ### Dependencies
 
 - Phase 1 specification approved.
-- Explicit user approval to start Phase 2.
-- Copies of real workbooks available for parity testing (never the live originals).
+- Explicit user approval to start Phase 2 — received 2026-11-13 for Desktop only.
+- Mobile implementation, schema, data, and packages remain out of scope.
+
+### Docs touched
+
+- `docs/AGENTS.md`, `docs/CODEBASE.md`, and `docs/desktop-codebase.md` now map
+  the Desktop SQLite foundation package and its test file.
+- `docs/SAFETY.md`, `docs/rules.md`, and `docs/schema.md` identify Desktop Phase 2
+  as in progress; no Mobile implementation status was changed.
+- `docs/device-transfer.md` now distinguishes the approved design from its not-yet-
+  implemented Phase 2 transfer feature.
+- This file records the Phase 2 start and corrected its 2026-11-13 Share-model
+  summary to match your approved three-event-table design.
 
 ---
 
@@ -2194,6 +2270,24 @@ normal use and distribution across every environment.
 
 Append-only log. Each entry keeps the original decision visible and states what changed
 and why. Entries below were made during Phase 1 unless stated otherwise.
+
+### 2026-11-13 — Desktop SQLite folder and file layout
+
+**Original decision:** `finledge.db` path root was proposed and awaiting user approval.
+**Resolved:** Production uses `%APPDATA%/Finledge`, the current EXE data root; its
+current released product is EXE-only. A future paired AppX uses this same channel
+root instead of package-private storage. The DB file is
+`%APPDATA%/Finledge/FinLedge Database/finledge.db`. Testing uses the separate
+`%APPDATA%/Finledge Testing EXE` root, and Development remains isolated. One database
+file contains all module tables; `share_transactions`, `sip_transactions`, and
+`dividend_events` are three canonical tables inside the file, alongside the other
+module, derived-summary, and support tables. Current EXE workbooks are the production
+migration source; AppX-private workbooks are candidates only if an old test/legacy
+copy is found.
+**Why:** Desktop packages must see the same physical data store, while per-module
+tables and one transaction boundary keep linked updates atomic. Runtime resolution,
+AppX write access, and physical package path sharing still need verification before
+database startup is wired.
 
 ### 2026-11-04 — Historical status: Phase 1 completed; Phase 2 marked next but not started
 
@@ -2452,6 +2546,9 @@ Phase 1 had been marked completed in the earlier record; it is reopened for desi
 migration, and modified no workbook, no application source file and no user data.
 Phase 2 remains NOT STARTED and requires explicit approval.
 
+**Historical note added 2026-11-13:** This statement described the state before the
+user's explicit Desktop Phase 2 start approval; the current status is recorded below.
+
 ### 2026-11-06 — Phase 1 reopened for design finalization
 
 **Original status:** Phase 1 COMPLETED; Phase 2 NEXT — NOT STARTED.
@@ -2459,3 +2556,23 @@ Phase 2 remains NOT STARTED and requires explicit approval.
 **Approved:** shared EXE/AppX database within each environment; user-initiated bidirectional transfer with QR or short-code pairing and staged review; two canonical Share event tables (superseded later on 2026-11-06 — see the entry below); per-installment SIP units; full-only redemption; separately generated plan UUID with SIP name; two rebuildable derived summaries.
 **Still proposed at the time:** exact shared folder, Share replay/import ordering, gross/net SIP redemption amount, pending-unit redemption handling, IPO charge/application details, opening balance, conflict policy, and Excel numeric conversion. Resolved later on 2026-11-06: gross/net SIP redemption amount (net decided), IPO `0`/`NULL` equivalence, dividend/bonus holding validation, and the `shares` master table; see the entries above. Still open: exact shared folder, same-day ordering for imported/transferred rows, pending-unit redemption handling, IPO charge/application details, opening balance, conflict policy, and Excel numeric conversion.
 **Why:** The user approved additional architecture requirements on 2026-11-06. Phase 2 remains unstarted until design finalization and explicit start approval.
+
+### 2026-11-13 — Desktop Phase 2 started; Share model reaffirmed
+
+**Approved:** Begin Phase 2 implementation for Desktop only. Mobile code, schema,
+data, packages, and UI are out of scope. The approved Share model has three canonical
+event tables: `share_transactions`, `sip_transactions`, and `dividend_events`, plus
+the approved rebuildable `share_holdings` and `sip_plan_summaries` tables. Each SIP
+plan uses an independently generated UUID paired with its SIP name.
+
+**Implementation started:** Added Desktop SQLite connection, transaction, metadata,
+row-mapping, content-hash, verified backup, and backup-gated migration utilities,
+plus the initial schema migration and isolated tests. Only fresh pytest temporary
+databases were created. No user database or workbook was opened or changed.
+
+**Clarification:** This entry corrects the first draft of this progress note, which
+misstated the approved table split. The combined `investment_transactions`
+alternative remains superseded, as recorded in the decision history.
+
+**Still unresolved:** Previously documented business and migration choices remain
+open; no financial behavior was inferred from them.

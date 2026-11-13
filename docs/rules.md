@@ -1,6 +1,6 @@
 # Rules — Shared Business, Identity and Synchronization Rules
 
-**Status:** Phase 1 design finalization — implementation not started.
+**Status:** Approved Desktop rules; Phase 2 implementation in progress.
 This file defines behaviour. The data model is in `docs/schema.md`; safety is
 in `docs/SAFETY.md`; transfer protocol is in `docs/device-transfer.md`.
 
