@@ -1,14 +1,14 @@
 from fastapi import APIRouter, HTTPException
 
 from backend.models import BankAddRequest
-from backend.services.bank_service import (
+from backend.services.bank import (
     append_bank_record,
     delete_bank_record,
     read_bank_records,
     summarize_bank_records,
     update_bank_record,
 )
-from backend.services.excel_utils import consume_recovery_warnings
+from backend.services.common import consume_recovery_warnings
 
 router = APIRouter(prefix="/bank", tags=["bank"])
 

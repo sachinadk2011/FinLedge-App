@@ -648,7 +648,7 @@ two financial effects but is stored once. It is not a
 | `content_hash` | TEXT | no | `sha256:…` |
 
 `origin_flow` and `destination_flow` are derived from `direction` through
-`backend/services/transfer_direction_rules.json`; storing them would duplicate
+`backend/services/personal_finance/transfer_direction_rules.json`; storing them would duplicate
 state and permit contradiction.
 
 ```sql
@@ -1372,7 +1372,7 @@ Rules:
   path. Electron already restricts legacy roots per channel
   (`getOtherChannelProtectedRoots`); the SQLite resolver inherits the same
   restriction.
-- User direction (2026-11-13): the current Production release is EXE-only and stores its data under `%APPDATA%/Finledge`. Use that root for the Production database under `FinLedge Database/`; a future paired AppX build must use the same root instead of package-private storage. Testing uses the separate `%APPDATA%/Finledge Testing EXE` channel root and Development remains isolated. Runtime permissions and future EXE/AppX physical-path sharing require verification. Migration uses the current EXE data; package-private AppX data is only an optional legacy/test source if found.
+- User direction (2026-11-13, clarified 2026-11-16): the currently released product is EXE-only and stores its data under `%APPDATA%/Finledge`. Desktop development now prepares both EXE and AppX packages; the intended next distribution offers separate downloads for both after Store publication succeeds. Keep EXE available until the user later decides to retire it. Both packages use the same Production database root at `%APPDATA%/Finledge/FinLedge Database/`; Testing uses `%APPDATA%/Finledge Testing EXE` and Development remains isolated. Migration uses the current EXE data; package-private AppX test data is an optional source only if found. Packaged access and same-file verification remain to be tested.
 - Backups live outside the live database folder, under
   `FINLEDGE_BACKUP_DIR` (`<shared sync dir>/Backups`), with migration snapshots
   under `Backups/migration/<timestamp>/` and safety copies under
@@ -1384,7 +1384,7 @@ Rules:
 
 ### 11.1 Shared package path and migration gate
 
-The user selected `%APPDATA%/Finledge`, the current EXE data root, as Production's database root. A future AppX build must use this same root. The current Production release is EXE-only; its workbook files are the current migration source. Package-private AppX data is considered only if a legacy or test copy is actually found. Testing uses `%APPDATA%/Finledge Testing EXE`; Development remains isolated. The shared root must be outside the package and writable by the full-trust AppX process. The Phase 2 gate must prove both packages open the same physical file, see each other's writes, survive either package's uninstall, and pass antivirus/App Certification Kit checks. If AppX cannot access the selected path, stop before creating the database and report the resolved paths.
+The user selected `%APPDATA%/Finledge`, the current EXE data root, as Production's database root. The current released product is EXE-only; both EXE and AppX are now part of Desktop development, with separate distribution planned after Store publication succeeds. The EXE remains supported until the user later chooses otherwise. The current EXE workbook files are the Production migration source. Package-private AppX test data is considered only if a legacy/test copy is found. Testing uses `%APPDATA%/Finledge Testing EXE`; Development remains isolated. The shared root must be outside the package and writable by the full-trust AppX process. Before database creation, the Phase 2/3 gate must prove both packages can open the same physical file and see each other's writes. If AppX cannot access the selected path, stop before creating the database and report the resolved paths.
 
 Migration identifies the old workbook folder, creates and verifies a backup in that same folder tree first, then creates SQLite and imports from copies. AppX-only first run uses the same resolver and creates the same database/backup structure. Existing data is never deleted.
 
@@ -1396,7 +1396,7 @@ Migration identifies the old workbook folder, creates and verifies a backup in t
   enabling migrations; if the bundled engine is older, migration must refuse to
   run rather than silently dropping `STRICT`.
 - Migrations are forward-only numbered SQL files
-  (`backend/db/migrations/0001_initial.sql`, `0002_…`), applied in one
+  (`backend/db/core/migrations/0001_initial.sql`, `0002_…`), applied in one
   transaction each.
 - `schema_migrations` records version, checksum and timestamp for audit.
 - An older app must refuse writes to a newer schema and show a clear message; it must never downgrade or silently repair it. A newer user_version opens read-only.

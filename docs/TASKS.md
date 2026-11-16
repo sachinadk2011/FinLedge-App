@@ -14,16 +14,16 @@
 
   Current module inventory:
   - App shell: `frontendwebapp/src/App.jsx`, `frontendwebapp/src/styles.css`
-  - Bank module: `backend/routes/bank.py`, `backend/services/bank_service.py`, `frontendwebapp/src/pages/BankPage.jsx`, `frontendwebapp/src/pages/BankDashboard.jsx`, `frontendwebapp/src/components/BankForm.jsx`, `frontendwebapp/src/api/bankApi.js`
-  - Share module: `backend/routes/share.py`, `backend/services/share_service.py`, `frontendwebapp/src/pages/SharePage.jsx`, `frontendwebapp/src/pages/ShareDashboard.jsx`, `frontendwebapp/src/components/ShareForm.jsx`, `frontendwebapp/src/api/shareApi.js`
-  - Summary module: `backend/routes/summary.py`, `backend/services/summary_graph_service.py`, `frontendwebapp/src/pages/Summary.jsx`
+  - Bank module: `backend/routes/bank.py`, `backend/services/bank/bank_service.py`, `frontendwebapp/src/pages/BankPage.jsx`, `frontendwebapp/src/pages/BankDashboard.jsx`, `frontendwebapp/src/components/BankForm.jsx`, `frontendwebapp/src/api/bankApi.js`
+  - Share module: `backend/routes/share.py`, `backend/services/share/workbook_service.py`, `frontendwebapp/src/pages/SharePage.jsx`, `frontendwebapp/src/pages/ShareDashboard.jsx`, `frontendwebapp/src/components/ShareForm.jsx`, `frontendwebapp/src/api/shareApi.js`
+  - Summary module: `backend/routes/summary.py`, `backend/services/common/summary_graph_service.py`, `frontendwebapp/src/pages/Summary.jsx`
   - Settings module: `frontendwebapp/src/pages/Settings.jsx`
   - Shared models/options: `backend/models.py`, `frontendwebapp/src/constants/options.js`
 
   Current backend state:
   - FastAPI app registers bank, share, and summary routers only.
-  - Bank data is stored in `bank_transactions.xlsx` through `backend/services/bank_service.py`.
-  - Share data is stored in `share_transactions.xlsx` through `backend/services/share_service.py`.
+  - Bank data is stored in `bank_transactions.xlsx` through `backend/services/bank/bank_service.py`.
+  - Share data is stored in `share_transactions.xlsx` through `backend/services/share/workbook_service.py`.
   - No Personal Finance router/service/data file exists yet.
   - Share categories currently include IPO, SIP, buy, sell, and dividend.
   - Bank categories are still the older broad categories: income, service cost, investment cost, operation cost.
@@ -53,8 +53,8 @@
   Notes: Completed with four separated analytics sections: Bank Services summary, Share Portfolio summary, Personal Expenses summary, and Overall financial position. Financial Summary loads the Personal Expenses Combined Overview alongside the other source modules. The Overall financial position uses manual Personal Expenses movement only, so the live Bank Flow aggregation does not double-count Bank Services or Share Portfolio.
 
 - [x] 7. Data migration
-  Notes: Completed as an automatic backend-start migration in `backend/services/data_migration_service.py`, so it runs for `npm run desktop-dev` and packaged Electron releases before the API becomes ready. It copies the original Bank workbook into `backups/v1.1.0-to-v1.2.0/<timestamp>/`, writes a JSON report of every source-row decision there, builds and validates a staged workbook, then atomically activates it. Mappings include Income with `interest`/`int` → Interest Earned; Service Cost with `tax` → Interest Tax; bank/mobile + renew → Mobile Banking Charge; card + installment → Debit Card Charge; Investment Cost with MeroShare/Demat/Broker + renew → the corresponding renewal category; combined Demat + MeroShare + renew → Demat & MeroShare Renewal; unmatched legacy categories → Other Charges. The migration also upgrades Bank files to Created Timestamp and Last Updated Timestamp storage; neither timestamp is displayed in the Bank table. `npm run migrate:preview` remains available for a no-change review, and `npm run migrate:apply` remains available for an explicit - [x] 8. Settings redesign (left nav, Settings page only)
-  Notes: Completed as a Settings-only layout change with no App.jsx navigation changes. `Settings.jsx` now uses a left navigation rail and right content panel for General, Investment, Import/Export, Backup, About, How To Use, Privacy, and Version. General keeps the existing Excel file location controls and desktop `window.financialTracker` bridge calls (`getDataLocations`, `openDataLocation`); Version reads `currentVersion` via `getUpdateStatus` when available. Backup shows a disabled placeholder; About and How To Use are stub panels for Step 9. Added matching layout styles in `styles.css` (`.settings-layout`, `.settings-nav`, `.settings-content`). Follow-up completion: General now lists all four live workbooks plus the data folder, with per-file Open actions via extended desktop bridge paths (`personalFinanceBankFile`, `personalFinanceCashFile`, targets `pf-bank`/`pf-cash`) and `shell.openPath` for file rows. Investment and Backup are disabled placeholders with "future update" copy. Import/Export is live via `backend/routes/settings.py` + `backend/services/settings_service.py`: per-type import validates exact HEADERS, backs up to `backups/import/<timestamp>/`, then replaces the live file; export downloads a single workbook or all files as a zip through `frontendwebapp/src/api/settingsApi.js`, with desktop save-dialog support via `saveExportFile`. Bugfix (2026-07-25): Open button for file rows was falling back to `shell.showItemInFolder()` when `shell.openPath()` returned an error string, opening the folder instead of the file. Fixed in `desktop/main.js` `app:open-data-location` handler by removing the fallback — `shell.openPath()` is now the only call for all four file targets (bank, share, pf-bank, pf-cash). Bugfix (2026-07-25): Import/Export data-type dropdown was empty on click because `settingsApi.js` resolved the backend URL at module load time, before Electron's contextBridge had exposed `window.financialTracker`, so `getSettingsDataTypes()` always threw. Fixed by making `getApiBase()` re-evaluate `window.financialTracker.getBackendBaseUrl()` lazily on every call.
+  Notes: Completed as an automatic backend-start migration in `backend/services/common/data_migration_service.py`, so it runs for `npm run desktop-dev` and packaged Electron releases before the API becomes ready. It copies the original Bank workbook into `backups/v1.1.0-to-v1.2.0/<timestamp>/`, writes a JSON report of every source-row decision there, builds and validates a staged workbook, then atomically activates it. Mappings include Income with `interest`/`int` → Interest Earned; Service Cost with `tax` → Interest Tax; bank/mobile + renew → Mobile Banking Charge; card + installment → Debit Card Charge; Investment Cost with MeroShare/Demat/Broker + renew → the corresponding renewal category; combined Demat + MeroShare + renew → Demat & MeroShare Renewal; unmatched legacy categories → Other Charges. The migration also upgrades Bank files to Created Timestamp and Last Updated Timestamp storage; neither timestamp is displayed in the Bank table. `npm run migrate:preview` remains available for a no-change review, and `npm run migrate:apply` remains available for an explicit - [x] 8. Settings redesign (left nav, Settings page only)
+  Notes: Completed as a Settings-only layout change with no App.jsx navigation changes. `Settings.jsx` now uses a left navigation rail and right content panel for General, Investment, Import/Export, Backup, About, How To Use, Privacy, and Version. General keeps the existing Excel file location controls and desktop `window.financialTracker` bridge calls (`getDataLocations`, `openDataLocation`); Version reads `currentVersion` via `getUpdateStatus` when available. Backup shows a disabled placeholder; About and How To Use are stub panels for Step 9. Added matching layout styles in `styles.css` (`.settings-layout`, `.settings-nav`, `.settings-content`). Follow-up completion: General now lists all four live workbooks plus the data folder, with per-file Open actions via extended desktop bridge paths (`personalFinanceBankFile`, `personalFinanceCashFile`, targets `pf-bank`/`pf-cash`) and `shell.openPath` for file rows. Investment and Backup are disabled placeholders with "future update" copy. Import/Export is live via `backend/routes/settings.py` + `backend/services/settings/service.py`: per-type import validates exact HEADERS, backs up to `backups/import/<timestamp>/`, then replaces the live file; export downloads a single workbook or all files as a zip through `frontendwebapp/src/api/settingsApi.js`, with desktop save-dialog support via `saveExportFile`. Bugfix (2026-07-25): Open button for file rows was falling back to `shell.showItemInFolder()` when `shell.openPath()` returned an error string, opening the folder instead of the file. Fixed in `desktop/main.js` `app:open-data-location` handler by removing the fallback — `shell.openPath()` is now the only call for all four file targets (bank, share, pf-bank, pf-cash). Bugfix (2026-07-25): Import/Export data-type dropdown was empty on click because `settingsApi.js` resolved the backend URL at module load time, before Electron's contextBridge had exposed `window.financialTracker`, so `getSettingsDataTypes()` always threw. Fixed by making `getApiBase()` re-evaluate `window.financialTracker.getBackendBaseUrl()` lazily on every call.
 
 - [x] 9. About / How To Use content
   Notes: Completed as in-place replacement of the two Settings placeholder stubs in `Settings.jsx`. About panel now contains: FinLedge overview (offline-first, local Excel files, no cloud), per-module descriptions matching Home page card content (Bank Services = "is my bank account worth it?", Share Portfolio = investment tracking, Personal Expenses = everyday income/expenses with Bank Flow + Cash Flow + Combined Overview, Financial Summary = read-only analytics), Bank Flow live sync explanation (what syncs, what is read-only, bonus dividend exclusion), and data storage info (file names, no external transmission). Version panel reuses the existing `appVersion` from `getUpdateStatus`. How To Use panel now contains: three-step workflow pattern (enter → review → analyse), per-module entry form instructions, dashboard reading guide, Import/Export explanation (zip and per-file), and a short FAQ covering synced entry editing, upgrade migration safety, and data privacy. All content uses existing CSS classes (`.card`, `.settings-panel`, `.subtitle`, `.settings-version-row`) with no new styles or layout changes. Bugfix (2026-07-25): How To Use panel rewrote entirely to remove duplication with About. The old version repeated the module-purpose descriptions that About already contains. New content is purely task-oriented: numbered step-by-step instructions per module (Bank Services, Share Portfolio, Bank Flow, Cash Flow) with exact UI button labels as they appear in the app ("Add Bank Service Entry", "Add Share Entry", "Add Personal Expenses Entry", "View dashboard", "Recent transactions"); a dashboard reading guide with every stat card name and its meaning for all five dashboard views; a step-by-step Import/Export section with exact button labels; and a FAQ rewritten to answer "Why does a Bank Flow entry appear that I did not add?" instead of "Can I edit a synced Bank Flow entry?" (clearer framing for the expected confusion).
@@ -77,7 +77,7 @@
      How To Use card contains all instructions, dashboard reading guide, Import/Export
      guide, and FAQ in one continuous scroll — no separate boxes.
 
-  3. **Import — lenient column validation** (`backend/services/settings_service.py`,
+  3. **Import — lenient column validation** (`backend/services/settings/service.py`,
      `backend/routes/settings.py`, `frontendwebapp/src/api/settingsApi.js`, `Settings.jsx`)
      — Old app versions exported `Cumulative Total` instead of `Cumulative Amount`, had no
      `Description` column, no timestamp columns, etc. Import now:
@@ -115,7 +115,7 @@
      New CSS classes: `.settings-merge-prompt`, `.settings-merge-options`,
      `.settings-merge-option` (added to `styles.css`).
 
-  5. **Post-import category migration** (`backend/services/settings_service.py`)
+  5. **Post-import category migration** (`backend/services/settings/service.py`)
      — After all column aliasing and row remapping, every imported row's category
      and direction values are now normalised to the **current v1.2.0 valid set**
      before being written to disk. This prevents import from producing rows with
@@ -191,13 +191,13 @@
   **Bugs found and fixed during testing:**
   - Backup dir used second-resolution timestamp → collision when two imports run in same second.
     Fixed: `datetime.now().strftime("%Y%m%d-%H%M%S-%f")` + `exist_ok=True`
-    (`backend/services/settings_service.py`)
+    (`backend/services/settings/service.py`)
   - `BankCategory` enum not imported in `bank_service.py` → `BANK_SERVICE_CATEGORIES` drift risk.
     Fixed: derive from enum (`[c.value for c in BankCategory]`).
 
   **Pass B — Code deduplication refactor (backend + frontend)**
 
-  *Backend — new `backend/services/excel_utils.py` (single source of truth):*
+  *Backend — new `backend/services/common/excel_utils.py` (single source of truth):*
   - `to_float()` — previously copy-pasted verbatim in `bank_service.py`, `share_service.py`,
     `personal_finance_service.py`. All three now import from `excel_utils`.
   - `to_int()` — previously only in `share_service.py`; moved to `excel_utils` for reuse.
@@ -244,7 +244,7 @@
   - Wired `formatCurrency` from `src/utils/format.js` directly into `BankDashboard.jsx`, `ShareDashboard.jsx`, `PersonalFinanceDashboard.jsx`, and `Summary.jsx` to delegate decimal formatting and clean up local redundant implementations.
 
   **Pass D — Excel Corrupted File Recovery & Summary Resilience (2026-07-25)**
-  - Added `repair_corrupted_workbook` and `safe_load_workbook` in `backend/services/excel_utils.py`:
+  - Added `repair_corrupted_workbook` and `safe_load_workbook` in `backend/services/common/excel_utils.py`:
     • Detects 0-byte or truncated/corrupted `.xlsx` files (`zipfile.BadZipFile`, `InvalidFileException`, `OSError`).
     • Automatically backs up corrupted files to `backups/corrupted/<timestamp>/` and re-initialises a clean Workbook with standard headers.
     • Updated `_ensure_workbook_exists()` across `bank_service.py`, `share_service.py`, and `personal_finance_service.py` to use `safe_load_workbook` for automatic recovery.
@@ -300,7 +300,7 @@
 
 - [x] **Backend — Transfer data model & storage**
   - `backend/models.py` — Added `TransferDirection` enum (`bank_to_cash`, `cash_to_bank`) + `PersonalFinanceTransferRequest` Pydantic model
-  - `backend/services/personal_finance_service.py` — Added `TRANSFER_FILE_PATH`, `TRANSFER_SHEET_NAME` constants and `_ensure_transfer_workbook_exists()`. Separate Excel file `personal_finance_transfer.xlsx` (sheet: `Transfer Flow`) holds one row per transfer event.
+  - `backend/services/personal_finance/workbook_service.py` — Added `TRANSFER_FILE_PATH`, `TRANSFER_SHEET_NAME` constants and `_ensure_transfer_workbook_exists()`. Separate Excel file `personal_finance_transfer.xlsx` (sheet: `Transfer Flow`) holds one row per transfer event.
 
 - [x] **Backend — Transfer create / read**
   - `create_transfer_record()` — validates transfer amount ≤ origin side's current total income before writing (raises `ValueError` with clear message if exceeded); writes one row; returns dict with `transfer_ref = transfer:YYYY-MM-DD:xxxxxxxx`
@@ -357,7 +357,7 @@
   - Same dual change: `backend/models.py` + `options.js`
 
 - [x] **Transfer edit — Backend**
-  - `backend/services/personal_finance_service.py` — Added `update_transfer_record(transfer_id, entry_date, direction, amount, description)`: finds row by 1-based sequential ID, validates new amount against available origin income (excludes old transfer's own contribution if direction unchanged), overwrites date/direction/amount/description/last_updated_timestamp in-place in Excel
+  - `backend/services/personal_finance/workbook_service.py` — Added `update_transfer_record(transfer_id, entry_date, direction, amount, description)`: finds row by 1-based sequential ID, validates new amount against available origin income (excludes old transfer's own contribution if direction unchanged), overwrites date/direction/amount/description/last_updated_timestamp in-place in Excel
   - `backend/routes/personal_finance.py` — Added `PUT /personal-finance/transfer/{transfer_id}` endpoint
 
 - [x] **Transfer edit — Frontend**
@@ -444,3 +444,22 @@
 - **Clear backup behavior**: module clearing now snapshots the full workbook before changes and suppresses automatic-backup pruning for the entire clear operation, including any workbook-structure preparation. Existing auto and manual backups are retained by this operation.
 
 
+# Desktop backend package API audit (2026-11-16)
+
+- Completed package-facade coverage for the Desktop backend without changing
+  directories or implementation-file locations. The route package now lazily
+  exports its routers, and `backend.main` uses that API. The backend namespace
+  and test-discovery package remain intentionally without public exports, with
+  their purpose documented in their initializers.
+- Added package API tests for every facade's declared exports, caching,
+  wildcard behavior, missing-name errors, and lazy loading. Package-level
+  APIs remain compatible with Python 3.13 and Python 3.15.2.
+- **Docs touched**: `docs/CODEBASE.md`, `docs/TASKS.md`.
+- **Verification**: package contracts passed 43/43 on Python 3.15.2 and 3.13.3;
+  the focused Desktop share/SIP/transfer/SQLite/package set passed 106/106 on both.
+  The production scan found no imports into package implementation files from
+  outside their owning package. The isolated Python 3.15.2 PyInstaller sidecar
+  and Electron NSIS installer builds completed in `desktop/build/package-api-verification`;
+  `git diff --check` passed. Existing release outputs were not cleared. The full
+  suite collected 259 tests but stalled at `test_bank.py` after its first two
+  tests and was stopped; full-suite status remains incomplete.

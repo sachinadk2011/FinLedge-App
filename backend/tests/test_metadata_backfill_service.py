@@ -9,7 +9,7 @@ import pytest
 from openpyxl import Workbook, load_workbook
 
 from backend.services import bank_service
-from backend.services.data_migration_service import migrate_sync_metadata_workbook_locked
+from backend.services.common import migrate_sync_metadata_workbook_locked
 
 
 def _write_bank(path: Path, headers: list[str], rows: list[list[object]]) -> None:
@@ -36,7 +36,7 @@ def _read_bank(path: Path):
 
 
 def _migrate(path: Path, monkeypatch):
-    from backend.services.bank_service import HEADERS
+    from backend.services.bank.bank_service import HEADERS
 
     monkeypatch.setenv("FINLEDGE_SHARED_SYNC_DIR", str(path.parent / "shared-sync"))
     monkeypatch.setenv("FINLEDGE_BACKUP_DIR", str(path.parent / "backups"))
@@ -103,13 +103,13 @@ def test_independent_exe_and_appx_backfills_assign_same_ids_to_legacy_duplicates
 
 
 def test_failed_backup_keeps_original_workbook_unchanged(tmp_path, monkeypatch):
-    import backend.services.data_migration_service as migration
+    import backend.services.common.data_migration_service as migration
 
     source = tmp_path / "bank_transactions.xlsx"
     _write_bank(source, ["Date", "Category", "Amount"], [["2020-04-05", "Interest Earned", 12.5]])
     original_bytes = source.read_bytes()
     monkeypatch.setattr(migration.shutil, "copy2", lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError("backup denied")))
-    from backend.services.bank_service import HEADERS
+    from backend.services.bank.bank_service import HEADERS
 
     with pytest.raises(OSError, match="backup denied"):
         migrate_sync_metadata_workbook_locked(source, "Bank", HEADERS, "bank")
@@ -117,7 +117,7 @@ def test_failed_backup_keeps_original_workbook_unchanged(tmp_path, monkeypatch):
 
 
 def test_locked_or_unreadable_workbook_is_preserved_then_retry_upgrades_it(tmp_path, monkeypatch):
-    import backend.services.data_migration_service as migration
+    import backend.services.common.data_migration_service as migration
 
     source = tmp_path / "bank_transactions.xlsx"
     _write_bank(source, ["Date", "Category", "Amount"], [["2020-04-05", "Interest Earned", 12.5]])
@@ -130,7 +130,7 @@ def test_locked_or_unreadable_workbook_is_preserved_then_retry_upgrades_it(tmp_p
         return real_load(path, *args, **kwargs)
 
     monkeypatch.setattr(migration, "load_workbook", deny_staged_reads)
-    from backend.services.bank_service import HEADERS
+    from backend.services.bank.bank_service import HEADERS
     with pytest.raises(PermissionError, match="workbook lock"):
         migrate_sync_metadata_workbook_locked(source, "Bank", HEADERS, "bank")
     assert source.read_bytes() == original_bytes
@@ -142,7 +142,7 @@ def test_locked_or_unreadable_workbook_is_preserved_then_retry_upgrades_it(tmp_p
 
 
 def test_failed_atomic_commit_keeps_previous_workbook_and_can_resume(tmp_path, monkeypatch):
-    import backend.services.data_migration_service as migration
+    import backend.services.common.data_migration_service as migration
 
     source = tmp_path / "bank_transactions.xlsx"
     _write_bank(source, ["Date", "Category", "Amount"], [["2020-04-05", "Interest Earned", 12.5]])
@@ -155,7 +155,7 @@ def test_failed_atomic_commit_keeps_previous_workbook_and_can_resume(tmp_path, m
         return real_replace(src, dst)
 
     monkeypatch.setattr(migration.os, "replace", fail_commit)
-    from backend.services.bank_service import HEADERS
+    from backend.services.bank.bank_service import HEADERS
     with pytest.raises(PermissionError, match="replacement failure"):
         migrate_sync_metadata_workbook_locked(source, "Bank", HEADERS, "bank")
     assert source.read_bytes() == original_bytes
@@ -172,7 +172,7 @@ def test_simultaneous_user_append_and_background_backfill_keep_both_rows(tmp_pat
     monkeypatch.setattr(bank_service, "FILE_PATH", source)
     monkeypatch.setenv("FINLEDGE_SHARED_SYNC_DIR", str(tmp_path / "shared-sync"))
     monkeypatch.setenv("FINLEDGE_BACKUP_DIR", str(tmp_path / "backups"))
-    from backend.services.bank_service import HEADERS
+    from backend.services.bank.bank_service import HEADERS
 
     def edit():
         return bank_service.append_bank_record(date(2026, 1, 1), "Interest Earned", 5, "concurrent entry")

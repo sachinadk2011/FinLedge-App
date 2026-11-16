@@ -31,7 +31,7 @@ def pytest_sessionstart(session):
     tempfile.tempdir = str(temporary_root)
     _SESSION_TMP_DIR = session.config._tmp_path_factory.mktemp("finledge-test-data")
     os.environ["FINLEDGE_DATA_DIR"] = str(_SESSION_TMP_DIR)
-    import backend.services.path_utils as pu
+    import backend.services.common.path_utils as pu
     pu._resolve_mode.cache_clear()
 
 

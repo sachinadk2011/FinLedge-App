@@ -83,7 +83,61 @@ test("production EXE and AppX keep separate working folders with shared Roaming 
   assert.equal(runtimes[1].env.FINLEDGE_SAFETY_COPY_DIR, path.join(sharedBackups, "safety-copy"));
   assert.equal(runtimes[0].env.FINLEDGE_BACKUP_DIR, sharedBackups);
   assert.equal(runtimes[1].env.FINLEDGE_BACKUP_DIR, sharedBackups);
+  assert.equal(runtimes[0].env.FINLEDGE_CHANNEL_DATA_ROOT, path.join("C:/Users/test/AppData/Roaming", "Finledge"));
+  assert.equal(runtimes[1].env.FINLEDGE_CHANNEL_DATA_ROOT, path.join("C:/Users/test/AppData/Roaming", "Finledge"));
   assert.deepEqual(runtimes.map(({ env }) => env.FINLEDGE_DATA_DIR_IS_MANAGED), ["1", "1"]);
+});
+
+test("Development, Testing, and Production database roots are isolated by channel", () => {
+  const home = "C:/Users/test";
+  const appData = path.join(home, "AppData", "Roaming");
+  const runtimes = [
+    {
+      mode: "development",
+      isDevelopment: true,
+      isTestingBuild: false,
+      isAppxPackage: false,
+      projectRoot: "C:/FinLedgeDev",
+    },
+    {
+      mode: "testing",
+      isDevelopment: false,
+      isTestingBuild: true,
+      isAppxPackage: true,
+      projectRoot: "C:/FinLedgeTest",
+    },
+    {
+      mode: "production",
+      isDevelopment: false,
+      isTestingBuild: false,
+      isAppxPackage: true,
+      projectRoot: "C:/FinLedgeProd",
+    },
+  ].map((config) => {
+    const runtime = createDataDirectoryRuntime({
+      ...config,
+      app: {
+        isPackaged: !config.isDevelopment,
+        getPath: (name) => ({
+          appData,
+          documents: path.join(home, "Documents"),
+          userData: path.join(appData, "Private AppX Store"),
+          home,
+        })[name],
+      },
+      backendHost: "127.0.0.1",
+      backendPort: 8000,
+      logLine: () => {},
+    });
+    return { mode: config.mode, env: runtime.getBackendEnv() };
+  });
+
+  assert.deepEqual(runtimes.map(({ env }) => env.FINLEDGE_CHANNEL_DATA_ROOT), [
+    path.join("C:/FinLedgeDev", ".finledge-dev-data"),
+    path.join(appData, "Finledge Testing EXE"),
+    path.join(appData, "Finledge"),
+  ]);
+  assert.equal(new Set(runtimes.map(({ env }) => env.FINLEDGE_CHANNEL_DATA_ROOT)).size, 3);
 });
 
 test("AppX legacy discovery is restricted to its own production or Testing channel", () => {
@@ -195,6 +249,7 @@ test("Testing EXE and AppX keep separate workbooks and never scan production App
       assert.equal(runtime.getBackendEnv().FINLEDGE_DATA_DIR_IS_MANAGED, "1");
       assert.equal(runtime.getBackendEnv().FINLEDGE_SAFETY_COPY_DIR, path.join(appData, "Finledge Testing EXE", "FinLedge Data Shared", "Backups", "safety-copy"));
       assert.equal(runtime.getBackendEnv().FINLEDGE_BACKUP_DIR, path.join(appData, "Finledge Testing EXE", "FinLedge Data Shared", "Backups"));
+      assert.equal(runtime.getBackendEnv().FINLEDGE_CHANNEL_DATA_ROOT, path.join(appData, "Finledge Testing EXE"));
       const legacy = JSON.parse(runtime.getBackendEnv().FINLEDGE_LEGACY_DATA_DIRS);
       assert.ok(!legacy.includes(path.join(appData, "financial-tracker-desktop")));
       assert.ok(legacy.every((candidate) => !candidate.includes(productionPackageName)));

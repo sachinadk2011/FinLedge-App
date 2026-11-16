@@ -36,7 +36,7 @@ def get_bank_records(client) -> list:
 
 
 def test_dev_clear_tool_rejects_unknown_and_production_modes(monkeypatch):
-    from backend.services.dev_data_clear_service import clear_module_rows
+    from backend.services.common.dev_data_clear_service import clear_module_rows
 
     for mode in (None, "production", "unknown"):
         if mode is None:
@@ -52,8 +52,8 @@ def test_dev_clear_preserves_workbook_structure_and_other_share_rows(tmp_path, m
     from datetime import datetime, timedelta, timezone
     from openpyxl import Workbook, load_workbook
     from backend.services import share_service
-    from backend.services.dev_data_clear_service import clear_module_rows
-    from backend.services.settings_data import config as settings_config
+    from backend.services.common.dev_data_clear_service import clear_module_rows
+    from backend.services.settings.data import config as settings_config
 
     workbook_path = tmp_path / "share_transactions.xlsx"
     workbook = Workbook()
@@ -104,8 +104,8 @@ def test_reviewed_import_preserves_order_and_rejects_invalid_rows_atomically(tmp
     from openpyxl import load_workbook
     from backend.services import bank_service
     from backend.services import share_service
-    from backend.services.settings_data import config as settings_config
-    from backend.services.settings_data.workbook_import import import_reviewed_data_file
+    from backend.services.settings.data import config as settings_config
+    from backend.services.settings.data.workbook_import import import_reviewed_data_file
 
     workbook_path = tmp_path / "bank_transactions.xlsx"
     monkeypatch.setattr(bank_service, "FILE_PATH", workbook_path)

@@ -5,12 +5,12 @@ from pathlib import Path
 from openpyxl import Workbook
 from openpyxl import load_workbook
 
-from backend.services.data_directory_service import (
-    _copy_backup_history,
+from backend.services.common import (
     backup_root_workbooks_before_data_folder,
     cleanup_migrated_root_sources,
     migrate_legacy_workbooks,
 )
+from backend.services.common.data_directory_service import _copy_backup_history
 from backend.services import data_migration_service
 
 
@@ -54,8 +54,8 @@ def _write_root_workbooks(root, marker="legacy"):
 
 
 def _commit_root_migration(root, data_dir, sync_dir):
-    from backend.services.data_migration_service import run_pending_sync_metadata_backfill
-    from backend.services.shared_sync_service import synchronize_data_directories
+    from backend.services.common.data_migration_service import run_pending_sync_metadata_backfill
+    from backend.services.common.shared_sync_service import synchronize_data_directories
 
     previous = {name: os.environ.get(name) for name in ("FINLEDGE_SHARED_SYNC_DIR", "FINLEDGE_BACKUP_DIR")}
     os.environ["FINLEDGE_SHARED_SYNC_DIR"] = str(sync_dir)
@@ -209,7 +209,7 @@ def test_migration_reads_workbooks_from_nested_testing_exe_data_folder(tmp_path)
 
 def test_partial_legacy_workbooks_outside_data_folder_migrate_from_old_root_and_initialize_missing_files(tmp_path, monkeypatch):
     from backend.services import bank_service, personal_finance_service, personal_finance_transfers, share_service
-    from backend.services.workbook_initialization import WORKBOOK_NAMES, initialize_data_workbooks
+    from backend.services.common.workbook_initialization import WORKBOOK_NAMES, initialize_data_workbooks
 
     old_root = tmp_path / "AppData" / "Roaming" / "financial-tracker-desktop"
     destination = tmp_path / "AppData" / "Roaming" / "Finledge Testing EXE" / "FinLedge Data"
@@ -491,8 +491,8 @@ def test_root_cleanup_waits_for_verified_backup_and_destination_and_never_remove
 def test_root_cleanup_preserves_sources_until_shared_copy_is_validated(tmp_path, monkeypatch):
     import pytest
     from zipfile import BadZipFile
-    from backend.services.data_migration_service import run_pending_sync_metadata_backfill
-    from backend.services.shared_sync_service import synchronize_data_directories
+    from backend.services.common.data_migration_service import run_pending_sync_metadata_backfill
+    from backend.services.common.shared_sync_service import synchronize_data_directories
 
     for shared_state in ("missing", "corrupt"):
         root = tmp_path / shared_state / "Finledge Testing EXE"
@@ -649,8 +649,8 @@ def test_restart_after_crash_between_verified_backup_and_migration_completes_saf
 
 
 def test_restart_after_migration_before_cleanup_finishes_only_named_sources(tmp_path, monkeypatch):
-    from backend.services.data_migration_service import run_pending_sync_metadata_backfill
-    from backend.services.shared_sync_service import synchronize_data_directories
+    from backend.services.common.data_migration_service import run_pending_sync_metadata_backfill
+    from backend.services.common.shared_sync_service import synchronize_data_directories
 
     root = tmp_path / "root"
     data_dir = root / "FinLedge Data"
@@ -671,8 +671,8 @@ def test_restart_after_migration_before_cleanup_finishes_only_named_sources(tmp_
 
 
 def test_cleanup_crash_midway_is_resumed_without_reimporting_deleted_sources(tmp_path, monkeypatch):
-    from backend.services.data_migration_service import run_pending_sync_metadata_backfill
-    from backend.services.shared_sync_service import synchronize_data_directories
+    from backend.services.common.data_migration_service import run_pending_sync_metadata_backfill
+    from backend.services.common.shared_sync_service import synchronize_data_directories
     import pytest
 
     root = tmp_path / "root"

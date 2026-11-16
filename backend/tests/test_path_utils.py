@@ -67,7 +67,7 @@ def test_invalid_data_directory_token_fails_without_creating_a_fallback(tmp_path
 
 def test_services_and_workbook_initialization_use_one_resolved_root(tmp_path, monkeypatch):
     from backend.services import bank_service, personal_finance_service, personal_finance_transfers, share_service
-    from backend.services.workbook_initialization import WORKBOOK_NAMES, initialize_data_workbooks
+    from backend.services.common.workbook_initialization import WORKBOOK_NAMES, initialize_data_workbooks
 
     active_root = tmp_path / "active-data"
     project_root = tmp_path / "project"

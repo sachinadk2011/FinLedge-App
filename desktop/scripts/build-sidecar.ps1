@@ -3,7 +3,7 @@ $ErrorActionPreference = "Stop"
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\\..")).Path
 $pythonExe = Join-Path $repoRoot "venv\\Scripts\\python.exe"
 $entryScript = Join-Path $repoRoot "backend\\engine_main.py"
-$transferDirectionRules = Join-Path $repoRoot "backend\\services\\transfer_direction_rules.json"
+$transferDirectionRules = Join-Path $repoRoot "backend\\services\\personal_finance\\transfer_direction_rules.json"
 $distDir = Join-Path $repoRoot "desktop\\build\\sidecar"
 $workDir = Join-Path $repoRoot "desktop\\build\\pyinstaller-work"
 $specDir = Join-Path $repoRoot "desktop\\build\\pyinstaller-spec"
@@ -48,7 +48,7 @@ if ($LASTEXITCODE -ne 0) {
     --specpath $specDir `
     --version-file $versionInfoPath `
     --paths $repoRoot `
-    --add-data "$transferDirectionRules;backend/services" `
+    --add-data "$transferDirectionRules;backend/services/personal_finance" `
     $entryScript
 
 if ($LASTEXITCODE -ne 0) {

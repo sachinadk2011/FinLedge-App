@@ -12,13 +12,13 @@ from datetime import date
 from decimal import Decimal
 from openpyxl import load_workbook
 
-from backend.services.bank_service import append_bank_record, read_bank_records, FILE_PATH as BANK_FILE
-from backend.services.share_service import append_share_record, read_share_records, FILE_PATH as SHARE_FILE
-from backend.services.personal_finance_service import (
+from backend.services.bank import append_bank_record, read_bank_records, FILE_PATH as BANK_FILE
+from backend.services.share import append_share_record, read_share_records, FILE_PATH as SHARE_FILE
+from backend.services.personal_finance import (
     append_personal_finance_record,
     read_personal_finance_records,
 )
-from backend.services.excel_utils import safe_load_workbook, find_most_recent_valid_backup
+from backend.services.common import safe_load_workbook, find_most_recent_valid_backup
 
 
 def test_concurrent_bank_reads_and_writes(isolated_data_dir):

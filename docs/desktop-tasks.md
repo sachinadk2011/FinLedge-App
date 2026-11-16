@@ -35,7 +35,7 @@ install testing on their machine.
 
 ## Phase 1 — Backup before every write
 
-- [x] 1.1 One shared helper in `backend/services/excel_utils.py`:
+- [x] 1.1 One shared helper in `backend/services/common/excel_utils.py`:
   `snapshot_before_write(file_path)` copies the live workbook to
   `backups/auto/<file-stem>/<timestamp>.xlsx` before any add/update/delete save.
 - [x] 1.2 Retention: all snapshots from last 24 h, then one per day for 30 days, then one
@@ -175,7 +175,7 @@ AGENTS.md §0.5: ambiguous = narrower action. PLAN.md Hard Constraints still app
 - **Data model:** Production EXE and AppX keep using `Documents\\FinLedge\\FinLedge Data`
   outside their install folders. The cross-build lock remains necessary while both
   builds use the same Excel files.
-- **Docs touched:** `backend/services/data_directory_service.py`,
+- **Docs touched:** `backend/services/common/data_directory_service.py`,
   `backend/tests/test_data_directory_service.py`, `.gitignore`,
   `backend/tests/test_settings.py`,
   `desktop/scripts/build-sidecar.ps1`, `desktop/package.json`,
@@ -292,7 +292,7 @@ AGENTS.md §0.5: ambiguous = narrower action. PLAN.md Hard Constraints still app
 
 - **What changed:** Reduced `desktop/main.js` from a monolithic file to an Electron composition root. Moved runtime configuration, data-directory lifecycle, child-process management, icon fallback generation, window creation, update-policy behavior, and data/update IPC handlers into focused desktop modules. The behavior is composed through small service factories and IPC registration functions.
 - **Test ignore policy:** Restored the repository's broad `tests/` ignore behavior by removing the `!` exceptions for backend and desktop test directories. Existing local test files were left untouched and remain ignored, consistent with the user's policy.
-- **Other files:** Split Personal Expenses transfer workbook operations and row shaping into `backend/services/personal_finance_transfers.py`, while preserving route-facing functions. Moved pure Share Portfolio totals into `backend/services/share_summary.py`; FIFO lot logic already lives in `share_lot_calculations.py`. The remaining larger share service stays cohesive around its single workbook and mutation lock. Shared renderer/mobile files were not refactored.
+- **Other files:** Split Personal Expenses transfer workbook operations and row shaping into `backend/services/personal_finance/transfers.py`, while preserving route-facing functions. Moved pure Share Portfolio totals into `backend/services/share/summary.py`; FIFO lot logic already lives in `share_lot_calculations.py`. The remaining larger share service stays cohesive around its single workbook and mutation lock. Shared renderer/mobile files were not refactored.
 - **Verification:** JavaScript syntax and JSON configuration checks passed. Full application and test-suite execution was not performed.
 - **Docs touched:** `docs/desktop-tasks.md`, `docs/desktop-codebase.md`.
 
@@ -387,7 +387,7 @@ AGENTS.md §0.5: ambiguous = narrower action. PLAN.md Hard Constraints still app
   an update succeeds, its action may return as “Reinstall”; the AppX package cannot
   use the custom directory and shortcut wizard provided by the NSIS `.exe`. AppX
   package files live in Windows-managed storage; FinLedge's data folder is separate.
-- **Docs touched:** `backend/services/workbook_initialization.py`,
+- **Docs touched:** `backend/services/common/workbook_initialization.py`,
   `backend/engine_main.py`, `docs/desktop-codebase.md`, `docs/desktop-tasks.md`,
   `docs/desktop-appx-testing.md`.
 
@@ -1325,7 +1325,7 @@ and must not be described as having fixed them.
 5. One backend test fails on the current tree and reproduces in isolation:
    `backend/tests/test_metadata_backfill_service.py::test_simultaneous_user_append_and_background_backfill_keep_both_rows`
    (`ValueError: Amount must be a valid currency value.` raised at
-   `backend/services/bank_service.py:43`, where the cell holds `'legacy'`).
+   `backend/services/bank/bank_service.py:43`, where the cell holds `'legacy'`).
 6. Production EXE / Production AppX physical path sharing under MSIX virtualization is
    **NOT VERIFIED**.
 7. `mobile/src` is absent from this checkout; mobile SQLite evidence was read from
@@ -1529,8 +1529,8 @@ Current evidence, verified in the code:
 
 | Module | Helper | Precision |
 |---|---|---|
-| Bank | `current_timestamp_us()` at `backend/services/excel_utils.py:281` | microseconds |
-| Share | `current_timestamp()` at `backend/services/excel_utils.py:276` | seconds |
+| Bank | `current_timestamp_us()` at `backend/services/common/excel_utils.py:281` | microseconds |
+| Share | `current_timestamp()` at `backend/services/common/excel_utils.py:276` | seconds |
 | Personal Finance (both flows) | `current_timestamp()` | seconds |
 | Transfers | `current_timestamp()` | seconds |
 
@@ -1556,13 +1556,13 @@ working after migration.
 
 | Dependency | Location | What breaks if dropped or re-typed |
 |---|---|---|
-| Merge winner ranking `(last_updated_timestamp, updated_device, content_hash)` | `backend/services/workbook_merge.py:369-372` | Divergent rows would resolve non-deterministically instead of newest timestamp, then device, then hash |
-| Tombstone wins only when `deleted_timestamp` is newer than the winner's timestamp | `backend/services/workbook_merge.py:389-395` | A deleted row could resurrect on the next sync |
-| Legacy identity seed includes the normalised `Created Timestamp` | `backend/services/workbook_merge.py:202-209` | Re-importing a workbook would mint new Row IDs and duplicate rows |
-| Missing-metadata backfill fills all three fields | `backend/services/workbook_merge.py:219-242` | Older workbooks would fail validation and lose audit attribution |
-| Conflict record stores the losing device | `backend/services/workbook_merge.py:376-382` | Conflict history would lose attribution |
-| Integrity checks require Row ID, Content Hash, and all three metadata columns | `backend/services/data_directory_service.py:41,746`; `backend/services/data_migration_service.py:411` | Data-folder moves and migrations would fail pre-flight validation |
-| Sync journal stores `device` | `backend/services/shared_sync_service.py:246-257` | Journal/state parity checks would lose meaning |
+| Merge winner ranking `(last_updated_timestamp, updated_device, content_hash)` | `backend/services/common/workbook_merge.py:369-372` | Divergent rows would resolve non-deterministically instead of newest timestamp, then device, then hash |
+| Tombstone wins only when `deleted_timestamp` is newer than the winner's timestamp | `backend/services/common/workbook_merge.py:389-395` | A deleted row could resurrect on the next sync |
+| Legacy identity seed includes the normalised `Created Timestamp` | `backend/services/common/workbook_merge.py:202-209` | Re-importing a workbook would mint new Row IDs and duplicate rows |
+| Missing-metadata backfill fills all three fields | `backend/services/common/workbook_merge.py:219-242` | Older workbooks would fail validation and lose audit attribution |
+| Conflict record stores the losing device | `backend/services/common/workbook_merge.py:376-382` | Conflict history would lose attribution |
+| Integrity checks require Row ID, Content Hash, and all three metadata columns | `backend/services/common/data_directory_service.py:41,746`; `backend/services/common/data_migration_service.py:411` | Data-folder moves and migrations would fail pre-flight validation |
+| Sync journal stores `device` | `backend/services/common/shared_sync_service.py:246-257` | Journal/state parity checks would lose meaning |
 | Per-module stamping on create and edit | `bank_service.py:57,200`; `share_service.py:96,399,465`; `personal_finance_service.py:174,402`; `personal_finance_transfers.py:92,330` | Existing API responses would change shape |
 
 Phase 1 must therefore specify the SQLite equivalents of all of these rules:
@@ -1774,18 +1774,23 @@ when implemented, tested, and its evidence recorded.
 
 ### 2.1 Foundation and infrastructure
 
-- [x] Add `backend/db/connection.py` with explicit-path `sqlite3.connect`, `row_factory`,
+- [x] Add `backend/db/core/connection.py` with explicit-path `sqlite3.connect`, `row_factory`,
       WAL, `foreign_keys=ON`, `synchronous=FULL`, `busy_timeout=5000`, and integrity check.
-- [x] Add `backend/db/database_path.py` to build
+- [x] Add `backend/db/core/database_path.py` to build
       `<channel root>/FinLedge Database/finledge.db` under an explicitly supplied root
       without creating or opening anything.
 - [x] Resolve the application path from Electron's `FINLEDGE_CHANNEL_DATA_ROOT`;
-      EXE and AppX use the same channel root while their old workbook folders remain
-      independently discoverable migration sources. Path resolution does not create
+      EXE and AppX use the same channel root while workbook paths remain separately
+      selectable for legacy operation/migration. Path resolution does not create
       directories or open the database.
-- [ ] Wire database startup and verify packaged EXE/AppX resolve the same physical
-      shared data root in each environment.
-- [x] Add `backend/db/schema.py` and `backend/db/migrations/0001_initial.sql` from
+- [x] Verify Development, Testing, and Production resolve three isolated channel
+      roots; EXE and AppX resolve the same root within Testing and Production.
+- [ ] Verify the AppX package can write the selected shared root and both packages
+      see the same physical database. Run this before creating a Production database.
+- [ ] Initialize SQLite during the staged workbook migration in Phase 3, not as an
+      empty database at ordinary startup. Until import/parity completes, Excel remains
+      the active storage path.
+- [x] Add `backend/db/core/schema.py` and `backend/db/core/migrations/0001_initial.sql` from
       `docs/schema.md` §4; apply each migration atomically.
 - [x] Implement `PRAGMA user_version` plus `schema_migrations` audit rows.
 - [x] Startup connection self-check reads `PRAGMA foreign_keys` and refuses writes if
@@ -1803,11 +1808,11 @@ when implemented, tested, and its evidence recorded.
       `float()` conversion is used by the new database mapping.
 - [x] Add shared metadata/stamping and content-hash helpers. Per-module legacy helper
       cleanup remains a separate follow-up after call-site review.
-- [x] Run startup integrity check (`PRAGMA quick_check`); recovery/restore wiring from
-      `docs/SAFETY.md` §10 remains outstanding. No auto-repair of the only copy.
-- [ ] Verify environment isolation: each of the three environments resolves its own
-      database and backup root; EXE and AppX inside one environment resolve the same
-      database, and a testing build cannot open a production path.
+- [x] Run connection integrity check (`PRAGMA quick_check`).
+- [x] Unit-test channel isolation: Development, Testing, and Production resolve
+      separate roots; EXE and AppX resolve the same root within Testing/Production.
+- [ ] Verify shared-root access and physical same-file behavior in packaged EXE/AppX;
+      prove Testing cannot access Production paths before database creation.
 
 **Progress evidence (2026-11-13):** `backend/db/` contains the explicit-path
 connection and transaction primitives, checksum migration runner, online verified
@@ -1816,85 +1821,236 @@ support repository, and initial schema migration. Domain repositories cover the 
 canonical event tables; the two derived summary tables are writable only through
 complete rebuild replacements. The focused command
 `.\\venv\\Scripts\\python.exe -m pytest --basetemp=pytest-phase2-path-20261113 backend/tests/test_db_path.py backend/tests/test_db_foundation.py backend/tests/test_db_repositories.py`
-passed **21 tests**. Database opening/migrations, service/domain calculations, migration
+passed **21 Python tests**. Desktop runtime root isolation is verified by
+`node --test desktop/tests/dataDirectory.test.cjs`, **27 passed**. Database creation
+and migration startup are deferred until the staged workbook migration in Phase 3;
+this avoids opening an empty database while Excel is the active source. Service/domain calculations, migration
 from real-workbook copies, and full parity remain outstanding. No live database or
 workbook was opened; no Mobile files were changed.
 
 ### 2.2 Canonical writes and metadata
 
-- [ ] Implement create/edit/delete for all six canonical transaction tables with UUID identity,
-      `sequence_no`, and the metadata rules in `docs/rules.md` §1 and §3.
-- [ ] Enforce create-once `created_timestamp`; only a material change bumps
-      `last_updated_timestamp` and `updated_device`.
-- [ ] Write `content_hash` as `sha256:…` on every authoritative write; verify
-      provided hashes on import; accept and upgrade legacy SHA-1.
-- [ ] Implement `legacy_identity_map` and migrate `row-identity-map.json` data into it
-      without re-minting UUIDs.
-- [ ] Implement tombstones in `deleted_records` for all six tables, including the new
-      transfer delete endpoint and its tombstone.
-- [ ] Implement `record_conflicts` writing on the existing automatic merge path.
-- [ ] Tests: UUID stability across edit; no-op edit bumps nothing; delete writes exactly
-      one tombstone; hash changes only on business change; legacy SHA-1 import upgrades
-      to SHA-256.
+- [x] Implement canonical create/edit/delete repository operations for all six event
+      tables with canonical UUIDs and transaction-scoped sequence allocation.
+- [x] Preserve `created_timestamp`; only a business-hash change updates
+      `last_updated_timestamp` and `updated_device`. A stale SHA-256 value is repaired
+      without making a no-op look like a material edit.
+- [x] Generate normalized SHA-256 hashes on every repository create/material edit;
+      immutable event types are included, share hashes use canonical share names, and
+      Personal Finance derives signed amounts from direction.
+- [x] Store tombstones atomically with repository deletes for all six entities.
+- [x] Provide support repository operations for `legacy_identity_map` and
+      `record_conflicts`.
+- [ ] Import-side hash verification and legacy SHA-1 upgrade; move this to 2.4 with the
+      staged import/merge pipeline, where legacy fields and mismatch review are known.
+- [ ] Migrate `row-identity-map.json` into `legacy_identity_map` without re-minting UUIDs;
+      implement alongside 2.4 workbook import.
+- [ ] Wire conflict persistence into automatic merge and add the transfer Delete API;
+      both require their service/route integration in 2.3–2.4.
+- [x] Isolated repository tests cover UUID stability, sequence stability, no-op edits,
+      material hash/timestamp/device changes, stale-hash repair, cross-table UUID
+      uniqueness, numeric type rejection, and one tombstone on delete.
+
+**Progress evidence (2026-11-16):**
+`.\\venv\\Scripts\\python.exe -m pytest --basetemp=pytest-phase2-canonical-20261116 backend/tests/test_db_foundation.py backend/tests/test_db_repositories.py backend/tests/test_db_path.py`
+passed **21 tests**. Create/edit/delete APIs remain connection-scoped; callers own the
+transaction. Import-specific metadata preservation and legacy hash verification are
+deferred to the import service rather than mixed into normal interactive writes.
 
 ### 2.3 Domain storage and calculations
 
 Bank:
 
+- [x] Add SQLite Bank repository reads that calculate cumulative amounts from
+      `sequence_no` and exact summaries from scaled integer values; keep the result in
+      `Decimal` until an API boundary.
+- [x] Validate canonical Bank writes against supported categories and category-derived
+      signs.
+- [ ] Handle legacy `Income` as an import warning during staged import without adding
+      it to the enum.
+- [x] Add a connection-injected SQLite Bank service for list/add/edit/delete/summary;
+      it does not select a database path or create a database during normal startup.
 - [ ] Move Bank Services reads/writes to `bank_transactions` with signed
       `amount_scaled`, category-derived sign, and derived cumulative amount via the
       window query in `docs/schema.md` §6.1.
-- [ ] Preserve the exact summary formulas in `docs/rules.md` §5.3.
-- [ ] Handle legacy `Income` category as income with a warning; do not add an enum value
-      silently.
+- [x] Preserve the exact summary formulas in `docs/rules.md` §5.3 for SQLite reads.
 - [ ] Parity test: current workbook values vs SQLite values, to the cent, including
       edits and deletes that shift cumulative amounts.
 
+**Progress evidence (2026-11-16, Phase 2.3 Bank query slice):**
+`BankRepository.list_with_cumulative()` derives each cumulative value with an ordered
+SQLite window sum; `BankRepository.summarize()` applies the documented income/expense
+rules to scaled integers and returns exact `Decimal` values. Canonical create/edit also
+reject unsupported categories and category/sign mismatches. The focused repository
+suite passed **5 tests**, including fractional currency, a legacy `Income` summary
+fixture, sign validation, and cumulative sequence ordering. The workbook-backed Bank API
+is not switched yet; import warnings, route/service integration, and workbook parity
+remain open.
+
+**Progress evidence (2026-11-16, SQLite Bank service):**
+`backend/services/bank/sqlite_service.py` implements connection-injected list/add/edit/
+delete/summary operations. Writes use one transaction, UUID identity, category-sign
+validation, `Decimal` conversion at the storage boundary, and atomic tombstones. A
+synthetic fixture matches the existing workbook summary function; tests cover currency
+rounding, update identity/timestamps, cumulative order, invalid writes, and deletes. The
+service passed with the foundation suites: **25 tests passed**. No route, startup path,
+workbook, or Mobile code was changed; app integration and full copied-workbook parity
+remain gated on staged migration.
+
 Personal finance:
 
+- [x] Add a connection-injected SQLite service for manual entry CRUD, exact summaries,
+      separate bank/cash reads, and one-table flow changes that preserve UUID and sequence.
+- [x] Project transfer effects at read time from `transfers`; do not duplicate transfer
+      events in `personal_finance_entries`.
+- [x] Accept linked-module rows only as query-time read-only projections without a
+      writable `row_id`, and exclude them from manual totals.
 - [ ] Move manual Bank Flow and Cash Flow rows to `personal_finance_entries` with
       `flow_type`, signed amount, and `source='manual'`.
 - [ ] Keep derived `bank-services-sync` and `share-sync` rows query-time only, read-only,
       and excluded from manual totals exactly as in `docs/rules.md` §6.3.
 - [ ] Preserve the separate screens and separate Excel exports.
+- [x] Compare exact SQLite totals and transfer effects to the existing summary function
+      on synthetic records; full copied-workbook parity remains open.
 - [ ] Parity test: totals, per-category breakdowns, transfer effects, linked-module
       exclusion.
 
+**Progress evidence (2026-11-16, SQLite Personal Finance service):**
+`backend/services/personal_finance/sqlite_service.py` adds connection-injected manual
+entry CRUD, bank/cash-separated reads, query-time projections from the canonical
+`transfers` table, and Decimal summaries. Transfer rows are never copied to PF entries;
+linked rows can be supplied for display without a writable row ID and are excluded from
+totals. Tests compare synthetic summaries with the existing implementation and cover
+both transfer directions, flow moves, category validation, signed-amount recalculation,
+and tombstones. Combined Bank/PF/foundation suites passed **27 tests**. Screens, exports,
+and live routes remain on Excel until staged migration and copied-workbook parity. The
+existing workbook Personal Finance API and Phase 2 regression suites also passed **32
+tests** when run outside the sandbox so FastAPI's local test socket could start.
+
 Shares:
 
+- [x] Add `normalize_share_name()` to the SQLite share identity path and resolve the
+      unique `shares` master by canonical upper-case, whitespace-collapsed name.
 - [ ] Implement the `shares` master table: one canonical normalized name per share,
       unique, created on first use, with `share_transactions.share_id` and
       `dividend_events.share_id` foreign keys (`ON DELETE RESTRICT ON UPDATE RESTRICT`).
       One `normalize_share_name()` function is shared by UI input, API input, Excel
       import and transfer import (trim, collapse whitespace, upper-case, reject empty).
-- [ ] Implement IPO/buy/sell in `share_transactions` with the weighted-average rules in
+- [x] Implement IPO/buy/sell in `share_transactions` with the weighted-average rules in
       `docs/rules.md` §7.2–§7.3.
-- [ ] IPO default charge `5.00`; secondary buy/sell charge `0`; the charge rule lives in
+- [x] IPO default charge `5.00`; secondary buy/sell charge `0`; the charge rule lives in
       one shared function.
-- [ ] IPO status is derived, never stored: `quantity` NULL and `0` both mean not allotted /
+- [x] IPO status is derived, never stored: `quantity` NULL and `0` both mean not allotted /
       result not entered; `> 0` = allotted. Blank/`0` is normalized to NULL on create, edit,
       import and transfer; the DB CHECK rejects `0`. The allotment update targets the row by
       `row_id`, never by name. Only `quantity > 0` creates a holding.
-- [ ] Implement `sip_transactions`: installment adds principal; redemption stores the total
+- [ ] Apply IPO quantity normalization on every import path.
+  - [x] Share workbook import and SQLite Share writes reuse
+        `backend/services/share/import_normalization.py` for blank/zero-to-NULL conversion.
+  - [ ] Device-transfer staging must call the same helper when that pipeline is implemented
+        in §2.6; no Desktop device-transfer import path exists yet.
+- [x] Implement `sip_transactions`: installment adds principal; redemption stores the total
       net amount received (`amount_scaled > 0`) with the charge recorded separately, closes
       the plan, and sets derived outstanding to zero. P/L = net amount received − total
       invested in the plan (installment `amount` + installment `charge`).
-- [ ] Redemption rows store `units = NULL` as not applicable and never appear in pending
-      suggestions; `CHECK (transaction_type <> 'sip_redemption' OR units IS NULL)`.
-- [ ] Implement `dividend_events`: cash dividend and bonus shares with the exact
-      quantity/cost effects in `docs/rules.md` §7.4–§7.5, plus the Rule A/B/C holding replay
-      in `docs/rules.md` §7.12 on every write path.
-- [ ] Implement overselling rejection against running quantity in replay order.
-- [ ] Implement cumulative profit across share and dividend activity in
+- [x] Store redemption rows with `units = NULL`; the schema CHECK rejects redemption
+      rows with units.
+- [x] Ensure pending-unit suggestions include only the first installment per plan and
+      exclude redemption rows and later installments.
+- [x] Generate a separate UUID for each new plan, reuse an open plan for additional
+      installments, and assign a new UUID after redemption; retain the canonical SIP name.
+- [x] Rebuild versioned `sip_plan_summaries` atomically with SIP event writes; rebuild a
+      missing or version/sequence-stale summary before returning it to callers.
+- [ ] Add import-side plan ID preservation and review for malformed or conflicting plans.
+- [x] Implement SQLite service writes for `dividend_events`: cash dividend and bonus
+      shares with the exact quantity/cost effects in `docs/rules.md` §7.4–§7.5, plus the
+      Rule A/B holding replay in §7.12 for create/edit/delete.
+- [ ] Apply the same Rule C replay validation to staged import and transfer records.
+- [x] Implement overselling rejection against running quantity in replay order for
+      SQLite service writes.
+- [x] Implement cumulative profit across share and dividend activity in
       `(txn_date, sequence_no)` order; SIP redemption P/L stays separate in
       `sip_plan_summaries`.
-- [ ] Implement `share_holdings` incremental update and full rebuild; both paths must
-      agree on randomized fixtures.
-- [ ] Implement the read-only unified share history view (`docs/schema.md` §6.2) with stable ordering and
+- [x] Implement a versioned full rebuild for `share_holdings` from canonical events.
+- [ ] Implement `share_holdings` incremental update and verify it agrees with the full
+      rebuild on randomized fixtures; summary rebuild currently replays all share history.
+- [x] Implement the read-only unified share history view (`docs/schema.md` §6.2) with stable ordering and
       source identity; edits/deletes address the original table.
 - [ ] Remove or explicitly deprecate the dead FIFO helpers after grep proves no call sites.
 - [ ] Parity test: every share summary value against the current implementation,
       including bonus, cash dividend, SIP redemption and same-date ordering.
+
+**Progress evidence (2026-11-16, SQLite Share accounting slice):**
+`backend/db/share/calculations.py` replays `share_transactions` and `dividend_events`
+in `(txn_date, sequence_no)` order with scaled-integer weighted-average costs. It
+validates oversells and dividends/bonuses without holdings, emits per-event derived
+values, and can fully replace versioned `share_holdings` summaries. The connection-
+injected `backend/services/share/sqlite_service.py` wraps create/edit/delete and the
+rebuild in one transaction so an invalid historical timeline rolls back the event and
+its summary changes. IPO pending quantity, the default fee, and row-ID allotment updates
+are covered. Existing weighted-average workbook tests and new SQLite tests passed in a
+42-test focused run. Incremental summary maintenance, import/transfer validation,
+copied-workbook parity, and route/UI integration remain open. Mobile
+and the live workbook flow were not changed.
+
+**Progress evidence (2026-11-16, unified Share history query):**
+`backend/db/core/migrations/0001_initial.sql` already defines the read-only union view.
+`backend/db/share/history.py` now queries it with the documented same-day ordering,
+filtering and pagination; `backend/db/share/__init__.py` exposes the query through a
+lazy package API. `SQLiteShareService.list_history()` maps rows while retaining their
+source entity and row ID, and `backend/services/share/__init__.py` exposes the service
+without exposing its implementation module. A focused **11-test** run passed across
+the history query, SQLite Share service, weighted-average replay and repository suites.
+Coverage checks ordering across share, dividend and SIP events, stable repeated reads,
+source identity, filtering, pagination, bounds and view write rejection. The separate
+frontend history screen remains open under §2.7.
+
+**Progress evidence (2026-11-16, Desktop Python package APIs and runtime):**
+Desktop route and service callers now import through stable package APIs for the DB
+core, repositories, Share/SIP calculations, and Bank, Personal Finance, Share,
+Settings and common service packages. A shared lazy export resolver avoids repeating
+package import logic and caches resolved exports. The export smoke check passed, and
+the focused Desktop accounting/import set passed **86 tests** under both Python
+3.13.3 and Python 3.15.2. The Desktop venv/build runtime is now Python 3.15.2; compatible
+compiled dependency pins are recorded in `requirements.txt`. The newer explicit `lazy`
+import syntax is not used: the package APIs already defer implementation imports and
+remain compatible with ordinary import tooling.
+
+The Python 3.15.2 PyInstaller sidecar build also completed successfully using an
+isolated verification output under `desktop/build/python315-verification`; existing
+build output directories were not cleared or replaced. PyInstaller logged a Python
+installation locator warning (`Failed to find real location ... Python315\\python.exe`)
+while still completing the EXE build. The full backend suite was not completed in
+this run; only the focused 86-test set is recorded above.
+
+**Progress evidence (2026-11-16, IPO import normalization):**
+`backend/services/share/import_normalization.py` owns the shared IPO quantity rule.
+Desktop Share workbook remapping uses it so blank/zero becomes `NULL`; positive whole
+units remain integers. SQLite Share writes delegate IPO normalization to the same
+helper. Tests cover blank, zero, positive whole quantities, invalid values, and the
+workbook remap while confirming non-IPO quantities are unchanged. The focused import
+and Share service suites passed **48 tests**. Device-transfer staging has not been implemented; its
+reuse of this helper remains open under §2.6.
+
+**Progress evidence (2026-11-16, SQLite SIP accounting slice):**
+`backend/db/sip/calculations.py` derives outstanding principal, entered/pending units,
+full-redemption proceeds, plan status and redemption P/L from `sip_transactions`.
+`backend/services/sip/sqlite_service.py` generates plan UUIDs, updates units by event
+UUID, creates new plans after redemption, and keeps event/tombstone changes atomic with
+the versioned summary rebuild. Missing or version/sequence-stale summaries are rebuilt
+before being returned. Pending-unit redemption remains allowed because that rule is
+still marked proposed in `docs/rules.md`. The combined Bank, Personal Finance, Share,
+SIP and foundation suite passed **46 tests**. Import preservation, live route/UI
+integration and copied-workbook parity remain open.
+
+**Progress evidence (2026-11-16, SIP pending-unit suggestions):**
+`backend/db/sip/pending_units.py` provides a reusable read-only selector for the first
+installment of each plan when its units are still NULL. `SQLiteSipService` exposes the
+selector as display-ready transaction rows; the query cannot return redemption rows or
+later installments. Three fixtures cover multiple plans, later pending installments,
+redemption, and entered units. The SIP calculation, service, and suggestion suites passed
+**7 tests**. This adds no route or UI behavior; SQLite remains behind the existing Excel
+path until staged migration and parity are complete.
 
 Dividend/bonus validation test cases (Phase 2 — list only, do not implement here):
 
@@ -2274,9 +2430,11 @@ and why. Entries below were made during Phase 1 unless stated otherwise.
 ### 2026-11-13 — Desktop SQLite folder and file layout
 
 **Original decision:** `finledge.db` path root was proposed and awaiting user approval.
-**Resolved:** Production uses `%APPDATA%/Finledge`, the current EXE data root; its
-current released product is EXE-only. A future paired AppX uses this same channel
-root instead of package-private storage. The DB file is
+**Resolved:** Production uses `%APPDATA%/Finledge`, the current EXE data root. The
+currently released product is EXE-only; Desktop development is preparing both EXE
+and AppX for separate distribution after Store publication succeeds. The EXE remains
+available until the user later chooses to retire it. Both package types use the same
+Production channel root instead of package-private storage for SQLite. The DB file is
 `%APPDATA%/Finledge/FinLedge Database/finledge.db`. Testing uses the separate
 `%APPDATA%/Finledge Testing EXE` root, and Development remains isolated. One database
 file contains all module tables; `share_transactions`, `sip_transactions`, and
@@ -2288,6 +2446,15 @@ copy is found.
 tables and one transaction boundary keep linked updates atomic. Runtime resolution,
 AppX write access, and physical package path sharing still need verification before
 database startup is wired.
+
+### 2026-11-16 — EXE and AppX release plan
+
+**Original understanding:** The current released product was EXE-only, and AppX was
+described as future work.
+**Clarified:** The current deployed release is EXE-only, while Desktop development is
+preparing both EXE and AppX for separate distribution after Microsoft Store
+publication succeeds. Keep the EXE available until the user later decides to retire it.
+**Why:** Current release status and active package development are separate facts.
 
 ### 2026-11-04 — Historical status: Phase 1 completed; Phase 2 marked next but not started
 

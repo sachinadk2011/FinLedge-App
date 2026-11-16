@@ -71,7 +71,7 @@ def test_currency_precision_round_trips_through_workbook(tmp_path, monkeypatch):
 
 def test_bank_summary_mixes_decimal_inputs_with_category_totals_safely():
     from decimal import Decimal
-    from backend.services.bank_service import summarize_bank_records
+    from backend.services.bank.bank_service import summarize_bank_records
 
     summary = summarize_bank_records([
         {"category": "Interest Earned", "amount": Decimal("5000.00")},

@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException
 
 from backend.models import PersonalFinanceAddRequest, PersonalFinanceTransferRequest
-from backend.services.personal_finance_service import (
+from backend.services.personal_finance import (
     append_personal_finance_record,
     create_transfer_record,
     delete_personal_finance_record,
@@ -10,7 +10,7 @@ from backend.services.personal_finance_service import (
     update_personal_finance_record,
     update_transfer_record,
 )
-from backend.services.excel_utils import consume_recovery_warnings
+from backend.services.common import consume_recovery_warnings
 
 router = APIRouter(prefix="/personal-finance", tags=["personal-finance"])
 

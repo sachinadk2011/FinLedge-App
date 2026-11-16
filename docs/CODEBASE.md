@@ -2,6 +2,28 @@
 
 Skim this before any task. Updated as of the v1.2.0 work-in-progress.
 
+## Desktop Python package APIs
+
+Desktop callers import public functions and classes from package `__init__.py`
+files such as `backend.db.core`, `backend.db.repositories`,
+`backend.services.common`, and each module package under `backend.services/`.
+These package initializers lazily resolve and cache public exports through
+`backend/_package_api.py`. New callers should use those package-level imports
+instead of naming implementation files; moving an implementation within its
+package should require updating that package's export map only. Private test
+helpers may still be imported directly by tests that specifically cover them.
+
+`backend.routes` exposes the six FastAPI routers as `*_router` package exports;
+`backend.main` imports that facade. The root `backend` package is intentionally
+only a namespace and does not import the application. `backend.tests` is a test
+discovery package, not a runtime API. `backend.services` keeps its lazy legacy
+module aliases for compatibility, while feature-specific APIs live in the
+`backend.services.<feature>` facades. Settings' data facade keeps explicitly
+imported private helpers out of wildcard exports.
+
+The Desktop backend and sidecar build use the repository's Python 3.15.2
+environment. Its pinned dependencies are in `requirements.txt`.
+
 ---
 
 ## 1. Folder Structure

@@ -5,8 +5,8 @@ from pathlib import Path
 
 from openpyxl import Workbook, load_workbook
 
-from backend.services.shared_sync_service import _shared_sync_lock, synchronize_data_directories
-from backend.services.workbook_merge import calculate_content_hash
+from backend.services.common import calculate_content_hash, synchronize_data_directories
+from backend.services.common.shared_sync_service import _shared_sync_lock
 
 
 BANK_HEADERS = [
@@ -135,7 +135,7 @@ def test_sync_is_idempotent_and_does_not_append_duplicate_journal_entries(tmp_pa
 
 
 def test_failed_sync_direction_does_not_advance_checkpoint_and_retries(tmp_path, monkeypatch):
-    import backend.services.shared_sync_service as sync_service
+    import backend.services.common.shared_sync_service as sync_service
 
     local = tmp_path / "working"
     shared = tmp_path / "shared"
@@ -186,7 +186,7 @@ def test_missing_local_source_does_not_advance_its_checkpoint(tmp_path, monkeypa
 
 
 def test_concurrent_edit_between_sync_directions_does_not_commit_checkpoint(tmp_path, monkeypatch):
-    import backend.services.shared_sync_service as sync_service
+    import backend.services.common.shared_sync_service as sync_service
 
     local = tmp_path / "working"
     shared = tmp_path / "shared"

@@ -6,7 +6,7 @@ from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 
 from backend.models import SettingsImportReviewRequest, SettingsModuleClearRequest
-from backend.services.settings_service import (
+from backend.services.settings import (
     check_live_has_data,
     export_all_data_files,
     export_data_file,
@@ -14,7 +14,7 @@ from backend.services.settings_service import (
     import_reviewed_data_file,
     list_data_types,
 )
-from backend.services.dev_data_clear_service import clear_module_rows, clear_tool_status
+from backend.services.common import clear_module_rows, clear_tool_status
 
 router = APIRouter(prefix="/settings", tags=["settings"])
 

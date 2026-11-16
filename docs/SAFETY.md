@@ -90,7 +90,7 @@ license to add more deletion calls elsewhere without going through §3.
 
 ## 6. If something looks corrupted or broken during a task
 
-`backend/services/excel_utils.py`'s `repair_or_recover_workbook()` will
+`backend/services/common/excel_utils.py`'s `repair_or_recover_workbook()` will
 quarantine a file it thinks is corrupted and may create a **blank**
 replacement workbook if no valid backup exists. If a task ever causes this
 path to trigger against a real data directory, stop immediately and tell
@@ -297,9 +297,9 @@ or backups.
 | Production EXE + AppX | `%APPDATA%/Finledge` | Production Backups |
 Hard rules:
 
-User-approved database roots: Production `%APPDATA%/Finledge` (the current EXE data root) and Testing `%APPDATA%/Finledge Testing EXE`; Development remains isolated. The current Production release is EXE-only. A future AppX build must use the same selected channel root as its paired EXE instead of package-private storage for SQLite. Verify AppX write access, same physical file, cross-visible writes, survival after either package uninstall, and antivirus/App Certification Kit acceptance. If AppX cannot access the path, stop before creating the database and report the resolved paths. Treat package-private AppX workbooks as a migration source only if a legacy/test copy is found.
+User-approved database roots: Production `%APPDATA%/Finledge` (the current EXE data root) and Testing `%APPDATA%/Finledge Testing EXE`; Development remains isolated. The currently released Production product is EXE-only; EXE and AppX are both in Desktop development, with separate distribution planned after Store publication succeeds. Keep EXE available until the user later chooses to retire it. AppX must use the same channel root as its paired EXE instead of package-private storage for SQLite. Verify AppX write access and same-file/cross-visible writes before creating the Production database. If AppX cannot access the path, stop and report the resolved paths. Treat package-private AppX workbooks as a migration source only if a legacy/test copy is found.
 
-Migration identifies old workbooks, creates and verifies a backup in that same source-folder tree first, then creates SQLite and imports from copies. AppX-only first run uses the same resolver and folder structure. Store schema_version and min_app_version; older apps refuse writes to newer schemas and never downgrade.
+Migration identifies the current EXE's old workbooks, creates and verifies a backup in that same source-folder tree first, then creates SQLite and imports from copies. AppX testing and the planned Store package use the same channel database resolver. Store schema_version and min_app_version; older apps refuse writes to newer schemas and never downgrade.
 - A testing process may not open, migrate, back up, restore, or delete a
   production path, even if a user points `FINLEDGE_DATA_DIR` at one.
 - The existing channel protection (`getOtherChannelProtectedRoots`,

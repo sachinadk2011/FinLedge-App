@@ -8,20 +8,26 @@ from uuid import UUID
 
 import pytest
 
-from backend.db.connection import connect_database
-from backend.db.backup import create_verified_snapshot
-from backend.db.content_hash import content_hash
-from backend.db.metadata import stamp_create, stamp_material_edit
-from backend.db.migration_runner import Migration, apply_migrations
-from backend.db.row_mapping import decimal_to_scaled, scaled_to_decimal
-from backend.db.schema import migrate_database, verify_sqlite_engine
-from backend.db.support_repository import (
+from backend.db.core import (
+    Migration,
+    apply_migrations,
+    connect_database,
+    content_hash,
+    create_verified_snapshot,
+    decimal_to_scaled,
+    migrate_database,
+    scaled_to_decimal,
+    stamp_create,
+    stamp_material_edit,
+    transaction,
+    verify_sqlite_engine,
+)
+from backend.db.repositories import (
     add_tombstone,
     allocate_sequence,
     record_conflict,
     resolve_legacy_row_id,
 )
-from backend.db.transactions import transaction
 
 
 def test_connection_requires_explicit_create_and_configures_pragmas(tmp_path: Path):

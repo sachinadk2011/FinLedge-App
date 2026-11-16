@@ -12,12 +12,16 @@ import uvicorn
 
 
 def _prepare_data_directory() -> dict:
-    from backend.services.data_directory_service import migrate_legacy_workbooks
-    from backend.services.data_migration_service import record_migration_state, run_pending_data_migrations
-    from backend.services.shared_sync_service import synchronize_data_directories
-    from backend.services.path_utils import get_data_dir
-    from backend.services.workbook_initialization import initialize_data_workbooks
-    from backend.services.excel_utils import mirror_data_directory_to_safety_copy, snapshot_before_write
+    from backend.services.common import (
+        get_data_dir,
+        initialize_data_workbooks,
+        migrate_legacy_workbooks,
+        mirror_data_directory_to_safety_copy,
+        record_migration_state,
+        run_pending_data_migrations,
+        snapshot_before_write,
+        synchronize_data_directories,
+    )
     import shutil
     import uuid
     from openpyxl import load_workbook

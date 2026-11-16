@@ -8,9 +8,9 @@ import pytest
 from openpyxl import Workbook, load_workbook
 
 from backend.services import personal_finance_service, personal_finance_transfers
-from backend.services.settings_data import config as settings_config
-from backend.services.settings_data import workbook_export, workbook_import
-from backend.services.transfer_directions import (
+from backend.services.settings.data import config as settings_config
+from backend.services.settings.data import workbook_export, workbook_import
+from backend.services.personal_finance import (
     destination_flow,
     normalize_transfer_direction,
     origin_flow,

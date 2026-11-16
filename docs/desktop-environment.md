@@ -1,5 +1,14 @@
 # Desktop Environment Variables
 
+## Desktop Python runtime
+
+The Desktop source backend and PyInstaller sidecar use CPython 3.15.2 from the
+repository `venv` virtual environment. Recreate it with that interpreter and
+install the pinned packages from `requirements.txt`. Python 3.15 supports
+explicit lazy imports, but FinLedge package APIs currently use the compatible
+lazy `__getattr__` export pattern in `backend/_package_api.py`; package callers
+do not need Python's newer import syntax.
+
 The root `.env.example` lists app settings plus the build credentials needed for
 GitHub publishing and optional signed AppX test builds. It describes what value
 format to use. Copy it to the ignored root `.env` when running from source, then fill
@@ -17,10 +26,10 @@ passwords, signing material, or private URLs in frontend `VITE_*` settings.
 
 | Variable | What it controls and default | Read by | When it takes effect |
 |---|---|---|---|
-| `FINLEDGE_MODE` | Runtime mode (`development`, `testing`, or `production`). Electron infers it from the build; standalone Python defaults to development. | `desktop/services/runtimeConfig.js`, `scripts/finledge.mjs`, `backend/services/path_utils.py` | Restart the app/backend. Normally leave blank. |
-| `FINLEDGE_DATA_DIR` | Active workbook root. Empty or `auto` selects the managed build default. Development uses `.finledge-dev-data/FinLedge Data`; Testing EXE and AppX both use `Documents/FinLedge Testing/FinLedge Data`; production EXE and AppX both use `Documents/FinLedge/FinLedge Data`. Thus both clients open and edit the same five workbooks. Existing `%APPDATA%/Finledge`, `%APPDATA%/Finledge Testing EXE`, and prior AppX LocalCache folders are migration sources; they remain in place after copying/merging. | `desktop/services/dataDirectoryRuntime.js`, `backend/services/path_utils.py` | Restart FinLedge to switch the whole app. |
-| `FINLEDGE_BACKUP_DIR` | Internal path for automatic pre-write snapshots under the active shared workbook folder's `backups` child. EXE and AppX use the same backup root. | `desktop/services/dataDirectoryRuntime.js`, `backend/services/excel_utils.py` | Set by Electron; do not add to `.env`. |
-| `FINLEDGE_SAFETY_COPY_DIR` | Internal path for recoverable workbook copies under the active shared workbook folder's `backups/safety-copy` child. A copy can restore an absent or empty active workbook. | `desktop/services/dataDirectoryRuntime.js`, `backend/services/excel_utils.py`, `backend/engine_main.py` | Set by Electron; do not add to `.env`. |
+| `FINLEDGE_MODE` | Runtime mode (`development`, `testing`, or `production`). Electron infers it from the build; standalone Python defaults to development. | `desktop/services/runtimeConfig.js`, `scripts/finledge.mjs`, `backend/services/common/path_utils.py` | Restart the app/backend. Normally leave blank. |
+| `FINLEDGE_DATA_DIR` | Active workbook root. Empty or `auto` selects the managed build default. Development uses `.finledge-dev-data/FinLedge Data`; Testing EXE and AppX both use `Documents/FinLedge Testing/FinLedge Data`; production EXE and AppX both use `Documents/FinLedge/FinLedge Data`. Thus both clients open and edit the same five workbooks. Existing `%APPDATA%/Finledge`, `%APPDATA%/Finledge Testing EXE`, and prior AppX LocalCache folders are migration sources; they remain in place after copying/merging. | `desktop/services/dataDirectoryRuntime.js`, `backend/services/common/path_utils.py` | Restart FinLedge to switch the whole app. |
+| `FINLEDGE_BACKUP_DIR` | Internal path for automatic pre-write snapshots under the active shared workbook folder's `backups` child. EXE and AppX use the same backup root. | `desktop/services/dataDirectoryRuntime.js`, `backend/services/common/excel_utils.py` | Set by Electron; do not add to `.env`. |
+| `FINLEDGE_SAFETY_COPY_DIR` | Internal path for recoverable workbook copies under the active shared workbook folder's `backups/safety-copy` child. A copy can restore an absent or empty active workbook. | `desktop/services/dataDirectoryRuntime.js`, `backend/services/common/excel_utils.py`, `backend/engine_main.py` | Set by Electron; do not add to `.env`. |
 | `FINLEDGE_GITHUB_OWNER` | Public GitHub owner override. Empty derives from `desktop/package.json` repository metadata. Current default owner: `sachinadk2011`. | `desktop/services/repositoryConfig.js`, `frontendwebapp/vite.config.js` | Restart source Electron; rebuild frontend/desktop packages for installed apps. |
 | `FINLEDGE_GITHUB_REPO` | Public GitHub repository override. Empty derives from package metadata. Current default repository: `FinLedge-App`. | `desktop/services/repositoryConfig.js`, `frontendwebapp/vite.config.js` | Restart source Electron; rebuild frontend/desktop packages for installed apps. |
 | `FINLEDGE_UPDATE_POLICY_URL` | HTTPS JSON endpoint for update policy. Empty derives from the owner/repository as `https://raw.githubusercontent.com/<owner>/<repo>/main/desktop-update-policy.json`. | `desktop/services/repositoryConfig.js`, `desktop/services/updatePolicyService.js`, `frontendwebapp/vite.config.js` | Restart source Electron; rebuild packages for installed-app behavior. |

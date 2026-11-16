@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from backend.db.database_path import (
+from backend.db.core import (
     DATABASE_DIRECTORY,
     DATABASE_FILENAME,
     resolve_application_database_path,

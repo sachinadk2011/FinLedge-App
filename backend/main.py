@@ -8,13 +8,15 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from backend.routes.bank import router as bank_router
-from backend.routes.meta import router as meta_router
-from backend.routes.personal_finance import router as personal_finance_router
-from backend.routes.settings import router as settings_router
-from backend.routes.share import router as share_router
-from backend.routes.summary import router as summary_router
-from backend.services.data_migration_service import run_pending_data_migrations
+from backend.routes import (
+    bank_router,
+    meta_router,
+    personal_finance_router,
+    settings_router,
+    share_router,
+    summary_router,
+)
+from backend.services.common import run_pending_data_migrations
 
 
 @asynccontextmanager
@@ -23,8 +25,7 @@ async def lifespan(app: FastAPI):
     result = run_pending_data_migrations()
     print(f"[migration] {result.get('status', 'unknown')}: {result.get('source_file', '')}")
     if os.getenv("FINLEDGE_SHARED_SYNC_DIR"):
-        from backend.services.metadata_backfill_service import start_metadata_backfill_worker
-        from backend.services.shared_sync_service import start_shared_sync_worker
+        from backend.services.common import start_metadata_backfill_worker, start_shared_sync_worker
         start_metadata_backfill_worker()
         start_shared_sync_worker()
     yield

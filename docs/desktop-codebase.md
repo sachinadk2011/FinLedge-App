@@ -35,26 +35,10 @@ backend/
 ├── models.py
 ├── db/
 │   ├── __init__.py
-│   ├── connection.py
-│   ├── database_path.py
-│   ├── transactions.py
-│   ├── metadata.py
-│   ├── content_hash.py
-│   ├── row_mapping.py
-│   ├── migration_runner.py
-│   ├── backup.py
-│   ├── schema.py
-│   ├── support_repository.py
-│   ├── record_repository.py
-│   ├── bank_repository.py
-│   ├── personal_finance_repository.py
-│   ├── share_repository.py
-│   ├── sip_repository.py
-│   ├── dividend_repository.py
-│   ├── transfer_repository.py
-│   ├── holdings_repository.py
-│   └── migrations/
-│       └── 0001_initial.sql
+│   ├── core/ (SQLite connections, paths, transactions, migration, backup, and mapping)
+│   ├── repositories/ (canonical records, supporting metadata, transfers, holdings)
+│   ├── share/ (share identity and weighted-average replay)
+│   └── sip/ (SIP replay and plan summaries)
 ├── routes/
 │   ├── __init__.py
 │   ├── bank.py
@@ -65,33 +49,12 @@ backend/
 │   └── summary.py
 ├── services/
 │   ├── __init__.py
-│   ├── bank_service.py
-│   ├── data_directory_service.py
-│   ├── data_migration_service.py
-│   ├── metadata_backfill_service.py
-│   ├── shared_sync_service.py
-│   ├── excel_utils.py
-│   ├── path_utils.py
-│   ├── workbook_merge.py
-│   ├── workbook_headers.py
-│   ├── personal_finance_service.py
-│   ├── personal_finance_summary.py
-│   ├── personal_finance_transfers.py
-│   ├── transfer_directions.py
-│   ├── transfer_direction_rules.json
-│   ├── workbook_initialization.py
-│   ├── settings_service.py
-│   ├── dev_data_clear_service.py
-│   ├── settings_data/
-│   │   ├── __init__.py
-│   │   ├── config.py
-│   │   ├── normalization.py
-│   │   ├── workbook_export.py
-│   │   └── workbook_import.py
-│   ├── share_lot_calculations.py
-│   ├── share_service.py
-│   ├── share_summary.py
-│   └── summary_graph_service.py
+│   ├── bank/ (workbook and SQLite services)
+│   ├── personal_finance/ (workbook, SQLite, transfer, and summary services)
+│   ├── share/ (workbook, SQLite, summary, and calculation services)
+│   ├── sip/ (SQLite service)
+│   ├── settings/ (service facade and data import/export helpers)
+│   └── common/ (shared workbook, path, migration, sync, and runtime services)
 └── tests/
     ├── __init__.py
     ├── conftest.py
@@ -116,20 +79,20 @@ backend/
 | `engine_main.py` | Prepares the client-specific working directory, merges initial shared workbooks, runs legacy schema migration, initializes missing files, refreshes the safety copy, and reports startup before accepting API requests. Root workbook cleanup is deferred until verified backfill and shared sync finish. Retains `--prepare-data` for tests and watches its Electron owner. |
 | `__init__.py` | Python package marker for backend imports. |
 | `models.py` | Request validation models and enums shared across API modules. |
-| `db/connection.py` | Explicit-path SQLite connection factory; configures foreign keys, WAL, durability, integrity checks, and newer-schema read-only protection. |
-| `db/database_path.py` | Resolves `FinLedge Database/finledge.db` under Electron's shared `FINLEDGE_CHANNEL_DATA_ROOT`; does not create or open the database. |
-| `db/transactions.py` | Short SQLite transactions with bounded busy/locked retries and rollback. |
-| `db/metadata.py` | Shared UTC timestamp and Desktop device-stamping helpers. |
-| `db/content_hash.py` | Canonical SHA-256 hashes over explicitly declared authoritative fields. |
-| `db/row_mapping.py` | Exact Decimal-to-scaled-integer conversion; rejects unsupported precision and binary floats. |
-| `db/migration_runner.py` | Forward-only checksummed migrations; requires a caller-provided verified-backup callback. |
-| `db/backup.py` | SQLite online backup with integrity, schema-version, foreign-key, and row-count verification before manifest recording. |
-| `db/schema.py` | SQLite 3.37+ engine guard and entry point for checksummed schema migrations. |
-| `db/support_repository.py` | Connection-scoped sequence, tombstone, conflict, and legacy-identity operations. |
-| `db/record_repository.py` | Fixed-table allowlisted CRUD; writes require caller-owned transactions; summary writes require complete rebuild rows. |
-| `db/bank_repository.py`, `db/personal_finance_repository.py` | Bank and Personal Finance canonical event persistence. |
-| `db/share_repository.py`, `db/sip_repository.py`, `db/dividend_repository.py` | The approved separate Share, SIP, and dividend event repositories. |
-| `db/transfer_repository.py`, `db/holdings_repository.py` | Transfer persistence and derived holdings summary access. |
+| `db/core/connection.py` | Explicit-path SQLite connection factory; configures foreign keys, WAL, durability, integrity checks, and newer-schema read-only protection. |
+| `db/core/database_path.py` | Resolves `FinLedge Database/finledge.db` under Electron's shared `FINLEDGE_CHANNEL_DATA_ROOT`; does not create or open the database. |
+| `db/core/transactions.py` | Short SQLite transactions with bounded busy/locked retries and rollback. |
+| `db/core/metadata.py` | Shared UTC timestamp and Desktop device-stamping helpers. |
+| `db/core/content_hash.py` | Canonical SHA-256 hashes over explicitly declared authoritative fields. |
+| `db/core/row_mapping.py` | Exact Decimal-to-scaled-integer conversion; rejects unsupported precision and binary floats. |
+| `db/core/migration_runner.py` | Forward-only checksummed migrations; requires a caller-provided verified-backup callback. |
+| `db/core/backup.py` | SQLite online backup with integrity, schema-version, foreign-key, and row-count verification before manifest recording. |
+| `db/core/schema.py` | SQLite 3.37+ engine guard and entry point for checksummed schema migrations. |
+| `db/repositories/support_repository.py` | Connection-scoped sequence, tombstone, conflict, and legacy-identity operations. |
+| `db/repositories/record_repository.py` | Fixed-table allowlisted CRUD; writes require caller-owned transactions; summary writes require complete rebuild rows. |
+| `db/repositories/bank_repository.py`, `db/repositories/personal_finance_repository.py` | Bank and Personal Finance canonical event persistence. |
+| `db/repositories/share_repository.py`, `db/repositories/sip_repository.py`, `db/repositories/dividend_repository.py` | The approved separate Share, SIP, and dividend event repositories. |
+| `db/repositories/transfer_repository.py`, `db/repositories/holdings_repository.py` | Transfer persistence and derived holdings summary access. |
 | `routes/__init__.py`, `services/__init__.py` | Python package markers for route and service imports. |
 | `routes/bank.py` | Bank Services HTTP endpoints. |
 | `routes/meta.py` | Category metadata endpoint backed directly by request-model enums for renderer choices. |
@@ -137,31 +100,31 @@ backend/
 | `routes/personal_finance.py` | Personal Expenses and transfer HTTP endpoints. |
 | `routes/summary.py` | Financial Summary HTTP endpoints. |
 | `routes/settings.py` | Workbook import/export HTTP endpoints. |
-| `services/settings_data/__init__.py` | Package marker for focused Settings data helpers. |
-| `services/bank_service.py` | Bank Services workbook I/O, record operations, and totals. |
-| `services/share_service.py` | Share Portfolio workbook I/O, chronological weighted-average transaction recalculation, and route-facing record operations. |
-| `services/share_summary.py` | Pure aggregate calculations for Share Portfolio records, shared by the Share and Financial Summary routes. |
-| `services/personal_finance_service.py` | Personal Expenses Bank/Cash workbook operations, append-before-delete flow moves with pre-write snapshots, live sync shaping, route-facing transfer compatibility functions, and copy-only repair of rows saved under the former generic sheet name. |
-| `services/personal_finance_summary.py` | Pure Personal Expenses summary calculations and module/category filtering rules. |
-| `services/personal_finance_transfers.py` | Transfer workbook CRUD, serialized income checks, chronological import balance replay, migration from the former generic sheet into `Transfer Flow`, and shaping of Bank/Cash transfer rows. |
-| `services/transfer_directions.py` / `services/transfer_direction_rules.json` | Shared direction aliases, origin/destination flows, and labels consumed by Python and the renderer. |
-| `services/share_lot_calculations.py` | Weighted-average share-position replay and SIP investment accumulation for desktop Share Portfolio recalculation. |
-| `services/summary_graph_service.py` | Aggregates day/month buckets through one classifier-based helper and builds Financial Summary PNGs; graph routes are deprecated while the renderer does not use them. |
-| `services/settings_service.py` | Stable compatibility facade for Settings workbook operations used by API routes. |
-| `services/dev_data_clear_service.py` | Explicit Development/Testing-only transaction-row clearing with a backend mode guard, module-scoped workbook locks, pre-write snapshots, tombstones, and structure preservation. |
-| `services/settings_data/config.py` | Canonical workbook paths, headers, and exact sheet mappings for Bank Services, Share Portfolio, Personal Expenses Bank/Cash Flow, and transfers. |
-| `services/settings_data/normalization.py` | Legacy header/category aliases and import normalization rules, including transfer direction aliases. |
-| `services/settings_data/workbook_import.py` | Module-specific validation and row mapping, followed by backup, staged merge/replace, tombstone/conflict preservation, and derived-value recalculation; transfer imports validate chronological balances. |
-| `services/workbook_merge.py` | Shared stable row identity and business hashes, tombstones, conflict archives, deterministic client merge rules, derived-value recomputation, and a persistent identity map for legacy rows. New service writes receive UUIDs before save. |
-| `services/workbook_headers.py` | Shared alias-aware, case-insensitive Excel header normalization, lookup, and row mapping used by imports and migrations. |
-| `services/settings_data/workbook_export.py` | Single workbook exports and bundled ZIP export, including transfer data. |
-| `services/excel_utils.py` | Shared workbook initialization, row-to-dict iteration, mutation locking, compact `YYYY-MM-DD HHMMSSffffff` backup timestamps for automatic, import, and corrupted snapshots, local recovery-snapshot fallback when the configured shared backup root fails, save/close handling, atomic safety-copy refresh within the shared data folder, and safe loading/recovery. |
-| `services/path_utils.py` | Resolves `FINLEDGE_DATA_DIR` including `auto` and environment-variable paths; development defaults to `.finledge-dev-data/FinLedge Data`, while Electron supplies the Windows active path, and startup can resolve without creating the child folder before backups finish. |
-| `services/data_migration_service.py` | Performs backup, staging, validation, and atomic replacement for schema upgrades. Its background metadata worker preserves valid IDs/audit values, retries locked/changed files, and records a versioned migration marker. |
-| `services/metadata_backfill_service.py` | Runs per-workbook metadata upgrades in a daemon after API startup, records resumable progress in the shared sync directory, coordinates with service locks, syncs verified upgrades, and resumes guarded legacy-root cleanup. |
-| `services/shared_sync_service.py` | Periodically merges each EXE/AppX working workbook with the channel's shared sync workbook under a cross-process lock; uses optimistic fingerprints, atomic staged replacement, compact recovery snapshots, deterministic journal event IDs, and a change fingerprint to skip no-op scans. Stale-lock owner checks use `OpenProcess` on Windows and signal probing on POSIX. |
-| `services/data_directory_service.py` | Validates and backs up legacy workbooks from supplied roots and their `FinLedge Data` children, including partial workbook sets and legacy filenames such as `bank.xlsx`/`share.xlsx`; uses short `YYYY-MM-DD HHMM` migration folders and `src/<index>/<original filename>` / `dest/<original filename>` children. Before removing selected root-level files it independently opens and verifies backups, checks destination structure, rows, Row IDs and hashes, and persists an atomic restartable cleanup manifest. Other source files are retained. |
-| `services/workbook_initialization.py` | Creates missing Bank, Share, Personal Expenses, and transfer workbooks through their owning services during data-folder preparation. |
+| `services/settings/data/__init__.py` | Package marker for focused Settings data helpers. |
+| `services/bank/bank_service.py` | Bank Services workbook I/O, record operations, and totals. |
+| `services/share/workbook_service.py` | Share Portfolio workbook I/O, chronological weighted-average transaction recalculation, and route-facing record operations. |
+| `services/share/summary.py` | Pure aggregate calculations for Share Portfolio records, shared by the Share and Financial Summary routes. |
+| `services/personal_finance/workbook_service.py` | Personal Expenses Bank/Cash workbook operations, append-before-delete flow moves with pre-write snapshots, live sync shaping, route-facing transfer compatibility functions, and copy-only repair of rows saved under the former generic sheet name. |
+| `services/personal_finance/summary.py` | Pure Personal Expenses summary calculations and module/category filtering rules. |
+| `services/personal_finance/transfers.py` | Transfer workbook CRUD, serialized income checks, chronological import balance replay, migration from the former generic sheet into `Transfer Flow`, and shaping of Bank/Cash transfer rows. |
+| `services/personal_finance/transfer_directions.py` / `services/personal_finance/transfer_direction_rules.json` | Shared direction aliases, origin/destination flows, and labels consumed by Python and the renderer. |
+| `services/share/lot_calculations.py` | Weighted-average share-position replay and SIP investment accumulation for desktop Share Portfolio recalculation. |
+| `services/common/summary_graph_service.py` | Aggregates day/month buckets through one classifier-based helper and builds Financial Summary PNGs; graph routes are deprecated while the renderer does not use them. |
+| `services/settings/service.py` | Stable compatibility facade for Settings workbook operations used by API routes. |
+| `services/common/dev_data_clear_service.py` | Explicit Development/Testing-only transaction-row clearing with a backend mode guard, module-scoped workbook locks, pre-write snapshots, tombstones, and structure preservation. |
+| `services/settings/data/config.py` | Canonical workbook paths, headers, and exact sheet mappings for Bank Services, Share Portfolio, Personal Expenses Bank/Cash Flow, and transfers. |
+| `services/settings/data/normalization.py` | Legacy header/category aliases and import normalization rules, including transfer direction aliases. |
+| `services/settings/data/workbook_import.py` | Module-specific validation and row mapping, followed by backup, staged merge/replace, tombstone/conflict preservation, and derived-value recalculation; transfer imports validate chronological balances. |
+| `services/common/workbook_merge.py` | Shared stable row identity and business hashes, tombstones, conflict archives, deterministic client merge rules, derived-value recomputation, and a persistent identity map for legacy rows. New service writes receive UUIDs before save. |
+| `services/common/workbook_headers.py` | Shared alias-aware, case-insensitive Excel header normalization, lookup, and row mapping used by imports and migrations. |
+| `services/settings/data/workbook_export.py` | Single workbook exports and bundled ZIP export, including transfer data. |
+| `services/common/excel_utils.py` | Shared workbook initialization, row-to-dict iteration, mutation locking, compact `YYYY-MM-DD HHMMSSffffff` backup timestamps for automatic, import, and corrupted snapshots, local recovery-snapshot fallback when the configured shared backup root fails, save/close handling, atomic safety-copy refresh within the shared data folder, and safe loading/recovery. |
+| `services/common/path_utils.py` | Resolves `FINLEDGE_DATA_DIR` including `auto` and environment-variable paths; development defaults to `.finledge-dev-data/FinLedge Data`, while Electron supplies the Windows active path, and startup can resolve without creating the child folder before backups finish. |
+| `services/common/data_migration_service.py` | Performs backup, staging, validation, and atomic replacement for schema upgrades. Its background metadata worker preserves valid IDs/audit values, retries locked/changed files, and records a versioned migration marker. |
+| `services/common/metadata_backfill_service.py` | Runs per-workbook metadata upgrades in a daemon after API startup, records resumable progress in the shared sync directory, coordinates with service locks, syncs verified upgrades, and resumes guarded legacy-root cleanup. |
+| `services/common/shared_sync_service.py` | Periodically merges each EXE/AppX working workbook with the channel's shared sync workbook under a cross-process lock; uses optimistic fingerprints, atomic staged replacement, compact recovery snapshots, deterministic journal event IDs, and a change fingerprint to skip no-op scans. Stale-lock owner checks use `OpenProcess` on Windows and signal probing on POSIX. |
+| `services/common/data_directory_service.py` | Validates and backs up legacy workbooks from supplied roots and their `FinLedge Data` children, including partial workbook sets and legacy filenames such as `bank.xlsx`/`share.xlsx`; uses short `YYYY-MM-DD HHMM` migration folders and `src/<index>/<original filename>` / `dest/<original filename>` children. Before removing selected root-level files it independently opens and verifies backups, checks destination structure, rows, Row IDs and hashes, and persists an atomic restartable cleanup manifest. Other source files are retained. |
+| `services/common/workbook_initialization.py` | Creates missing Bank, Share, Personal Expenses, and transfer workbooks through their owning services during data-folder preparation. |
 | `tests/__init__.py` | Python package marker for backend tests. |
 | `tests/conftest.py` | Uses pytest's session temp factory for isolated workbook data and redirects Python scratch files into the same pytest-managed temporary root. |
 | `tests/test_auto_backups.py` | Isolated tests for automatic snapshots, retention, recovery, and concurrent writes. |

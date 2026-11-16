@@ -1,0 +1,34 @@
+"""Stable public APIs for Personal Finance workbook and SQLite services."""
+
+from backend._package_api import package_dir, resolve_export
+
+_EXPORTS = {
+    "BANK_FLOW_FILE_PATH": (".workbook_service", "BANK_FLOW_FILE_PATH"),
+    "CASH_FLOW_FILE_PATH": (".workbook_service", "CASH_FLOW_FILE_PATH"),
+    "TRANSFER_FILE_PATH": (".workbook_service", "TRANSFER_FILE_PATH"),
+    "append_personal_finance_record": (".workbook_service", "append_personal_finance_record"),
+    "read_personal_finance_records": (".workbook_service", "read_personal_finance_records"),
+    "summarize_personal_finance_records": (".workbook_service", "summarize_personal_finance_records"),
+    "update_personal_finance_record": (".workbook_service", "update_personal_finance_record"),
+    "delete_personal_finance_record": (".workbook_service", "delete_personal_finance_record"),
+    "create_transfer_record": (".workbook_service", "create_transfer_record"),
+    "read_transfer_records": (".workbook_service", "read_transfer_records"),
+    "update_transfer_record": (".workbook_service", "update_transfer_record"),
+    "SQLitePersonalFinanceService": (".sqlite_service", "SQLitePersonalFinanceService"),
+    "validate_transfer_import_rows": (".transfers", "validate_transfer_import_rows"),
+    "normalize_transfer_direction": (".transfer_directions", "normalize_transfer_direction"),
+    "destination_flow": (".transfer_directions", "destination_flow"),
+    "origin_flow": (".transfer_directions", "origin_flow"),
+    "LINKED_MODULE_SOURCES": (".summary", "LINKED_MODULE_SOURCES"),
+    "SHARE_ONLY_CATEGORIES": (".summary", "SHARE_ONLY_CATEGORIES"),
+}
+
+__all__ = list(_EXPORTS)
+
+
+def __getattr__(name: str):
+    return resolve_export(globals(), _EXPORTS, name)
+
+
+def __dir__():
+    return package_dir(globals())

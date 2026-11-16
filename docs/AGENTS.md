@@ -48,7 +48,7 @@ AND ASK, not "pick the safer-sounding option and proceed."
 ```
 Bank Services:
   backend/routes/bank.py          — FastAPI router (CRUD endpoints)
-  backend/services/bank_service.py — Excel I/O + business logic
+  backend/services/bank/bank_service.py — Excel I/O + business logic
   backend/models.py               — BankCategory enum, BankAddRequest
   frontendwebapp/src/pages/BankPage.jsx        — Entry form page
   frontendwebapp/src/pages/BankDashboard.jsx   — Dashboard page
@@ -58,7 +58,7 @@ Bank Services:
 
 Share Portfolio:
   backend/routes/share.py
-  backend/services/share_service.py
+  backend/services/share/workbook_service.py
   backend/models.py               — ShareCategory, ShareAddRequest (union type)
   frontendwebapp/src/pages/SharePage.jsx
   frontendwebapp/src/pages/ShareDashboard.jsx
@@ -67,7 +67,7 @@ Share Portfolio:
 
 Personal Expenses:
   backend/routes/personal_finance.py
-  backend/services/personal_finance_service.py — Excel I/O for separate Bank Flow and Cash Flow files
+  backend/services/personal_finance/workbook_service.py — Excel I/O for separate Bank Flow and Cash Flow files
   backend/models.py               — PersonalFinance* enums and PersonalFinanceAddRequest
   frontendwebapp/src/pages/PersonalFinanceHome.jsx
   frontendwebapp/src/pages/PersonalFinancePage.jsx
@@ -78,7 +78,7 @@ Personal Expenses:
 
 Financial Summary:
   backend/routes/summary.py
-  backend/services/summary_graph_service.py
+  backend/services/common/summary_graph_service.py
   frontendwebapp/src/pages/Summary.jsx
   frontendwebapp/src/utils/shareClosingPosition.js — share closing rows as of the selected date
 
@@ -87,20 +87,20 @@ Settings:
   frontendwebapp/src/pages/ImportReview.jsx — staged import preview, edit, and confirmation
 
 Desktop SQLite foundation (Phase 2):
-  backend/db/connection.py — explicit-path connection factory and safety pragmas
-  backend/db/database_path.py — `FinLedge Database/finledge.db` under the shared Desktop channel root
-  backend/db/record_repository.py — allowlisted connection-scoped CRUD and summary replacement
-  backend/db/bank_repository.py, personal_finance_repository.py — core transaction repositories
-  backend/db/share_repository.py, sip_repository.py, dividend_repository.py — approved Share event tables
-  backend/db/transfer_repository.py, holdings_repository.py — transfer and derived holding persistence
-  backend/db/transactions.py — transaction boundaries and bounded lock retries
-  backend/db/metadata.py — shared timestamp and device metadata
-  backend/db/content_hash.py — canonical hashes over declared business fields
-  backend/db/row_mapping.py — exact Decimal and scaled-integer conversions
-  backend/db/migration_runner.py — checksummed forward migrations with backup gating
-  backend/db/backup.py — SQLite online snapshots with verification and manifest callback
-  backend/db/schema.py — SQLite engine guard and packaged forward migrations
-  backend/db/support_repository.py — sequence allocation, tombstones, conflicts, legacy identity
+  backend/_package_api.py — shared lazy resolver for stable package-level exports
+  backend/db/core/ — connection, data paths, transactions, row mapping, metadata, hashes,
+    migration runner/schema, and verified SQLite snapshots
+  backend/db/repositories/ — shared record and support repositories plus Bank, Personal
+    Finance, Share, SIP, dividend, transfer, and holdings repositories
+  backend/db/share/ — canonical share identity and weighted-average replay/rebuild logic
+  backend/db/sip/ — SIP event replay and plan-summary rebuilding
+  backend/db/core/migrations/ — ordered, checksummed SQL schema migrations
+  backend/services/bank/ — workbook and SQLite Bank services
+  backend/services/personal_finance/ — workbook, SQLite, summary, transfer, and direction logic
+  backend/services/share/ — workbook and SQLite Share services, summaries, and calculations
+  backend/services/sip/ — SQLite SIP service
+  backend/services/settings/ — Settings facade and focused import/export data package
+  backend/services/common/ — shared workbook, path, migration, sync, and runtime services
 
 App Shell:
   frontendwebapp/src/App.jsx      — Routes + Layout (top nav lives here)
@@ -130,9 +130,9 @@ Shared Components:
 Every module with its own Excel file MUST follow this exact pattern:
 
 ```python
-# In backend/services/<module>_service.py
+# In backend/services/<feature>/<module>_service.py
 from openpyxl import Workbook, load_workbook
-from .path_utils import get_data_dir
+from ..common.path_utils import get_data_dir
 
 DATA_DIR = get_data_dir()
 FILE_PATH = DATA_DIR / "<module>_transactions.xlsx"
@@ -148,7 +148,7 @@ def _ensure_workbook_exists() -> None:
         sheet.append(HEADERS)
         workbook.save(FILE_PATH)
         return
-    # ... load, fix headers, save (copy pattern from bank_service.py)
+    # ... load, fix headers, save (copy pattern from bank/bank_service.py)
 ```
 
 - Call `_ensure_workbook_exists()` at the TOP of every read/write function.
@@ -160,7 +160,7 @@ def _ensure_workbook_exists() -> None:
 - Do not copy Share Portfolio or Bank Services rows into a Personal Expenses workbook. The backend aggregation creates read-only `share-sync` and `bank-services-sync` view rows, so edits and deletes in their source modules are reflected immediately without duplicate storage.
 
 **New modules** must create:
-1. `backend/services/personal_finance_service.py` — own file paths, sheet names, headers, `_ensure_workbook_exists()`
+1. `backend/services/personal_finance/workbook_service.py` — own file paths, sheet names, headers, `_ensure_workbook_exists()`
 2. `backend/routes/personal_finance.py` — own router, prefixed `/personal-finance`
 3. `backend/models.py` — add request models for the new module
 4. `backend/main.py` — register the new router via `app.include_router()`
@@ -261,7 +261,7 @@ UI must be tested at minimum 360px and maximum ~430px width and remain legible a
 
 ## 10. Code Quality & Scalability Rules (non-negotiable, every task)
 
-- **No duplicate logic.** If the same logic exists in two or more places, extract it into a shared function/module instead of writing it again. `backend/services/excel_utils.py` (see CODEBASE.md / TASKS.md Pass B) is the reference pattern for this — `to_float()`, `to_int()`, and timestamp helpers were pulled out of three duplicated copies into one shared module. Apply the same instinct everywhere, on both platforms.
+- **No duplicate logic.** If the same logic exists in two or more places, extract it into a shared function/module instead of writing it again. `backend/services/common/excel_utils.py` (see CODEBASE.md / TASKS.md Pass B) is the reference pattern for this — `to_float()`, `to_int()`, and timestamp helpers were pulled out of three duplicated copies into one shared module. Apply the same instinct everywhere, on both platforms.
 - **One responsibility per file.** No file should mix unrelated concerns (e.g. a page component that also contains business logic that belongs in a service, or a service that also does routing). Split by concern, matching the existing `routes/` → `services/` → `models.py` layering on backend, and `pages/` → `components/` → `api/` on frontend.
 - **Reusable over copy-pasted.** Before writing a new function or component, check whether an existing one already does this or can be generalized to. Prefer composition (small, combinable functions/components) over one large function that does everything.
 - **No monolithic files.** If a file is growing long enough that it's doing multiple jobs, split it into smaller, clearly-named files before continuing — don't let one file become a dumping ground.

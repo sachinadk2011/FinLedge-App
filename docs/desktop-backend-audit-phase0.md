@@ -15,14 +15,14 @@ to services instead of directly editing Excel files.
 
 Several service files are now large enough to mix multiple concerns:
 
-- `backend/services/personal_finance_service.py` combines Bank Flow and Cash Flow
+- `backend/services/personal_finance/workbook_service.py` combines Bank Flow and Cash Flow
   workbook I/O, transfer persistence and validation, synced view-row construction,
   and summary calculations. It is the clearest candidate for a future desktop-only
   split into focused modules, while keeping the current service API stable.
-- `backend/services/share_service.py` combines Excel persistence, FIFO lot matching,
+- `backend/services/share/workbook_service.py` combines Excel persistence, FIFO lot matching,
   and transaction calculations. A future split could move the lot-matching and
   calculation helpers behind the same service API.
-- `backend/services/settings_service.py` combines workbook import/export, format
+- `backend/services/settings/service.py` combines workbook import/export, format
   normalization, staging, and live-file replacement. This should be mapped before
   any refactor because import safety and existing backup behavior are sensitive.
 - `backend/models.py` is the shared Pydantic model and enum registry. It is not

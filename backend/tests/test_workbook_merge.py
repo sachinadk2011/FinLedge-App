@@ -6,7 +6,7 @@ from pathlib import Path
 
 from openpyxl import Workbook, load_workbook
 
-from backend.services.workbook_merge import (
+from backend.services.common import (
     calculate_content_hash,
     ensure_row_metadata,
     merge_row_sets,
@@ -144,8 +144,8 @@ def test_file_merge_only_changes_staging_copy(tmp_path: Path):
 
 
 def test_settings_merge_reimport_is_idempotent(tmp_path: Path, monkeypatch):
-    from backend.services.settings_data.config import DATA_TYPE_CONFIG
-    from backend.services.settings_data.workbook_import import import_data_file
+    from backend.services.settings.data.config import DATA_TYPE_CONFIG
+    from backend.services.settings.data.workbook_import import import_data_file
 
     live_path = tmp_path / "live-bank.xlsx"
     monkeypatch.setitem(DATA_TYPE_CONFIG["bank"], "path", live_path)

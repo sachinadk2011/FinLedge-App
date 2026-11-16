@@ -58,7 +58,7 @@ def test_snapshot_falls_back_to_active_data_parent_when_shared_backup_fails(tmp_
 
 
 def test_import_and_corrupted_backup_paths_use_short_timestamps_and_keep_filenames(tmp_path, monkeypatch):
-    from backend.services.settings_data import workbook_import
+    from backend.services.settings.data import workbook_import
 
     backup_root = tmp_path / "backups"
     monkeypatch.setattr(workbook_import, "get_backup_directory", lambda _path: backup_root)

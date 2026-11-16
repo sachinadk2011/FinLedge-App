@@ -1,9 +1,9 @@
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import Response
 
-from backend.services.bank_service import read_bank_records, summarize_bank_records
-from backend.services.share_service import read_share_records, summarize_share_records
-from backend.services.summary_graph_service import (
+from backend.services.bank import read_bank_records, summarize_bank_records
+from backend.services.share import read_share_records, summarize_share_records
+from backend.services.common import (
     build_combined_position_png,
     build_monthly_bank_png,
     build_monthly_overview_png,

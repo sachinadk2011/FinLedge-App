@@ -7,7 +7,7 @@ from backend.models import (
     ShareUpdateAllotmentRequest,
     SipShareRequest,
 )
-from backend.services.share_service import (
+from backend.services.share import (
     append_share_record,
     delete_share_record,
     read_share_records,
@@ -15,7 +15,7 @@ from backend.services.share_service import (
     update_share_allotment,
     update_share_record,
 )
-from backend.services.excel_utils import consume_recovery_warnings
+from backend.services.common import consume_recovery_warnings
 router = APIRouter(prefix="/share", tags=["share"])
 
 
