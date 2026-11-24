@@ -46,6 +46,7 @@ if ($LASTEXITCODE -ne 0) {
     --distpath $distDir `
     --workpath $workDir `
     --specpath $specDir `
+    --additional-hooks-dir (Join-Path $PSScriptRoot "pyinstaller_hooks") `
     --version-file $versionInfoPath `
     --paths $repoRoot `
     --add-data "$transferDirectionRules;backend/services/personal_finance" `

@@ -2743,3 +2743,35 @@ alternative remains superseded, as recorded in the decision history.
 
 **Still unresolved:** Previously documented business and migration choices remain
 open; no financial behavior was inferred from them.
+
+### 2026-11-23 — Fix packaged startup for lazy package facades
+
+- Reproduced the non-runnable packaged app with an isolated Testing build. The
+  backend exited before serving because PyInstaller omitted dynamically imported
+  facade targets; the first failure was
+  `ModuleNotFoundError: backend.services.common.path_utils`. The Electron startup
+  dialog described this as a data-folder preparation failure, while the temporary
+  startup log retained the actual traceback.
+- Added a PyInstaller hook that reads `_EXPORTS` and `_COMPATIBILITY_MODULES` maps
+  from existing package initializers and includes their target modules as hidden
+  imports. The hook parses source without importing implementation modules, keeps
+  the application lazy at runtime, and excludes tests. The normal sidecar build
+  passes the hook directory to PyInstaller. Added a regression test that checks
+  every facade target is included.
+- Rebuilt an isolated Testing NSIS package and launched its unpacked app using
+  fresh audit data, recovery, and log folders. The Home screen rendered, backend
+  migration initialized five empty workbooks only in the audit folder, and the
+  sidecar reached `GET /health` with HTTP 200. The production FinLedge window and
+  its data were left untouched.
+- **Profile note:** Electron resolved `app.getPath("userData")` to
+  `%APPDATA%\\Finledge Testing EXE` despite the child-process `APPDATA` override.
+  Workbook, recovery, and log paths were explicitly redirected into the audit
+  root. The existing test-profile folder was not inspected or cleaned up and may
+  contain normal Electron cache/profile state from this launch.
+- **Verification:** facade hook, package API, transfer import, and Personal
+  Finance SQLite tests passed **64/64** on Python 3.15.2 and **64/64** on Python
+  3.13.3. Desktop data/runtime tests passed **37/37**. The frontend production
+  build and isolated NSIS package build passed. The full backend suite remains
+  incomplete due its earlier Windows stall in `test_bank.py`.
+- **Docs touched:** `docs/AGENTS.md`, `docs/desktop-codebase.md`,
+  `docs/desktop-tasks.md`.

@@ -1,4 +1,4 @@
-import { getApiBase, handleResponse } from "./client.js";
+import { getApiBase, getJson, handleResponse } from "./client.js";
 
 function getFilenameFromDisposition(contentDisposition, fallback) {
   if (!contentDisposition) {
@@ -82,9 +82,7 @@ export async function getSettingsDataTypes() {
 }
 
 export async function getSettingsDevTools() {
-  const url = `${await getApiBase()}/settings/dev-tools`;
-  const response = await fetch(url);
-  return handleResponse(response, { method: "GET", url });
+  return getJson("/settings/dev-tools", { timeoutMs: 15_000 });
 }
 
 export async function clearSettingsModuleData(dataType) {

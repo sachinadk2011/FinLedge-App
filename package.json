@@ -10,6 +10,7 @@
     "dev:backend:reload": "node ./scripts/finledge.mjs backend-reload",
     "dev:frontend": "npm run dev --prefix frontendwebapp",
     "build:frontend": "npm run build --prefix frontendwebapp",
+    "test:backend": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\run-backend-tests.ps1",
     "build:sidecar": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\desktop\\scripts\\build-sidecar.ps1",
     "build:desktop": "npm run build --prefix desktop",
     "desktop-dev": "node ./scripts/finledge.mjs desktop-dev",

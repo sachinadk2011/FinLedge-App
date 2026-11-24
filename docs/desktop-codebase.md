@@ -198,6 +198,8 @@ desktop/
 │   └── updateMetadata.js
 └── scripts/
     ├── build-sidecar.ps1
+    ├── pyinstaller_hooks/
+    │   └── hook-backend.py
     ├── generate-sidecar-version.py
     ├── generate-appx-assets.ps1
     └── mark-build-channel.js
@@ -235,7 +237,8 @@ desktop/
 | `tests/runtimeConfig.test.cjs` | Isolated tests for packaged build-channel markers, runtime mode, legacy AppX marker compatibility, and environment-configured updater URLs. |
 | `tests/repositoryConfig.test.cjs` | Tests repository defaults/overrides, latest and tagged release URL construction, and packaged configuration without a root `.env`. |
 | `utils/updateMetadata.js` | Pure helpers for release notes, version comparison, and release URLs. |
-| `scripts/build-sidecar.ps1` | Packages the Python backend as an onedir sidecar, excludes unused Matplotlib/NumPy/PIL/Tkinter modules, includes shared transfer direction rules, and avoids recursively bundling the ignored test suite. |
+| `scripts/build-sidecar.ps1` | Packages the Python backend as an onedir sidecar, excludes unused Matplotlib/NumPy/PIL/Tkinter modules, includes shared transfer direction rules, loads the lazy-facade PyInstaller hook, and avoids recursively bundling the ignored test suite. |
+| `scripts/pyinstaller_hooks/hook-backend.py` | Discovers module targets from each package facade's `_EXPORTS` or `_COMPATIBILITY_MODULES` map and adds them to PyInstaller hidden imports without eagerly importing them at runtime. |
 | `scripts/generate-sidecar-version.py` | Generates Python sidecar Windows version resources from the root FinLedge version and publisher metadata. |
 | `scripts/generate-appx-assets.ps1` | Generates Store tile logos, target-size unplated AppX icon variants, and transparent 16/32/48/256px EXE icon frames from canonical `assets/finledge_icon.png`. |
 | `scripts/mark-build-channel.js` | Writes the packaged build-channel marker for Testing packages and Store-targeted production AppX packages. |

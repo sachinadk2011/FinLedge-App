@@ -1268,14 +1268,21 @@ pre {
   display: grid;
   grid-template-columns: minmax(180px, 220px) minmax(0, 1fr);
   gap: 20px;
-  align-items: start;
+  height: min(720px, max(340px, calc(100dvh - 245px)));
+  min-height: 0;
+  align-items: stretch;
 }
 
 .settings-nav {
   display: grid;
+  align-content: start;
   gap: 6px;
-  position: sticky;
-  top: 92px;
+  min-height: 0;
+  height: 100%;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  scrollbar-gutter: stable;
+  padding-right: 4px;
 }
 
 .settings-nav-item {
@@ -1302,6 +1309,24 @@ pre {
 
 .settings-content {
   min-width: 0;
+  min-height: 0;
+  height: 100%;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  scrollbar-gutter: stable;
+  padding-right: 4px;
+}
+
+.dev-tools-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.dev-tools-status p {
+  margin: 0;
 }
 
 .settings-panel {
@@ -1424,11 +1449,22 @@ pre {
 
   .settings-layout {
     grid-template-columns: 1fr;
+    height: auto;
+    min-height: 0;
   }
 
   .settings-nav {
-    position: static;
     grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    height: auto;
+    max-height: none;
+    overflow: visible;
+    padding-right: 0;
+  }
+
+  .settings-content {
+    height: auto;
+    overflow: visible;
+    padding-right: 0;
   }
 }
 

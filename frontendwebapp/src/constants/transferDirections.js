@@ -1,4 +1,4 @@
-import transferDirectionRules from "../../../backend/services/transfer_direction_rules.json";
+import transferDirectionRules from "../../../backend/services/personal_finance/transfer_direction_rules.json";
 
 const normalizeAlias = (value) => String(value || "")
   .trim()

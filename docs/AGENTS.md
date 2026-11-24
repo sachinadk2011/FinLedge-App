@@ -88,6 +88,7 @@ Settings:
 
 Desktop SQLite foundation (Phase 2):
   backend/_package_api.py — shared lazy resolver for stable package-level exports
+  desktop/scripts/pyinstaller_hooks/hook-backend.py — include lazy facade targets in packaged sidecars
   backend/db/core/ — connection, data paths, transactions, row mapping, metadata, hashes,
     migration runner/schema, and verified SQLite snapshots
   backend/db/repositories/ — shared record and support repositories plus Bank, Personal
@@ -392,3 +393,11 @@ must:
 - Does every conditional message only exist in the DOM when its condition
   is true, use real values instead of restating the rule, and clear
   itself afterward per the existing dismiss pattern?
+
+## 15. Pytest artifact location
+
+Keep pytest caches and temporary run data under the repository's ignored
+`.pytest-artifacts/` directory. Use `npm run test:backend` for backend tests;
+it creates a unique `runs/` directory for each invocation so pytest never
+reuses or clears a previous run's temporary data. Do not put pytest
+`--basetemp` directories at the repository root.

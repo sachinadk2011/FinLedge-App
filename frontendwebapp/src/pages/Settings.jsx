@@ -43,7 +43,9 @@ function Settings() {
   const [success, setSuccess] = useState("");
   const [importSubmitting, setImportSubmitting] = useState(false);
   const [exportTarget, setExportTarget] = useState("");
-  const [devTools, setDevTools] = useState({ enabled: false, mode: "" });
+  const [devTools, setDevTools] = useState(null);
+  const [devToolsError, setDevToolsError] = useState(false);
+  const [devToolsRetry, setDevToolsRetry] = useState(0);
   const [clearTarget, setClearTarget] = useState("share");
   const [clearSubmitting, setClearSubmitting] = useState(false);
 
@@ -97,12 +99,18 @@ function Settings() {
   useEffect(() => {
     let active = true;
     getSettingsDevTools().then(value => {
-      if (active) setDevTools(value || { enabled: false, mode: "" });
+      if (active) {
+        setDevTools(value || { enabled: false, mode: "" });
+        setDevToolsError(false);
+      }
     }).catch(() => {
-      if (active) setDevTools({ enabled: false, mode: "" });
+      if (active) {
+        setDevTools(null);
+        setDevToolsError(true);
+      }
     });
     return () => { active = false; };
-  }, []);
+  }, [devToolsRetry]);
   const openLocation = async target => {
     setMessage("");
     if (!bridge?.openDataLocation) {
@@ -259,7 +267,13 @@ function Settings() {
 
         <div className="settings-content">
           {renderSectionContent()}
-          {devTools.enabled ? (
+          {activeSection === "general" && devToolsError ? (
+            <section className="card dev-tools-status" role="alert">
+              <p>Could not check whether Development / Testing data tools are available.</p>
+              <button className="ghost" type="button" onClick={() => setDevToolsRetry(value => value + 1)}>Retry</button>
+            </section>
+          ) : null}
+          {activeSection === "general" && devTools?.enabled ? (
             <section className="card dev-data-clear" aria-label="Development data clearing">
               <h2>Development / Testing data tools</h2>
               <p>Environment: {devTools.mode}. This removes transaction rows only; workbook files, worksheets, headers, and other modules are preserved.</p>

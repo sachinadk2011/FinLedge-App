@@ -34,6 +34,7 @@ test-*
 !desktop/services/test-update-policy.example.json
 dist*
 # Tooling caches
+/.pytest-artifacts/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/

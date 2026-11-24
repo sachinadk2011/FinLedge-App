@@ -95,7 +95,7 @@ export function addShareEntry(form) {
 }
 
 export function getShareData() {
-  return getJson("/share/data");
+  return getJson("/share/data", { timeoutMs: 45_000 });
 }
 
 export function updateShareAllotment(payload) {

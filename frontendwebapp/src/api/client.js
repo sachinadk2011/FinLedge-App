@@ -86,12 +86,28 @@ export async function putJson(path, payload) {
   return handleResponse(response, { method: "PUT", url, payload });
 }
 
-export async function getJson(path) {
-  const url = `${await getApiBase()}${path}`;
-  if (import.meta.env.DEV) console.log("[api] GET", url);
-
-  const response = await fetch(url);
-  return handleResponse(response, { method: "GET", url });
+export async function getJson(path, { timeoutMs = 0 } = {}) {
+  const controller = timeoutMs > 0 ? new AbortController() : null;
+  let timeout = null;
+  const timeoutError = timeoutMs > 0
+    ? new Promise((_, reject) => {
+        timeout = setTimeout(() => {
+          controller?.abort();
+          reject(new Error(`Request timed out after ${Math.round(timeoutMs / 1000)} seconds. Please try again.`));
+        }, timeoutMs);
+      })
+    : null;
+  try {
+    const request = (async () => {
+      const url = `${await getApiBase()}${path}`;
+      if (import.meta.env.DEV) console.log("[api] GET", url);
+      const response = await fetch(url, controller ? { signal: controller.signal } : undefined);
+      return handleResponse(response, { method: "GET", url });
+    })();
+    return timeoutError ? await Promise.race([request, timeoutError]) : await request;
+  } finally {
+    if (timeout !== null) clearTimeout(timeout);
+  }
 }
 
 export async function deleteJson(path) {

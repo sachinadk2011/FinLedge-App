@@ -463,3 +463,28 @@
   `git diff --check` passed. Existing release outputs were not cleared. The full
   suite collected 259 tests but stalled at `test_bank.py` after its first two
   tests and was stopped; full-suite status remains incomplete.
+
+## Transfer direction rules path correction (2026-11-23)
+
+- Corrected the frontend JSON import to the canonical
+  `backend/services/personal_finance/transfer_direction_rules.json` location.
+  Confirmed the Python resolver and sidecar build script use the same file.
+- **Verification**: Vite production build passed (635 modules), focused transfer
+  tests passed (20/20), and the isolated Electron NSIS package was rebuilt with
+  the successful frontend output. `git diff --check` passed.
+- **Docs touched**: `docs/TASKS.md`.
+
+## Packaged Desktop launch audit (2026-11-23)
+
+- Reproduced startup failure: PyInstaller omitted modules referenced through lazy
+  package facades; the first missing target was `backend.services.common.path_utils`.
+  Added a source-scanning PyInstaller hook and regression coverage for all facade
+  targets, then rebuilt and launched an isolated Testing package. The Home screen
+  rendered, five empty workbooks initialized only under the audit data root, and
+  the sidecar health check returned HTTP 200.
+- Electron's user profile path still resolved to `%APPDATA%\\Finledge Testing EXE`
+  despite the process environment override; the test may have written normal
+  Electron profile/cache state there. That folder was not inspected or cleaned.
+- **Verification**: focused Python tests passed 64/64 on 3.15.2 and 3.13.3;
+  Desktop runtime tests passed 37/37; frontend and isolated NSIS builds passed.
+- **Docs touched**: `docs/TASKS.md`, `docs/desktop-tasks.md`.
