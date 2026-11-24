@@ -7,15 +7,12 @@ when it is called and supplies an already-open, migrated connection.
 from __future__ import annotations
 
 from datetime import date
-from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+from decimal import Decimal
 from typing import Any
 
 from backend.db.core import scaled_to_decimal, transaction
 from backend.db.repositories import BankRepository
-
-
-_CURRENCY_QUANTUM = Decimal("0.01")
-_SCALE = 10_000
+from .amounts import bank_amount_to_scaled
 
 
 class SQLiteBankService:
@@ -57,7 +54,7 @@ class SQLiteBankService:
         description: str | None = None,
     ) -> dict[str, Any]:
         self._require_writable()
-        amount_scaled = _to_bank_scaled(amount)
+        amount_scaled = bank_amount_to_scaled(amount)
         with transaction(self._connection):
             row_id = self._repository.create(
                 {
@@ -80,7 +77,7 @@ class SQLiteBankService:
         description: str | None = None,
     ) -> dict[str, Any]:
         self._require_writable()
-        amount_scaled = _to_bank_scaled(amount)
+        amount_scaled = bank_amount_to_scaled(amount)
         with transaction(self._connection):
             updated = self._repository.update(
                 row_id,
@@ -138,19 +135,6 @@ class SQLiteBankService:
         reason = getattr(self._connection, "read_only_reason", None)
         if reason:
             raise RuntimeError(str(reason))
-
-
-def _to_bank_scaled(amount: Decimal) -> int:
-    if isinstance(amount, float):
-        raise TypeError("Bank Services amount must be Decimal, not binary float")
-    try:
-        value = amount if isinstance(amount, Decimal) else Decimal(str(amount))
-        if not value.is_finite():
-            raise InvalidOperation
-        rounded = value.quantize(_CURRENCY_QUANTUM, rounding=ROUND_HALF_UP)
-    except (InvalidOperation, TypeError, ValueError) as error:
-        raise ValueError("Amount must be a valid currency value") from error
-    return int(rounded * _SCALE)
 
 
 def _clean_description(value: str | None) -> str | None:

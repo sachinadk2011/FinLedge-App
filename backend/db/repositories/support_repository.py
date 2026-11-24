@@ -104,6 +104,47 @@ def resolve_legacy_row_id(connection: sqlite3.Connection, identity_key: str) -> 
     return row_id
 
 
+def import_legacy_identity_entries(
+    connection: sqlite3.Connection,
+    entries: Mapping[str, str],
+    *,
+    created_timestamp: str | None = None,
+) -> tuple[int, int]:
+    """Idempotently import a pre-existing identity map before legacy rows are staged."""
+    _require_transaction(connection)
+    imported = 0
+    already_present = 0
+    timestamp = created_timestamp or utc_timestamp_now()
+    for identity_key, row_id in entries.items():
+        if not isinstance(identity_key, str) or not identity_key.strip():
+            raise ValueError("identity_key cannot be blank")
+        key = identity_key
+        canonical_row_id = str(row_id)
+        _validate_uuid(canonical_row_id, "row_id")
+
+        by_key = connection.execute(
+            "SELECT row_id FROM legacy_identity_map WHERE identity_key = ?", (key,)
+        ).fetchone()
+        if by_key is not None:
+            if str(by_key["row_id"]) != canonical_row_id:
+                raise ValueError(f"Legacy identity key {key!r} is already mapped to a different row_id")
+            already_present += 1
+            continue
+
+        by_id = connection.execute(
+            "SELECT identity_key FROM legacy_identity_map WHERE row_id = ?", (canonical_row_id,)
+        ).fetchone()
+        if by_id is not None:
+            raise ValueError(f"Legacy row_id {canonical_row_id} is already assigned to another identity key")
+
+        connection.execute(
+            "INSERT INTO legacy_identity_map(identity_key, row_id, created_timestamp) VALUES (?, ?, ?)",
+            (key, canonical_row_id, timestamp),
+        )
+        imported += 1
+    return imported, already_present
+
+
 def record_conflict(
     connection: sqlite3.Connection,
     *,

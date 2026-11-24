@@ -96,6 +96,10 @@ Desktop SQLite foundation (Phase 2):
   backend/db/share/ — canonical share identity and weighted-average replay/rebuild logic
   backend/db/sip/ — SIP event replay and plan-summary rebuilding
   backend/db/core/migrations/ — ordered, checksummed SQL schema migrations
+  backend/db/imports/ — Desktop-only read-only workbook staging and shared import metadata normalization
+  backend/db/imports/common/identities.py — explicit-path legacy identity JSON validation and transactional SQLite import
+  backend/services/bank/import_service.py — snapshot-gated atomic commit of reviewed Bank imports
+  backend/services/bank/review_service.py — read-only Smart Merge classification for staged Bank rows
   backend/services/bank/ — workbook and SQLite Bank services
   backend/services/personal_finance/ — workbook, SQLite, summary, transfer, and direction logic
   backend/services/share/ — workbook and SQLite Share services, summaries, and calculations

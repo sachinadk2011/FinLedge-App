@@ -17,6 +17,7 @@ _EXPORTS = {
     "allocate_sequence": (".support_repository", "allocate_sequence"),
     "add_tombstone": (".support_repository", "add_tombstone"),
     "resolve_legacy_row_id": (".support_repository", "resolve_legacy_row_id"),
+    "import_legacy_identity_entries": (".support_repository", "import_legacy_identity_entries"),
     "record_conflict": (".support_repository", "record_conflict"),
     "TransferRepository": (".transfer_repository", "TransferRepository"),
 }

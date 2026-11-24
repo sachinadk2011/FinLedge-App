@@ -14,6 +14,7 @@ _EXPORTS = {
     "SnapshotReport": (".backup", "SnapshotReport"),
     "create_verified_snapshot": (".backup", "create_verified_snapshot"),
     "content_hash": (".content_hash", "content_hash"),
+    "normalize_hash_text": (".content_hash", "normalize_hash_text"),
     "stamp_create": (".metadata", "stamp_create"),
     "stamp_material_edit": (".metadata", "stamp_material_edit"),
     "Migration": (".migration_runner", "Migration"),

@@ -25,6 +25,7 @@ from backend.db.core import (
 from backend.db.repositories import (
     add_tombstone,
     allocate_sequence,
+    import_legacy_identity_entries,
     record_conflict,
     resolve_legacy_row_id,
 )
@@ -291,5 +292,42 @@ def test_support_repository_tombstone_conflict_and_legacy_identity(tmp_path: Pat
         ).fetchone()
         assert (deleted["entity_type"], deleted["sequence_no"]) == ("share", 4)
         assert str(UUID(legacy_id)) == legacy_id
+    finally:
+        connection.close()
+
+
+def test_legacy_identity_map_import_is_idempotent_and_rejects_conflicts(tmp_path: Path):
+    connection = connect_database(tmp_path / "legacy-identity-import.db", create=True)
+    migrate_database(connection, before_migration=lambda *_: None)
+    original = {
+        "bank_transactions.xlsx#bank:legacy-row-a": "12345678-1234-5678-1234-567812345678",
+        "bank_transactions.xlsx#bank:legacy-row-b": "87654321-4321-8765-4321-876543218765",
+    }
+    try:
+        with transaction(connection):
+            assert import_legacy_identity_entries(
+                connection,
+                original,
+                created_timestamp="2026-11-24T00:00:00.000000Z",
+            ) == (2, 0)
+        with transaction(connection):
+            assert import_legacy_identity_entries(connection, original) == (0, 2)
+            assert resolve_legacy_row_id(connection, "bank_transactions.xlsx#bank:legacy-row-a") == original[
+                "bank_transactions.xlsx#bank:legacy-row-a"
+            ]
+        with pytest.raises(ValueError, match="already mapped to a different row_id"):
+            with transaction(connection):
+                import_legacy_identity_entries(
+                    connection,
+                    {"bank_transactions.xlsx#bank:legacy-row-a": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"},
+                )
+        with pytest.raises(ValueError, match="already assigned to another identity key"):
+            with transaction(connection):
+                import_legacy_identity_entries(
+                    connection,
+                    {"bank_transactions.xlsx#bank:legacy-row-c": original["bank_transactions.xlsx#bank:legacy-row-a"]},
+                )
+        rows = connection.execute("SELECT identity_key, row_id FROM legacy_identity_map ORDER BY identity_key").fetchall()
+        assert [(row["identity_key"], row["row_id"]) for row in rows] == sorted(original.items())
     finally:
         connection.close()

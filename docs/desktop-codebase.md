@@ -36,6 +36,9 @@ backend/
 ├── db/
 │   ├── __init__.py
 │   ├── core/ (SQLite connections, paths, transactions, migration, backup, and mapping)
+│   ├── imports/ (read-only workbook staging for Desktop SQLite review)
+│   │   ├── bank/ (Bank workbook row normalization, issue reporting, and review models)
+│   │   └── common/ (shared timestamp and legacy identity import helpers)
 │   ├── repositories/ (canonical records, supporting metadata, transfers, holdings)
 │   ├── share/ (share identity and weighted-average replay)
 │   └── sip/ (SIP replay and plan summaries)
@@ -83,12 +86,17 @@ backend/
 | `db/core/database_path.py` | Resolves `FinLedge Database/finledge.db` under Electron's shared `FINLEDGE_CHANNEL_DATA_ROOT`; does not create or open the database. |
 | `db/core/transactions.py` | Short SQLite transactions with bounded busy/locked retries and rollback. |
 | `db/core/metadata.py` | Shared UTC timestamp and Desktop device-stamping helpers. |
-| `db/core/content_hash.py` | Canonical SHA-256 hashes over explicitly declared authoritative fields. |
+| `db/core/content_hash.py` | Canonical SHA-256 hashes and shared text normalization over explicitly declared authoritative fields. |
 | `db/core/row_mapping.py` | Exact Decimal-to-scaled-integer conversion; rejects unsupported precision and binary floats. |
 | `db/core/migration_runner.py` | Forward-only checksummed migrations; requires a caller-provided verified-backup callback. |
 | `db/core/backup.py` | SQLite online backup with integrity, schema-version, foreign-key, and row-count verification before manifest recording. |
 | `db/core/schema.py` | SQLite 3.37+ engine guard and entry point for checksummed schema migrations. |
-| `db/repositories/support_repository.py` | Connection-scoped sequence, tombstone, conflict, and legacy-identity operations. |
+| `db/imports/__init__.py`, `db/imports/bank/__init__.py` | Lazy public facades for Desktop workbook staging APIs. |
+| `db/imports/bank/models.py` | Immutable staged Bank import plan, merge-review classifications, rows, reports, and issues. |
+| `db/imports/bank/workbook.py` | Read-only Bank worksheet reader that validates headers, preserves staged metadata, derives deterministic legacy identity keys, verifies/upgrades hashes, and classifies supported, legacy, unsupported, duplicate, or invalid rows without writing a workbook or database. |
+| `db/imports/common/metadata.py` | Shared legacy timestamp normalization for staged imports, including UTC offsets, naive/date-only values, backfills, and reported missing timestamps. |
+| `db/imports/common/identities.py` | Explicit-path JSON identity-map loader and transaction-scoped SQLite importer; validates duplicate keys, UUIDs, and ID uniqueness before persistence. |
+| `db/repositories/support_repository.py` | Connection-scoped sequence, tombstone, conflict, legacy identity resolution, and idempotent import of pre-existing identity mappings. |
 | `db/repositories/record_repository.py` | Fixed-table allowlisted CRUD; writes require caller-owned transactions; summary writes require complete rebuild rows. |
 | `db/repositories/bank_repository.py`, `db/repositories/personal_finance_repository.py` | Bank and Personal Finance canonical event persistence. |
 | `db/repositories/share_repository.py`, `db/repositories/sip_repository.py`, `db/repositories/dividend_repository.py` | The approved separate Share, SIP, and dividend event repositories. |
@@ -102,6 +110,9 @@ backend/
 | `routes/settings.py` | Workbook import/export HTTP endpoints. |
 | `services/settings/data/__init__.py` | Package marker for focused Settings data helpers. |
 | `services/bank/bank_service.py` | Bank Services workbook I/O, record operations, and totals. |
+| `services/bank/import_service.py` | Snapshot-gated, transaction-scoped commit of reviewed Bank import plans, including identity-map import and deterministic UUID resolution. |
+| `services/bank/review_service.py` | Read-only Bank Smart Merge classification for new rows, already-present UUIDs, conflicts, possible duplicates, unsupported/invalid rows, and newer tombstones. |
+| `services/bank/amounts.py` | Shared Bank currency normalization and scaled conversion; only the legacy workbook boundary accepts Excel floats. |
 | `services/share/workbook_service.py` | Share Portfolio workbook I/O, chronological weighted-average transaction recalculation, and route-facing record operations. |
 | `services/share/summary.py` | Pure aggregate calculations for Share Portfolio records, shared by the Share and Financial Summary routes. |
 | `services/personal_finance/workbook_service.py` | Personal Expenses Bank/Cash workbook operations, append-before-delete flow moves with pre-write snapshots, live sync shaping, route-facing transfer compatibility functions, and copy-only repair of rows saved under the former generic sheet name. |
@@ -130,6 +141,9 @@ backend/
 | `tests/test_auto_backups.py` | Isolated tests for automatic snapshots, retention, recovery, and concurrent writes. |
 | `tests/test_phase2_personal_finance.py` | Regression checks for Personal Expenses module boundaries and totals. |
 | `tests/test_bank.py` | Bank Services route and service behavior tests. |
+| `tests/test_bank_import_staging.py` | Isolated tests for header validation, legacy/unsupported categories, row issues, source preservation, and amount boundaries. |
+| `tests/test_bank_sqlite_import.py` | Synthetic tests for snapshot ordering, atomic Bank row/identity import, rollback, idempotent retries, and legacy `Income` preservation. |
+| `tests/test_bank_import_review.py` | Synthetic tests for read-only merge classifications, legacy identity lookup, exact duplicate candidates, tombstones, and invalid/unsupported rows. |
 | `tests/test_concurrency.py` | Concurrent backend reads/writes and corrupted workbook recovery tests. |
 | `tests/test_data_directory_service.py` | Temporary-directory tests for empty destination recovery, old-header merges, backup/copy/validation failures, interrupted migration and cleanup recovery, legacy source cleanup, and no re-import. |
 | `tests/test_path_utils.py` | Confirms auto-mode and environment-token paths resolve only inside temporary test folders. |

@@ -103,6 +103,34 @@ def calculate_content_hash(headers: list[str], row: list[Any] | tuple[Any, ...],
     return hashlib.sha1(encoded.encode("utf-8")).hexdigest()
 
 
+def legacy_identity_keys(
+    headers: list[str],
+    rows: list[list[Any] | tuple[Any, ...]],
+    kind: str,
+    *,
+    identity_scope: str | None = None,
+) -> list[str]:
+    """Build repeatable legacy identity keys, including occurrence ordinals."""
+    indexes = {canonical_header(header): index for index, header in enumerate(headers)}
+    created_index = indexes.get("created timestamp")
+    occurrences: Counter[str] = Counter()
+    keys = []
+    for row in rows:
+        normalized_row = list(row) + [None] * max(0, len(headers) - len(row))
+        created = normalized_row[created_index] if created_index is not None else ""
+        identity_seed = json.dumps(
+            [identity_scope or kind, business_payload(headers, normalized_row, kind), _normalize_value("Created Timestamp", created)],
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        identity_digest = hashlib.sha1(identity_seed.encode("utf-8")).hexdigest()
+        occurrence = occurrences[identity_digest]
+        occurrences[identity_digest] += 1
+        keys.append(f"{identity_digest}#{occurrence}")
+    return keys
+
+
 def ensure_identity_columns(headers: list[str]) -> list[str]:
     result = list(headers)
     for column in (ROW_ID_HEADER, CONTENT_HASH_HEADER):
@@ -184,8 +212,7 @@ def ensure_row_metadata(
     id_index = indexes["row id"]
     hash_index = indexes["content hash"]
     device_index = indexes.get("updated device")
-    created_index = indexes.get("created timestamp")
-    occurrences: Counter[str] = Counter()
+    identity_keys = legacy_identity_keys(headers, rows, kind, identity_scope=identity_scope)
     normalized_rows = []
     needs_identity_map = any(
         not str(row[id_index] if id_index < len(row) else "").strip()
@@ -195,16 +222,11 @@ def ensure_row_metadata(
     identity_map_path = _identity_map_path()
     identity_map = _read_identity_map(identity_map_path) if needs_identity_map else {}
     identity_entries: dict[str, str] = {}
-    for original in rows:
+    for row_index, original in enumerate(rows):
         row = list(original) + [None] * max(0, len(headers) - len(original))
         digest = calculate_content_hash(headers, row, kind)
-        created = row[created_index] if created_index is not None else ""
-        identity_seed = json.dumps([identity_scope or kind, business_payload(headers, row, kind), _normalize_value("Created Timestamp", created)], ensure_ascii=False, sort_keys=True, separators=(",", ":"))
-        identity_digest = hashlib.sha1(identity_seed.encode("utf-8")).hexdigest()
-        occurrence = occurrences[identity_digest]
-        occurrences[identity_digest] += 1
         if not str(row[id_index] or "").strip():
-            identity_key = f"{identity_digest}#{occurrence}"
+            identity_key = identity_keys[row_index]
             row[id_index] = str(identity_map.get(identity_key) or uuid5(NAMESPACE_URL, f"finledge-row-v1:{identity_key}"))
             identity_entries[identity_key] = str(row[id_index])
         row[hash_index] = digest

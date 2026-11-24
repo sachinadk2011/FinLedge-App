@@ -1843,8 +1843,18 @@ workbook was opened; no Mobile files were changed.
       `record_conflicts`.
 - [ ] Import-side hash verification and legacy SHA-1 upgrade; move this to 2.4 with the
       staged import/merge pipeline, where legacy fields and mismatch review are known.
+- [x] Bank staged import slice verifies legacy SHA-1 against the legacy workbook field
+      set, warns on mismatches/unknown hash formats, and produces canonical SHA-256; the
+      five-dataset import/commit pipeline remains open.
 - [ ] Migrate `row-identity-map.json` into `legacy_identity_map` without re-minting UUIDs;
       implement alongside 2.4 workbook import.
+- [x] Add an explicit-path JSON loader that validates the complete legacy identity map
+      before importing it atomically through the connection-scoped support repository.
+      Startup-path discovery and wiring remain unimplemented until the full migration.
+- [x] Derive stable Bank legacy identity keys with duplicate occurrence ordinals and
+      add a transaction-required, idempotent repository operation for importing an
+      existing identity map without changing its UUIDs. JSON file loading/wiring remains
+      part of the full migration.
 - [ ] Wire conflict persistence into automatic merge and add the transfer Delete API;
       both require their service/route integration in 2.3–2.4.
 - [x] Isolated repository tests cover UUID stability, sequence stability, no-op edits,
@@ -1866,13 +1876,17 @@ Bank:
       `Decimal` until an API boundary.
 - [x] Validate canonical Bank writes against supported categories and category-derived
       signs.
-- [ ] Handle legacy `Income` as an import warning during staged import without adding
+- [x] Handle legacy `Income` as an import warning during staged import without adding
       it to the enum.
 - [x] Add a connection-injected SQLite Bank service for list/add/edit/delete/summary;
       it does not select a database path or create a database during normal startup.
 - [ ] Move Bank Services reads/writes to `bank_transactions` with signed
       `amount_scaled`, category-derived sign, and derived cumulative amount via the
       window query in `docs/schema.md` §6.1.
+- [x] Add an isolated Bank import commit service that snapshots before its transaction,
+      imports an optional identity map with the source rows, resolves legacy IDs, and
+      preserves workbook `sequence_no` and audit metadata. Route integration and
+      five-workbook migration remain open.
 - [x] Preserve the exact summary formulas in `docs/rules.md` §5.3 for SQLite reads.
 - [ ] Parity test: current workbook values vs SQLite values, to the cent, including
       edits and deletes that shift cumulative amounts.
@@ -1896,6 +1910,11 @@ rounding, update identity/timestamps, cumulative order, invalid writes, and dele
 service passed with the foundation suites: **25 tests passed**. No route, startup path,
 workbook, or Mobile code was changed; app integration and full copied-workbook parity
 remain gated on staged migration.
+
+- [x] Bank staging preserves source row order, canonical valid UUIDs, source audit
+      timestamps/device labels, and the supplied content-hash field; malformed and
+      repeated UUIDs are surfaced for review, and missing timestamps are classified
+      using schema §9.4.
 
 Personal finance:
 
@@ -2083,6 +2102,10 @@ Transfers:
 - [ ] Stage unknown categories as `unsupported`/`invalid`; never coerce or drop.
 - [ ] Implement Smart Merge: add, already-present, conflict, possible duplicate, with
       review confirmation and idempotent retry.
+- [x] Bank Smart Merge review classifies add/already-present/conflict/possible-duplicate
+      plus unsupported/invalid rows against the local SQLite database without writing;
+      exact duplicate fields follow `docs/rules.md` §13 and newer tombstones block
+      automatic resurrection. Conflict choice/persistence remains open.
 - [ ] Implement Replace for all selected categories in one transaction with a verified
       pre-Replace snapshot, tombstones for replaced rows, summary rebuild, and restore on failure.
 - [ ] Implement export with authoritative fields + recomputed derived columns, canonical
@@ -2773,5 +2796,137 @@ open; no financial behavior was inferred from them.
   3.13.3. Desktop data/runtime tests passed **37/37**. The frontend production
   build and isolated NSIS package build passed. The full backend suite remains
   incomplete due its earlier Windows stall in `test_bank.py`.
+- **Docs touched:** `docs/AGENTS.md`, `docs/desktop-codebase.md`,
+  `docs/desktop-tasks.md`.
+
+### 2026-11-24 — Verify Bank import hashes during staging
+
+- Bank staging now validates legacy bare SHA-1 against the existing legacy Bank field
+  set, checks supplied canonical SHA-256 values, and recalculates the canonical hash
+  from normalized authoritative Bank fields. Mismatches and unrecognized hash formats
+  remain review warnings; malformed rows do not receive a commit-ready hash.
+- **Verification:** `backend/tests/test_bank_import_staging.py` passed **8/8** in an
+  isolated pytest directory, including a legacy SHA-1 verification fixture. No database,
+  production workbook, application runtime, or Mobile file was accessed.
+- **Still open:** persist legacy identity mappings, implement atomic Bank staging commit
+  with snapshot and merge classification, implement the other four workbook staging
+  paths, and complete financial parity before route cutover.
+- **Docs touched:** `docs/desktop-codebase.md`, `docs/desktop-tasks.md`.
+
+### 2026-11-24 — Bank workbook staging boundary for Desktop SQLite
+
+- Added `backend/db/imports/bank/` as a read-only staging layer. It validates
+  normalized headers, stages supported and unknown categories, reports legacy
+  `Income` with a warning without changing the current category enum, and flags
+  malformed dates, amounts, and signs before any persistence step.
+- Extracted shared Bank amount normalization into `backend/services/bank/amounts.py`.
+  Excel floats are accepted only at the legacy workbook import boundary; API/SQLite
+  conversion continues to reject binary floats.
+- Added focused synthetic workbook tests, including a source-byte preservation check.
+  **Verification:** `backend/tests/test_bank_import_staging.py` passed **5/5** using
+  an isolated pytest basetemp. No production workbook, SQLite database, mobile file,
+  or application runtime was accessed.
+- **Still open:** mapping staged rows into a backup-gated import/commit pipeline,
+  migration parity, and Bank route cutover. This staging reader does not write to SQL.
+- **Docs touched:** `docs/desktop-codebase.md`, `docs/desktop-tasks.md`.
+
+### 2026-11-24 — Preserve Bank metadata during import staging
+
+- Extended the read-only Bank staging plan with source workbook order, canonicalized
+  valid UUIDs, source content-hash text, normalized created/updated timestamps, device
+  labels, and `metadata_quality` per schema §9.4. Malformed IDs are invalid and repeated
+  IDs are staged as possible duplicates for user review. Rows without IDs remain
+  unassigned for later deterministic lookup through `legacy_identity_map`.
+- Reused one `backend/db/imports/common/metadata.py` timestamp normalizer for all future
+  workbook staging paths. `imported_missing` is attached to each row when import time
+  is required, so the review plan cannot hide those rows.
+- **Verification:** the isolated Bank staging suite passed **7/7**. No SQLite file or
+  source workbook was written; no app runtime or Mobile files were accessed.
+- **Still open:** verify/upgrade SHA-1 hashes, persist deterministic legacy identities,
+  commit staged rows transactionally, and complete workbook-to-SQLite parity before
+  any live route switch.
+- **Docs touched:** `docs/AGENTS.md`, `docs/desktop-codebase.md`,
+  `docs/desktop-tasks.md`.
+
+### 2026-11-24 — Deterministic Bank legacy identity staging
+
+- Extracted the existing workbook identity-key algorithm into the reusable
+  `legacy_identity_keys()` helper and used it to attach stable keys to Bank rows that
+  lack a valid UUID. Identical historical rows receive deterministic occurrence
+  ordinals. Existing workbook metadata generation now calls the same helper, avoiding
+  two implementations of the identity seed.
+- Added transaction-required `import_legacy_identity_entries()` to the support
+  repository. It preserves pre-existing UUID mappings, is safe to retry, and rejects
+  key-to-ID or ID-to-key conflicts. The subsequent legacy resolver returns the imported
+  UUID for that key.
+- Fixed a lazy package API collision exposed by the expanded import tests by exporting
+  the reusable hash text normalizer through the core facade and importing it through
+  that facade.
+- **Verification:** staging, package API, foundation, and workbook-merge suites passed
+  **74/74** in isolated pytest storage. No live SQLite/workbook paths, app runtime, or
+  Mobile files were accessed.
+- **Still open:** load and migrate the actual JSON identity map through the new helper,
+  atomically resolve Bank staged identity keys during import, and finish the full
+  workbook import/merge/parity pipeline.
+- **Docs touched:** `docs/AGENTS.md`, `docs/desktop-codebase.md`,
+  `docs/desktop-tasks.md`.
+
+### 2026-11-24 — Import legacy identity-map JSON into SQLite
+
+- Added an explicit-path loader for the old `row-identity-map.json` shape. It validates
+  JSON structure, duplicate object keys, nonblank identity keys, UUID syntax, and
+  duplicate UUID assignments before touching SQLite. UUID casing/braces are normalized
+  without changing the UUID value; identity keys are preserved exactly.
+- Added a transaction-required import function that loads the fully validated mapping
+  then delegates to the support repository's idempotent insert. Existing conflicting
+  mappings fail; caller rollback keeps the import atomic. No environment path is
+  discovered implicitly and no source JSON is modified or deleted.
+- **Verification:** the identity-import, Bank staging, database foundation, and package
+  facade suites passed **72/72** in isolated pytest storage. Tests use a synthetic JSON
+  map and temporary database only.
+- **Still open:** wire this explicit loader into the staged migration, resolve staged
+  Bank identity keys in the same transaction as their canonical rows, and finish import
+  merge/parity before any route cutover. App and Mobile remain untouched.
+- **Docs touched:** `docs/AGENTS.md`, `docs/desktop-codebase.md`,
+  `docs/desktop-tasks.md`.
+
+### 2026-11-24 — Atomic reviewed Bank import into SQLite
+
+- Added `backend/services/bank/import_service.py`. It rejects unresolved review rows,
+  requires a pre-import snapshot callback, imports the explicit legacy identity map,
+  resolves each blank Bank UUID through `legacy_identity_map`, and writes all Bank
+  rows with preserved sequence and audit metadata in one caller-independent transaction.
+  A failed row rolls back both the inserted rows and identity mappings.
+- Added a migration-only `BankRepository.import_existing()` path that validates the
+  canonical hash, category/sign, UUID, sequence, device, and metadata quality while
+  preserving legacy `Income` records without expanding `BankCategory`. Re-importing an
+  identical row is a no-op; review conflicts stop and roll back the batch.
+- **Verification:** Bank import/staging, legacy identity, database foundation, and
+  package API suites passed **77/77** with temporary databases/workbooks. Tests verify
+  callback ordering, idempotent retries, rollback, and legacy Income totals. No app,
+  production data, or Mobile files were accessed.
+- **Still open:** Smart Merge/Replace review classification and conflict persistence,
+  parity over full copied workbooks, other four workbook imports, export round-trip, and
+  live route cutover. The app remains on Excel.
+- **Docs touched:** `docs/AGENTS.md`, `docs/desktop-codebase.md`,
+  `docs/desktop-tasks.md`.
+
+### 2026-11-24 — Read-only Bank Smart Merge classification
+
+- Added `classify_bank_import()` and immutable Bank merge-review models. Each staged row
+  is classified as add, already present, conflict, possible duplicate, unsupported, or
+  invalid. Same UUID + same hash is already present; same UUID + changed hash is a
+  conflict; a different UUID with the exact normalized date/category/amount/description
+  match is shown as a possible duplicate. Timestamps remain advisory.
+- Classification resolves existing legacy identity mappings, rejects cross-entity UUID
+  reuse, and prevents resurrection when the matching tombstone is newer than the row.
+  The review pass performs SELECTs only and does not save conflict records; those must
+  wait for an explicit conflict decision.
+- **Verification:** Bank review/import/staging, legacy identity, database foundation,
+  and lazy package API suites passed **81/81** with temporary workbooks and databases.
+  No app, production data, or Mobile files were accessed.
+- **Still open:** expose review to the import UI, record the losing version and selected
+  resolution atomically after confirmation, implement Replace, and complete five-source
+  parity before switching any live route.
 - **Docs touched:** `docs/AGENTS.md`, `docs/desktop-codebase.md`,
   `docs/desktop-tasks.md`.

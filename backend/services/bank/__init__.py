@@ -3,8 +3,13 @@
 from backend._package_api import package_dir, resolve_export
 
 _EXPORTS = {
+    "bank_amount_to_scaled": (".amounts", "bank_amount_to_scaled"),
     "FILE_PATH": (".bank_service", "FILE_PATH"),
     "HEADERS": (".bank_service", "HEADERS"),
+    "legacy_bank_amount_to_scaled": (".amounts", "legacy_bank_amount_to_scaled"),
+    "import_staged_bank_workbook": (".import_service", "import_staged_bank_workbook"),
+    "classify_bank_import": (".review_service", "classify_bank_import"),
+    "normalize_bank_amount": (".amounts", "normalize_bank_amount"),
     "append_bank_record": (".bank_service", "append_bank_record"),
     "read_bank_records": (".bank_service", "read_bank_records"),
     "summarize_bank_records": (".bank_service", "summarize_bank_records"),

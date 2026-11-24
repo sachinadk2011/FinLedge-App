@@ -1,11 +1,12 @@
 import threading
 from datetime import date, datetime
-from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+from decimal import Decimal
 from typing import Optional
 
 from openpyxl import load_workbook
 
 from ...models import BankCategory
+from .amounts import normalize_bank_amount
 from ..common import (
     append_tombstone,
     current_timestamp_us as _current_timestamp,
@@ -40,17 +41,8 @@ BANK_SERVICE_CATEGORIES = [c.value for c in BankCategory]
 BANK_INCOME_CATEGORIES = {BankCategory.interest_earned.value.casefold(), "income"}
 
 _file_lock = threading.Lock()
-_CURRENCY_QUANTUM = Decimal("0.01")
-
-
 def _currency_amount(value: Decimal | float | int | str) -> Decimal:
-    try:
-        amount = value if isinstance(value, Decimal) else Decimal(str(value))
-        if not amount.is_finite():
-            raise InvalidOperation
-        return amount.quantize(_CURRENCY_QUANTUM, rounding=ROUND_HALF_UP)
-    except (InvalidOperation, TypeError, ValueError) as exc:
-        raise ValueError("Amount must be a valid currency value.") from exc
+    return normalize_bank_amount(value, allow_excel_float=True)
 
 
 def _is_income_category(category: str) -> bool:
