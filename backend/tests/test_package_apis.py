@@ -12,6 +12,13 @@ import pytest
 FACADE_PACKAGES = (
     "backend.db",
     "backend.db.core",
+    "backend.db.imports",
+    "backend.db.imports.bank",
+    "backend.db.imports.common",
+    "backend.db.imports.personal_finance",
+    "backend.db.imports.share",
+    "backend.db.imports.transfer",
+    "backend.services.share",
     "backend.db.repositories",
     "backend.db.share",
     "backend.db.sip",

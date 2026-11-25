@@ -6,6 +6,8 @@ _EXPORTS = {
     "FILE_PATH": (".workbook_service", "FILE_PATH"),
     "HEADERS": (".workbook_service", "HEADERS"),
     "SQLiteShareService": (".sqlite_service", "SQLiteShareService"),
+    "classify_share_import": (".import_review_service", "classify_share_import"),
+    "resolve_share_import_conflict": (".conflict_service", "resolve_share_import_conflict"),
     "summarize_share_records": (".summary", "summarize_share_records"),
     "apply_sip_investment": (".lot_calculations", "apply_sip_investment"),
     "apply_weighted_average_transaction": (".lot_calculations", "apply_weighted_average_transaction"),

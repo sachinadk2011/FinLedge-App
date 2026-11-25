@@ -7,6 +7,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 from backend.db.core import transaction
+from backend.services.common import snapshot_before_operation
 from backend.db.imports.bank.models import BankImportPlan, BankImportReport, StagedBankRecord
 from backend.db.imports.common import import_legacy_identity_file
 from backend.db.repositories import BankRepository, resolve_legacy_row_id
@@ -16,17 +17,14 @@ def import_staged_bank_workbook(
     connection: sqlite3.Connection,
     plan: BankImportPlan,
     *,
-    before_import_snapshot: Callable[[], object],
+    before_import_snapshot: Callable[[], object] | None = None,
     legacy_identity_map_path: str | Path | None = None,
 ) -> BankImportReport:
     """Snapshot first, then commit the identity map and Bank rows atomically."""
     _validate_plan(plan)
     if connection.in_transaction:
         raise RuntimeError("Bank workbook import must own its transaction boundary")
-    if not callable(before_import_snapshot):
-        raise TypeError("A verified pre-import snapshot callback is required")
-
-    before_import_snapshot()
+    snapshot_before_operation(connection, "pre-import", before_import_snapshot)
     repository = BankRepository(connection)
     with transaction(connection):
         identity_counts = (0, 0)

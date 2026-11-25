@@ -5,6 +5,8 @@ from backend._package_api import package_dir, resolve_export
 _EXPORTS = {
     "BankImportIssue": (".models", "BankImportIssue"),
     "BankImportReport": (".models", "BankImportReport"),
+    "BankReplaceReport": (".models", "BankReplaceReport"),
+    "BankConflictResolutionReport": (".models", "BankConflictResolutionReport"),
     "BankMergePlan": (".models", "BankMergePlan"),
     "BankMergeRow": (".models", "BankMergeRow"),
     "BankImportPlan": (".models", "BankImportPlan"),

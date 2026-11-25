@@ -7,6 +7,8 @@ _EXPORTS = {
     "load_legacy_identity_entries": (".identities", "load_legacy_identity_entries"),
     "NormalizedImportTimestamps": (".metadata", "NormalizedImportTimestamps"),
     "normalize_import_timestamps": (".metadata", "normalize_import_timestamps"),
+    "normalize_import_date": (".rows", "normalize_import_date"),
+    "normalize_import_row_id": (".rows", "normalize_import_row_id"),
 }
 
 __all__ = list(_EXPORTS)

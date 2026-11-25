@@ -252,8 +252,6 @@ def _share_charge(transaction_type: str, charge: Decimal | None, *, creating: bo
     scaled = decimal_to_scaled(value)
     if scaled < 0:
         raise ValueError("Charge cannot be negative")
-    if transaction_type != "ipo" and scaled != 0:
-        raise ValueError("Secondary buy/sell charges must be zero")
     return scaled
 
 

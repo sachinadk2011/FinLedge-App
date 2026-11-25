@@ -134,11 +134,54 @@ def test_sqlite_share_service_ipo_default_allotment_and_invalid_events_rollback(
             "SELECT row_id FROM dividend_events WHERE row_id=?", (dependent_bonus["row_id"],)
         ).fetchone() is not None
 
-        with pytest.raises(ValueError, match="Secondary buy/sell charges must be zero"):
-            service.create_share_transaction(
-                entry_date=date(2025, 1, 2), share_name="NABIL BANK", transaction_type="buy",
-                per_unit_price=Decimal("10"), quantity=1, charge=Decimal("1"),
-            )
         assert connection.execute("SELECT COUNT(*) FROM share_transactions").fetchone()[0] == 1
+    finally:
+        connection.close()
+
+
+def test_sell_charge_is_separate_expense_reducing_net_proceeds_and_profit(tmp_path: Path):
+    service, connection = _service(tmp_path / "sqlite-share-sell-charge.db")
+    try:
+        service.create_share_transaction(
+            entry_date=date(2025, 1, 1), share_name="NABIL BANK", transaction_type="buy",
+            per_unit_price=Decimal("10"), quantity=10,
+        )
+        sale = service.create_share_transaction(
+            entry_date=date(2025, 1, 2), share_name="NABIL BANK", transaction_type="sell",
+            per_unit_price=Decimal("12"), quantity=2, charge=Decimal("1"),
+        )
+        assert sale["total_amount_scaled"] == 230_000
+        assert sale["profit_loss_scaled"] == 30_000
+        row = connection.execute("SELECT charge_scaled FROM share_transactions WHERE row_id=?", (sale["row_id"],)).fetchone()
+        assert row["charge_scaled"] == 10_000
+        with pytest.raises(ValueError, match="less than gross sale proceeds"):
+            service.create_share_transaction(
+                entry_date=date(2025, 1, 3), share_name="NABIL BANK", transaction_type="sell",
+                per_unit_price=Decimal("12"), quantity=1, charge=Decimal("12"),
+            )
+        assert connection.execute("SELECT COUNT(*) FROM share_transactions").fetchone()[0] == 2
+    finally:
+        connection.close()
+
+
+def test_buy_charge_is_added_to_acquisition_cost_and_weighted_average(tmp_path: Path):
+    service, connection = _service(tmp_path / "sqlite-share-buy-charge.db")
+    try:
+        service.create_share_transaction(
+            entry_date=date(2025, 1, 1), share_name="CMF2", transaction_type="buy",
+            per_unit_price=Decimal("9.76"), quantity=600,
+        )
+        purchase = service.create_share_transaction(
+            entry_date=date(2025, 1, 2), share_name="CMF2", transaction_type="buy",
+            per_unit_price=Decimal("10"), quantity=100, charge=Decimal("5"),
+        )
+        assert purchase["total_amount_scaled"] == 10_050_000
+        assert purchase["holding_quantity"] == 700
+        assert purchase["holding_cost_scaled"] == 68_610_000
+        assert purchase["average_cost_scaled"] == 98_014
+        row = connection.execute(
+            "SELECT charge_scaled FROM share_transactions WHERE row_id=?", (purchase["row_id"],)
+        ).fetchone()
+        assert row["charge_scaled"] == 50_000
     finally:
         connection.close()

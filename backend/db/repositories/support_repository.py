@@ -81,6 +81,17 @@ def add_tombstone(
     )
 
 
+def get_tombstone(connection: sqlite3.Connection, row_id: str) -> dict[str, object] | None:
+    """Return the persisted tombstone for a UUID without changing database state."""
+    _validate_uuid(row_id, "row_id")
+    row = connection.execute(
+        "SELECT row_id, entity_type, deleted_timestamp, deleted_by_device, sequence_no, note "
+        "FROM deleted_records WHERE row_id = ?",
+        (row_id,),
+    ).fetchone()
+    return dict(row) if row is not None else None
+
+
 def resolve_legacy_row_id(connection: sqlite3.Connection, identity_key: str) -> str:
     """Return the persisted UUID for a legacy identity key, creating it once."""
     _require_transaction(connection)
@@ -193,6 +204,37 @@ def record_conflict(
         (row_id, losing_device, losing_json),
     ).fetchone()
     return int(row["conflict_id"])
+
+
+def resolve_conflict(
+    connection: sqlite3.Connection,
+    conflict_id: int,
+    resolution: str,
+    *,
+    resolved_timestamp: str | None = None,
+) -> None:
+    """Resolve a recorded conflict in the caller's transaction, idempotently."""
+    _require_transaction(connection)
+    if isinstance(conflict_id, bool) or not isinstance(conflict_id, int) or conflict_id <= 0:
+        raise ValueError("conflict_id must be a positive integer")
+    if resolution not in {"kept_local", "kept_incoming", "merged", "dismissed"}:
+        raise ValueError(f"Unsupported conflict resolution: {resolution!r}")
+
+    existing = connection.execute(
+        "SELECT resolution FROM record_conflicts WHERE conflict_id = ?", (conflict_id,)
+    ).fetchone()
+    if existing is None:
+        raise ValueError(f"Conflict {conflict_id} does not exist")
+    current = str(existing["resolution"])
+    if current == resolution:
+        return
+    if current != "pending":
+        raise ValueError(f"Conflict {conflict_id} is already resolved as {current}")
+    connection.execute(
+        "UPDATE record_conflicts SET resolution = ?, resolved_timestamp = ? "
+        "WHERE conflict_id = ? AND resolution = 'pending'",
+        (resolution, resolved_timestamp or utc_timestamp_now(), conflict_id),
+    )
 
 
 def _validate_uuid(value: str, field: str) -> None:

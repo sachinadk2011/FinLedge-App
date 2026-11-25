@@ -10,7 +10,7 @@ from uuid import UUID, uuid4
 from ..core.content_hash import content_hash, normalize_hash_text
 from ..core.metadata import stamp_create, stamp_material_edit, utc_timestamp_now
 from ..share.identity import normalize_share_name
-from .support_repository import add_tombstone, allocate_sequence
+from .support_repository import DEVICE_LABELS, add_tombstone, allocate_sequence
 
 
 @dataclass(frozen=True)
@@ -49,6 +49,18 @@ SPECS = {
         "created_timestamp", "last_updated_timestamp", "updated_device", "metadata_quality", "content_hash",
     ), ("txn_date", "direction", "amount_scaled", "description", "last_updated_timestamp", "updated_device", "metadata_quality", "content_hash")),
 }
+
+
+def find_other_entity_owner(connection: sqlite3.Connection, row_id: str, entity_type: str) -> str | None:
+    """Return the owning entity when a UUID is already used outside this entity."""
+    for spec in SPECS.values():
+        if spec.entity_type == entity_type:
+            continue
+        if connection.execute(
+            f"SELECT 1 FROM {spec.table} WHERE row_id = ? LIMIT 1", (row_id,)
+        ).fetchone() is not None:
+            return spec.entity_type
+    return None
 
 
 class RecordRepository:
@@ -205,9 +217,72 @@ class RecordRepository:
         self.connection.execute(f"DELETE FROM {self.spec.table} WHERE row_id = ?", (row_id,))
         return existing
 
+    def import_existing(self, values: Mapping[str, object]) -> bool:
+        """Insert a fully reviewed historical row, preserving its canonical fields."""
+        self._require_transaction()
+        record = dict(values)
+        required = set(self.spec.columns)
+        if set(record) != required:
+            missing = required - set(record)
+            extra = set(record) - required
+            raise ValueError(f"Imported {self.spec.entity_type} row fields mismatch (missing={sorted(missing)}, extra={sorted(extra)})")
+
+        normalized_row_id = _canonical_uuid(record["row_id"], "row_id")
+        if str(record["row_id"]) != normalized_row_id:
+            raise ValueError("Imported row_id must be lowercase canonical text")
+        record["row_id"] = normalized_row_id
+        sequence_no = record["sequence_no"]
+        if isinstance(sequence_no, bool) or not isinstance(sequence_no, int) or sequence_no <= 0:
+            raise ValueError("Imported sequence_no must be a positive integer")
+        self._validate_financial_types(record)
+
+        if str(record["metadata_quality"]) not in {
+            "exact", "legacy_offset", "legacy_naive", "legacy_date_only", "backfilled", "imported_missing"
+        }:
+            raise ValueError("Imported metadata_quality is unsupported")
+        if str(record["updated_device"]) not in DEVICE_LABELS:
+            raise ValueError("Imported updated_device is unsupported")
+        for timestamp_name in ("created_timestamp", "last_updated_timestamp"):
+            if not str(record[timestamp_name] or "").strip():
+                raise ValueError(f"Imported {timestamp_name} cannot be blank")
+
+        self._validate_imported_record(record)
+        computed_hash = self._content_hash(record)
+        if str(record["content_hash"]) != computed_hash:
+            raise ValueError(f"Imported {self.spec.entity_type} canonical content_hash does not match the authoritative fields")
+
+        existing = self.get(normalized_row_id)
+        if existing is not None:
+            if all(existing[column] == record[column] for column in self.spec.columns):
+                return False
+            raise ValueError(f"{self.spec.entity_type} row {normalized_row_id} already exists with different imported values")
+        sequence_owner = self.connection.execute(
+            f"SELECT row_id FROM {self.spec.table} WHERE sequence_no = ?", (sequence_no,)
+        ).fetchone()
+        if sequence_owner is not None:
+            raise ValueError(f"{self.spec.entity_type} sequence_no {sequence_no} is already assigned to another row")
+        self._ensure_global_row_id_unique(normalized_row_id)
+
+        columns = self.spec.columns
+        names = ", ".join(columns)
+        placeholders = ", ".join("?" for _ in columns)
+        self.connection.execute(
+            f"INSERT INTO {self.spec.table} ({names}) VALUES ({placeholders})",
+            tuple(record[column] for column in columns),
+        )
+        return True
+
+    def _validate_imported_record(self, record: Mapping[str, object]) -> None:
+        """Subclass hook for module-specific import invariants."""
+
     def _next_sequence(self) -> int:
         row = self.connection.execute(f"SELECT COALESCE(MAX(sequence_no), 0) + 1 FROM {self.spec.table}").fetchone()
         return int(row[0])
+
+    def next_sequence_no(self) -> int:
+        """Return the next sequence value; call inside a write transaction before import."""
+        self._require_transaction()
+        return self._next_sequence()
 
     def _validate_allowed(self, values: Mapping[str, object], allowed: set[str], *, operation: str) -> None:
         invalid = set(values) - allowed
@@ -247,6 +322,10 @@ class RecordRepository:
                 casefold_fields={"direction"},
             )
         return content_hash(payload, tuple(payload))
+
+    def canonical_content_hash(self, record: Mapping[str, object]) -> str:
+        """Return the entity's canonical hash for an existing or staged row mapping."""
+        return self._content_hash(record)
 
     def _ensure_global_row_id_unique(self, row_id: str) -> None:
         for spec in SPECS.values():

@@ -63,6 +63,16 @@ class BankImportReport:
 
 
 @dataclass(frozen=True)
+class BankReplaceReport:
+    imported_count: int
+    removed_count: int
+    snapshot_path: str
+    imported_identity_count: int = 0
+    existing_identity_count: int = 0
+    imported_missing_rows: tuple[int, ...] = ()
+
+
+@dataclass(frozen=True)
 class BankMergeRow:
     staged: StagedBankRecord
     classification: MergeClassification
@@ -83,3 +93,11 @@ class BankMergePlan:
         for row in self.rows:
             counts[row.classification] += 1
         return counts
+
+
+@dataclass(frozen=True)
+class BankConflictResolutionReport:
+    row_id: str
+    conflict_id: int
+    resolution: Literal["kept_local", "kept_incoming"]
+    row_updated: bool

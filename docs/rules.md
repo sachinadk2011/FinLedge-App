@@ -421,14 +421,15 @@ Share holdings and realized results replay `share_transactions` and `dividend_ev
 For `ipo` and `buy`:
 
 ```text
-share_value   = per_unit_price × quantity
-total_amount  = share_value + charge
+  share_value   = per_unit_price × quantity
+  total_amount  = share_value + charge
 holding.qty  += quantity
 holding.cost += total_amount
 ```
 
 - IPO charge defaults to `5.00` when not supplied.
-- Secondary `buy` charge is forced to `0` by the current service.
+- Secondary `buy` charge defaults to `0`; an entered charge is added to acquisition
+  cost and included in weighted-average cost.
 - IPO and secondary purchases contribute to the same holding.
 - IPO allotment status is not stored. For an IPO row, `quantity IS NULL` and
   `quantity = 0` mean the same thing: not allotted / result not entered. There is
@@ -463,8 +464,14 @@ cost_basis   = average_cost × sell_quantity
 holding.qty -= sell_quantity
 holding.cost -= cost_basis
 if holding.qty == 0: holding.cost = 0
-realized_profit = sale_proceeds - cost_basis
+net_sale_proceeds = sale_price × sell_quantity - sell_charge
+realized_profit = net_sale_proceeds - cost_basis
 ```
+
+Sell charge is a separate expense with a default of `0`; it reduces net sale
+proceeds and realized profit/loss. The charge must be less than gross proceeds.
+This is equivalent to adding the charge to the cost basis of the shares sold when
+calculating that sale's P/L; it does not change the cost basis of unsold shares.
 
 `average_cost` is unchanged by a sale because both quantity and cost are
 reduced proportionally.

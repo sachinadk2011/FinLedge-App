@@ -316,7 +316,7 @@ its earlier number so existing references stay valid.
 | `transaction_type` | TEXT | no | `ipo`, `buy`, `sell`; immutable |
 | `per_unit_price_scaled` | INTEGER | no | Unit price ×10⁴, `>= 0` |
 | `quantity` | INTEGER | yes | Allotted shares for IPO; whole shares for buy/sell. For IPO: `NULL` = not allotted / result not entered; `> 0` = allotted. `0` is normalized to `NULL` and rejected by the CHECK |
-| `charge_scaled` | INTEGER | no | Charge ×10⁴, `>= 0`, default `0`; secondary buy/sell default `0`; IPO application charge preserved |
+| `charge_scaled` | INTEGER | no | Charge ×10⁴, `>= 0`, default `0`; buy charge is added to acquisition cost; sell charge is deducted from sale proceeds; IPO application charge is preserved |
 | `created_timestamp` | TEXT | no | UTC µs |
 | `last_updated_timestamp` | TEXT | no | UTC µs |
 | `updated_device` | TEXT | no | Device label |

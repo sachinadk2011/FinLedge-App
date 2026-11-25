@@ -5,7 +5,7 @@ from __future__ import annotations
 import sqlite3
 
 from backend.db.imports.bank.models import BankImportPlan, BankMergePlan, BankMergeRow, StagedBankRecord
-from backend.db.repositories import BankRepository, SPECS
+from backend.db.repositories import BankRepository, find_other_entity_owner, get_tombstone
 
 
 def classify_bank_import(connection: sqlite3.Connection, plan: BankImportPlan) -> BankMergePlan:
@@ -36,7 +36,7 @@ def _classify_row(
         row_id = str(mapped["row_id"]) if mapped is not None else None
 
     if row_id:
-        owner = _other_entity_owner(connection, row_id)
+        owner = find_other_entity_owner(connection, row_id, "bank")
         if owner:
             return BankMergeRow(
                 staged=staged,
@@ -45,16 +45,13 @@ def _classify_row(
                 review_message=f"This UUID already belongs to the {owner} entity.",
             )
 
-        tombstone = connection.execute(
-            "SELECT entity_type, deleted_timestamp, deleted_by_device FROM deleted_records WHERE row_id = ?",
-            (row_id,),
-        ).fetchone()
+        tombstone = get_tombstone(connection, row_id)
         if tombstone is not None and str(tombstone["entity_type"]) != "bank":
             return BankMergeRow(
                 staged=staged,
                 classification="invalid",
                 resolved_row_id=row_id,
-                existing_record=dict(tombstone),
+                existing_record=tombstone,
                 review_message="This UUID has a deletion record for a different entity type.",
             )
         if tombstone is not None and str(tombstone["deleted_timestamp"]) > staged.last_updated_timestamp:
@@ -104,17 +101,6 @@ def _classify_row(
             review_message="A different Row ID has matching date, amount, category, and normalized description.",
         )
     return BankMergeRow(staged=staged, classification="add", resolved_row_id=row_id)
-
-
-def _other_entity_owner(connection: sqlite3.Connection, row_id: str) -> str | None:
-    for key, spec in SPECS.items():
-        if key == "bank":
-            continue
-        if connection.execute(
-            f"SELECT 1 FROM {spec.table} WHERE row_id = ? LIMIT 1", (row_id,)
-        ).fetchone() is not None:
-            return spec.entity_type
-    return None
 
 
 def _issue_summary(record: StagedBankRecord) -> str | None:

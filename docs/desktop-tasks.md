@@ -1957,7 +1957,10 @@ Shares:
       import and transfer import (trim, collapse whitespace, upper-case, reject empty).
 - [x] Implement IPO/buy/sell in `share_transactions` with the weighted-average rules in
       `docs/rules.md` §7.2–§7.3.
-- [x] IPO default charge `5.00`; secondary buy/sell charge `0`; the charge rule lives in
+- [x] IPO default charge `5.00`; buy/sell charges default to `0`; buy charges are
+      capitalized into weighted-average acquisition cost; sell charges are stored
+      separately and deducted from net sale proceeds and realized profit/loss; charge
+      validation lives in
       one shared function.
 - [x] IPO status is derived, never stored: `quantity` NULL and `0` both mean not allotted /
       result not entered; `> 0` = allotted. Blank/`0` is normalized to NULL on create, edit,
@@ -1981,6 +1984,9 @@ Shares:
 - [x] Rebuild versioned `sip_plan_summaries` atomically with SIP event writes; rebuild a
       missing or version/sequence-stale summary before returning it to callers.
 - [ ] Add import-side plan ID preservation and review for malformed or conflicting plans.
+  - [x] Share workbook staging reconstructs stable legacy SIP plan UUIDs from ordered
+        installment/redemption rows and flags redemption rows without an open plan.
+  - [ ] Transfer import must preserve sender plan UUIDs and review cross-device conflicts.
 - [x] Implement SQLite service writes for `dividend_events`: cash dividend and bonus
       shares with the exact quantity/cost effects in `docs/rules.md` §7.4–§7.5, plus the
       Rule A/B holding replay in §7.12 for create/edit/delete.
@@ -2096,6 +2102,10 @@ Transfers:
 
 - [ ] Implement workbook import into SQLite for all five source files, preserving UUIDs,
       both timestamps, device labels and `sequence_no` workbook order.
+  - [x] Share worksheet initial import commits Share, SIP, and dividend events atomically,
+        preserves metadata, resolves legacy identities, and rebuilds both derived summaries;
+        read-only Smart Merge classification and snapshot-gated explicit conflict decisions
+        are implemented; UI wiring remains open.
 - [ ] Implement `metadata_quality` exactly as `docs/schema.md` §9.4; never use import
       time while a date exists; report every `imported_missing` row.
 - [ ] Stop the unconditional restamp of reviewed rows; bump only on material change.
@@ -2105,9 +2115,34 @@ Transfers:
 - [x] Bank Smart Merge review classifies add/already-present/conflict/possible-duplicate
       plus unsupported/invalid rows against the local SQLite database without writing;
       exact duplicate fields follow `docs/rules.md` §13 and newer tombstones block
-      automatic resurrection. Conflict choice/persistence remains open.
+      automatic resurrection. Explicit keep-local/keep-incoming resolution now snapshots,
+      revalidates, archives the loser, and persists the decision atomically; UI wiring,
+      idempotent end-to-end review retry, and remaining source modules are open.
+- [x] Personal Finance Bank Flow and Cash Flow sheets have read-only staging with
+      canonical category/direction validation, source filtering, stable legacy IDs,
+      timestamp preservation, exact scaled amounts and recomputed hashes. Snapshot-gated
+      atomic initial import, same-hash retry and legacy identity resolution are implemented.
+      Read-only Smart Merge classification and snapshot-gated atomic keep-local/keep-incoming
+      conflict decisions are also implemented; the UI and export remain open.
+- [x] Share/SIP/dividend Smart Merge review is read-only and classifies UUID/hash matches,
+      changed-row conflicts, exact-field possible duplicates, invalid entity reuse, stale
+      hashes and newer tombstones. Explicit row-conflict decisions snapshot, revalidate,
+      archive the loser, and rebuild both derived summaries atomically for incoming winners;
+      tombstone restore review and UI wiring remain open.
+- [x] Transfer Flow staging/import validates exact amounts and canonical directions,
+      resolves stable legacy IDs/references, classifies duplicate/conflict states without
+      writes, commits transfers atomically after a verified snapshot, and replays dated
+      income/transfer balances. Explicit conflict decisions are audited and revalidate
+      balances atomically; UI wiring and tombstone restoration remain open.
 - [ ] Implement Replace for all selected categories in one transaction with a verified
       pre-Replace snapshot, tombstones for replaced rows, summary rebuild, and restore on failure.
+  - [x] Bank Services has a reusable reviewed Replace service: verified pre-Replace
+        snapshot, exact workbook ordering, preserved incoming UUIDs, tombstones for local
+        rows absent from the source, and one transaction with rollback on validation failure.
+  - [x] Personal Finance Bank Flow or Cash Flow can be replaced independently in one
+        snapshot-gated transaction. The other flow and its sequence values remain intact;
+        cross-flow UUID reuse is rejected and the resulting transfer income timeline is replayed.
+        Share/SIP/dividend, transfer, and combined multi-source Replace remain open.
 - [ ] Implement export with authoritative fields + recomputed derived columns, canonical
       SHA-256 hashes, and `sequence_no` order.
 - [ ] Round-trip test: seed → export all five datasets → import into a fresh database →
@@ -2117,10 +2152,13 @@ Transfers:
 
 ### 2.5 Backups, recovery and concurrency
 
-- [ ] Implement verified snapshots using `Connection.backup()` (or `VACUUM INTO`), never
-      a live file copy.
-- [ ] Wire the snapshot triggers in `docs/SAFETY.md` §8 (migration, import, Replace,
-      transfer commit, restore, manual rebuild).
+- [x] Implement verified snapshots using `Connection.backup()` (or `VACUUM INTO`), never
+      a live file copy; operation snapshots now write a verified manifest under the
+      configured environment backup root and never overwrite existing snapshots.
+- [ ] Wire every snapshot trigger in `docs/SAFETY.md` §8. Reviewed workbook imports and
+      Smart Merge decisions now use the `pre-import` snapshot by default; migration,
+      restore, startup, manual rebuild, and once-per-session transfer wiring remain. Bank
+      and Personal Finance Replace use the dedicated `pre-replace` snapshot.
 - [ ] Implement daily automatic snapshot on first launch, deduplicated per day.
 - [ ] Implement quota/retention mirroring the existing policy; never prune migration,
       pre-restore or pre-Replace backups.
@@ -2129,6 +2167,21 @@ Transfers:
 - [ ] Implement the empty-database rule: never silently replace recoverable data.
 - [ ] Concurrency tests: concurrent readers with one writer, busy timeout, rollback on
       failure, no partial financial effects.
+
+**Progress evidence (2026-11-25, operation-scoped SQLite snapshots):**
+`backend/db/core/snapshot_service.py` now creates operation-specific, exclusive
+directories under an explicit backup root or `FINLEDGE_BACKUP_DIR`, delegates to the
+SQLite online backup API, and records a manifest only after schema, integrity, foreign
+keys, and row counts pass verification. It rejects unknown snapshot kinds, a missing
+backup root, existing snapshot paths, and calls made inside a transaction. The helper
+is now the default snapshot boundary for Bank, Personal Finance, Share, and Transfer
+workbook commits and their Smart Merge conflict decisions; tests may inject isolated
+callbacks. Replace, startup/restore/rebuild wiring, per-session transfer snapshot cadence,
+and retention policy remain open. Focused verification is recorded with this progress entry.
+The focused command
+`.\\venv\\Scripts\\python.exe -m pytest --basetemp=.pytest-artifacts/runs/sqlite-snapshot-boundary-20261125 backend/tests/test_db_snapshot_service.py backend/tests/test_db_foundation.py backend/tests/test_package_apis.py backend/tests/test_bank_sqlite_import.py backend/tests/test_bank_import_review.py backend/tests/test_personal_finance_sqlite_import.py backend/tests/test_personal_finance_import_review.py backend/tests/test_share_sqlite_import.py backend/tests/test_share_import_review.py backend/tests/test_transfer_sqlite_import.py backend/tests/test_transfer_import_review.py`
+passed **122 tests**. No live database was opened, no app was launched, and Mobile was
+not changed.
 
 ### 2.6 Device transfer (desktop)
 
@@ -2799,6 +2852,99 @@ open; no financial behavior was inferred from them.
 - **Docs touched:** `docs/AGENTS.md`, `docs/desktop-codebase.md`,
   `docs/desktop-tasks.md`.
 
+### 2026-11-25 — Transfer Flow staging, import, and conflict review
+
+- Added read-only Transfer Flow workbook staging. It normalizes documented direction
+  aliases, exact scaled amounts, timestamps, UUIDs and references; warns on regenerated
+  hashes and deterministic missing references; and reports invalid directions, amounts,
+  duplicate references and IDs. Legacy identity keys include canonical direction even
+  when a source workbook uses a `Transfer Direction` header alias.
+- Added snapshot-gated atomic import into `transfers`. The importer preserves canonical
+  metadata, retries same-ID/same-hash rows idempotently, checks global UUID ownership and
+  tombstones, and validates the full date/timestamp/priority/sequence income replay before
+  commit. Transfers remain one canonical row; Bank and Cash effects remain projections.
+- Added read-only Smart Merge classification for transfer rows and explicit keep-local /
+  keep-incoming decisions through the shared resolver. Incoming choices must pass the
+  same complete balance replay in the transaction; an overdraw rolls back both the row
+  update and conflict audit. Transfer references remain immutable during row conflicts.
+- **Verification:** **97 passed** across transfer staging/import/review, existing transfer
+  import and Personal Finance SQLite service suites, and lazy package APIs. Coverage
+  includes source immutability, idempotent retry, date ordering, snapshot failure,
+  insufficient-income rollback, duplicate/conflict review, and both decisions.
+  No app was launched and Mobile was not changed.
+- **Still open:** UI wiring, explicit tombstone restore review, Replace/export, full
+  round-trip and workbook parity, and live route cutover.
+- **Docs touched:** `docs/AGENTS.md`, `docs/desktop-codebase.md`,
+  `docs/desktop-tasks.md`.
+
+### 2026-11-25 — Atomic Share, SIP, and dividend workbook import
+
+- Added snapshot-gated atomic import of reviewed Share worksheets. It resolves legacy row
+  identities, checks global UUID ownership and tombstones, treats same-ID/same-hash rows
+  as idempotent retries, and rejects changed-content conflicts for explicit review.
+  Share and dividend events receive a shared local sequence; SIP events receive their own.
+- The importer inserts `share_transactions`, `dividend_events`, and `sip_transactions`
+  through their allowlisted repositories, then fully rebuilds both holdings and SIP plan
+  summaries in the same transaction. Oversells, invalid dividend order, or invalid SIP
+  lifecycle roll back the entire workbook and identity mappings.
+- Buy charges now default to zero and are included in acquisition cost and weighted-average
+  cost. Sell charges remain separate expenses deducted from proceeds. This produces the
+  same sale P/L as adding the fee to the cost basis of only the sold units; it does not
+  reprice the remaining shares.
+- **Verification:** **75 passed** across Share import/staging, Share and SIP replay and
+  services, and lazy package APIs; the three Share import transaction tests passed again
+  after correcting a report-count assertion. Coverage includes idempotent retry, pre-write
+  snapshot failure, and full rollback on oversell. No app was launched; Mobile was untouched.
+- **Still open:** Share Smart Merge classification/conflict decisions, transfer import,
+  Replace/export, full round-trip and workbook parity, UI wiring, and live route cutover.
+- **Docs touched:** `docs/AGENTS.md`, `docs/desktop-codebase.md`,
+  `docs/desktop-tasks.md`, `docs/rules.md`, `docs/schema.md`.
+
+### 2026-11-25 — Share workbook staging and sell-charge accounting
+
+- Added a read-only staging package for the legacy Share worksheet. It maps IPO,
+  secondary buy/sell, cash dividend, bonus, SIP installment, and SIP redemption rows to
+  their canonical event shapes; normalizes names, quantities, dates, timestamps and
+  metadata; recalculates canonical hashes; reports malformed/duplicate IDs and unknown
+  headers; and never writes to the workbook or database. Blank legacy IPO charge defaults
+  to 5.00, while IPO allotment blank/zero becomes `NULL`. SIP plan UUIDs are reconstructed
+  deterministically from the first installment and carried through rows in worksheet
+  order; a redemption without an open plan is invalid. Legacy SIP redemption charge is
+  deducted from the workbook's entered amount to retain its net proceeds meaning.
+- Applied the approved Share sell-charge behavior in SQLite replay and writes: sell charge
+  defaults to zero, remains separately stored, reduces net proceeds and realized P/L, and
+  cannot equal or exceed gross proceeds. Secondary buy charge remains zero. The event and
+  holdings rebuild stay in one transaction, so an invalid net sale rolls back atomically.
+- **Verification:** **67 passed** across Share staging, weighted-average replay, SQLite
+  Share service, and lazy package facade suites. Tests cover synthetic worksheets, stable
+  SIP plan reconstruction, source workbook immutability, net sale proceeds and rollback.
+  No app was launched and no Mobile files were changed.
+- **Still open:** transactional Share/SIP/dividend import and Smart Merge review,
+  Rule C holding replay during staging/import, transfer support, Replace/export, full
+  round-trip/copy parity, UI wiring, and final route cutover.
+- **Docs touched:** `docs/AGENTS.md`, `docs/desktop-codebase.md`,
+  `docs/desktop-tasks.md`, `docs/schema.md`, `docs/rules.md`.
+
+### 2026-11-25 — Personal Finance Smart Merge review and conflict decisions
+
+- Added read-only Personal Finance classification for add, already-present, conflict,
+  possible duplicate, unsupported/invalid and tombstone-blocked rows. It resolves legacy
+  IDs, rejects cross-entity UUID reuse, detects changed content and exact-field duplicate
+  suggestions, and never mutates records or conflict history during review.
+- Extracted a shared conflict resolver used by Bank and Personal Finance. Explicit
+  keep-local/keep-incoming decisions require a verified snapshot, revalidate the row hash
+  in the transaction, and atomically preserve the losing version and terminal decision.
+  Personal Finance incoming values also recalculate the signed amount while preserving
+  the local UUID, sequence and creation timestamp.
+- **Verification:** **48 passed** across focused Personal Finance staging/import/review,
+  Bank review/import, and database suites; **55 passed** for lazy package API contracts.
+  All tests use isolated data. No app was launched and no Mobile files were changed.
+- **Still open:** Share/SIP/dividend and transfer source staging/import, Replace, export,
+  round-trip and copied-workbook parity, import UI wiring, and final route cutover. Finish
+  the SQL implementation and parity work before testing the running app.
+- **Docs touched:** `docs/AGENTS.md`, `docs/desktop-codebase.md`,
+  `docs/desktop-tasks.md`.
+
 ### 2026-11-24 — Verify Bank import hashes during staging
 
 - Bank staging now validates legacy bare SHA-1 against the existing legacy Bank field
@@ -2928,5 +3074,156 @@ open; no financial behavior was inferred from them.
 - **Still open:** expose review to the import UI, record the losing version and selected
   resolution atomically after confirmation, implement Replace, and complete five-source
   parity before switching any live route.
+- **Docs touched:** `docs/AGENTS.md`, `docs/desktop-codebase.md`,
+  `docs/desktop-tasks.md`.
+
+### 2026-11-25 — Atomic Bank Smart Merge conflict decisions
+
+- Added a Bank conflict decision service for explicit `keep_local` and `keep_incoming`
+  choices. It requires a verified-snapshot callback, rechecks the row under the write
+  transaction, archives the losing canonical values, and records the terminal resolution
+  with the same transaction as any incoming-row update. The resolver rejects stale review
+  state and newer tombstone conflicts; those cannot restore a deleted row implicitly.
+- Added idempotent support-repository resolution for an already-matching terminal state.
+  A selected incoming version preserves the local UUID, sequence and creation timestamp,
+  while updating the material-edit timestamp and device. Existing legacy `Income` rows
+  can retain their historical category only when the amount remains positive.
+- **Verification:** **75 passed** across isolated Bank review/import, SQLite repository,
+  support-repository and lazy package API suites. Coverage includes both decisions,
+  snapshot-before-write ordering, stale-review rejection, tombstone refusal, and rollback
+  of the business-row update together with its audit decision. No app, production data, or
+  Mobile files were accessed.
+- **Still open:** wire the conflict decisions into the import review UI, complete
+  idempotent end-to-end retries, implement Replace, and finish five-source parity before
+  any live route cutover.
+- **Docs touched:** `docs/AGENTS.md`, `docs/desktop-codebase.md`,
+  `docs/desktop-tasks.md`.
+
+### 2026-11-25 — Read-only Personal Finance workbook staging
+
+- Added immutable staging models and a read-only importer for Personal Finance Bank Flow
+  and Cash Flow workbooks. It supports current sheet names plus the older
+  `Personal Finance` sheet, validates flow/direction/category/source, stages linked and
+  transfer rows as unsupported, flags malformed values and duplicate IDs, recomputes the
+  derived signed amount and canonical hash, and preserves workbook order, timestamps,
+  device labels and deterministic legacy identity keys. It never writes to the source
+  workbook or database.
+- Extracted shared Excel date and UUID normalization into the common import package and
+  reused it from Bank staging; added lazy facade exports for the new module.
+- **Verification:** **14 passed** for Personal Finance and Bank staging; **55 passed** for
+  lazy package facade contracts, including the new import package. Tests use synthetic
+  workbooks only; no app, production data, or Mobile files were accessed.
+- **Still open:** transactional Personal Finance import and Smart Merge, Share and
+  transfer/SIP/dividend source staging, export/Replace, parity and route cutover.
+- **Docs touched:** `docs/AGENTS.md`, `docs/desktop-codebase.md`,
+  `docs/desktop-tasks.md`.
+
+### 2026-11-25 — Atomic Personal Finance workbook import
+
+- Added a snapshot-gated importer for reviewed Personal Finance Bank Flow and Cash Flow
+  plans. It resolves optional legacy identity mappings in the same transaction, appends
+  new records in worksheet order using the table's next global sequence, recomputes the
+  derived signed amount, preserves authoritative timestamps/device/hash data, and reports
+  inserted, already-present, imported-identity, and `imported_missing` rows.
+- Exact same-ID/same-content retries are no-ops. Changed content, cross-entity IDs,
+  corrupted stored hashes, and newer tombstones stop the batch for explicit review; every
+  row and identity-map write rolls back together on failure. Shared canonical-row
+  validation/insertion was extracted into `RecordRepository` and reused by Bank and
+  Personal Finance.
+- **Verification:** **21 passed** across Personal Finance staging/import, Bank import and
+  shared repository suites; **66 passed** across lazy package API, Personal Finance import
+  and Bank import suites. All tests use temporary databases/workbooks; no app, production
+  data, or Mobile files were accessed.
+- **Still open:** Personal Finance Smart Merge classification and explicit conflict
+  resolution, Share/transfer/SIP/dividend staging and import, export/Replace, parity and
+  route cutover.
+- **Docs touched:** `docs/AGENTS.md`, `docs/desktop-codebase.md`,
+  `docs/desktop-tasks.md`.
+
+### 2026-11-25 — Share charge rule clarification and import follow-up
+
+- The chosen sell-charge calculation keeps the existing accounting result: charge reduces
+  net sale proceeds, so P/L equals sale amount minus the old weighted-average cost basis
+  for the sold quantity minus the charge. This is numerically equivalent to adding the
+  fee to the sold units' cost basis; it does not reprice shares that remain held.
+- Buy charges default to zero and are now capitalized into the purchase total and the
+  resulting weighted-average holding cost. Tests cover both this case and the equivalent
+  sell-charge P/L calculation.
+- Share/SIP/dividend staging and snapshot-gated atomic initial import are complete. The
+  next import work is Smart Merge classification and explicit conflict decisions.
+- **Verification:** **68 passed** across Share staging, Share/SIP replay and services,
+  and package APIs; **3 passed** for Share import retry, rollback, and snapshot failure.
+  The combined Share import run's one report-count assertion was corrected and rerun.
+- **Still open:** Smart Merge, transfer import, Replace/export, full round-trip and
+  workbook parity, UI wiring, and live route cutover.
+- **Docs touched:** `docs/desktop-tasks.md`, `docs/rules.md`, `docs/schema.md`.
+
+### 2026-11-25 — Share Smart Merge review and conflict decisions
+
+- Added read-only classification for Share, SIP and dividend events. It distinguishes
+  add/already-present/conflict/possible-duplicate/unsupported/invalid, resolves known
+  legacy identities, rejects cross-entity UUID reuse and stale local hashes, and exposes
+  newer tombstones as conflicts without recording data during review.
+- Added exact-field duplicate lookup per canonical event repository. Similar events with
+  different UUIDs remain suggestions and are never discarded automatically.
+- Added explicit keep-local/keep-incoming conflict decisions through the common atomic
+  resolver. Decisions require a verified snapshot and revalidate the reviewed local hash.
+  Incoming winners preserve event UUID and sequence and trigger holdings plus SIP-summary
+  rebuilds inside the same transaction; an invalid replay rolls back the event and audit.
+  Share-name changes, SIP-plan UUID changes, event-type changes and tombstone restoration
+  remain routed to separate identity/restore review rather than being silently rewritten.
+- **Verification:** **21 passed** across Share review/import/staging, Share and SIP replay
+  and service suites; **66 passed** across lazy package APIs and repository tests. Coverage
+  includes read-only classification, possible duplicates, both decisions and oversell
+  rollback. No app was launched and no Mobile files were changed.
+- **Still open:** Smart Merge UI wiring, explicit tombstone restore flow, transfer import,
+  Replace/export, round-trip/copied-workbook parity, and live route cutover.
+- **Docs touched:** `docs/AGENTS.md`, `docs/desktop-codebase.md`,
+  `docs/desktop-tasks.md`.
+
+### 2026-11-25 — Transfer workbook import and Smart Merge
+
+- Transfer Flow now has read-only workbook staging, snapshot-gated atomic import,
+  read-only Smart Merge classification, and explicit keep-local/keep-incoming decisions.
+  Imported events are written only to `transfers`; the importer validates the complete
+  dated income timeline before committing and rolls back an overdrawn import or conflict
+  decision. The transfer reference remains immutable during a row conflict.
+- **Verification:** **97 passed** across transfer staging/import/review, existing transfer
+  import and Personal Finance SQLite service suites, and lazy package APIs. No app was
+  launched and Mobile was not changed.
+- **Still open:** Smart Merge UI wiring, explicit tombstone restore review, Replace/export,
+  round-trip/copied-workbook parity, and live route cutover.
+- **Docs touched:** `docs/AGENTS.md`, `docs/desktop-codebase.md`,
+  `docs/desktop-tasks.md`.
+
+### 2026-11-25 — SQLite Bank Replace progress
+
+- The Bank Replace implementation is recorded above in the Phase 2 Replace checklist.
+  It is the first source-specific Replace slice; it does not complete Replace across the
+  other datasets or the combined-selection transaction.
+- **Verification:** **83 passed** in the focused Bank Replace/import, snapshot, repository,
+  and package API run. No live database or app was used; Mobile was not changed.
+- **Next:** reuse the tested replacement helper for Personal Finance, Share/SIP/dividend,
+  and Transfer while preserving each module's replay and source-selection rules.
+- **Docs touched:** `docs/AGENTS.md`, `docs/desktop-codebase.md`,
+  `docs/desktop-tasks.md`.
+
+### 2026-11-25 — SQLite Personal Finance Replace
+
+- Added `replace_staged_personal_finance_workbook` behind the Personal Finance service
+  facade. It replaces only the selected Bank Flow or Cash Flow rows, preserves IDs that
+  remain in that source, tombstones omitted records, and appends source rows in workbook
+  order without renumbering the other flow. UUIDs that belong to the unselected flow are
+  rejected to prevent identity moves.
+- The operation takes a verified `pre-replace` snapshot and validates the complete
+  transfer/income timeline before commit. An overdraw rolls back replacement rows and
+  tombstones together. The generic replacement helper now supports allowlisted scoped
+  replacement within a canonical repository.
+- **Verification:** **88 passed** across Personal Finance Replace/import/review, transfer
+  review, snapshot, and package API suites. Coverage includes preserving the other flow,
+  transfer overdraw rollback, cross-flow UUID rejection, and verified snapshot creation.
+  No live database or app was used; Mobile was not changed.
+- **Still open:** Replace for Share/SIP/dividend and Transfer, combined multi-source Replace,
+  SQLite export, migration/restore integration, parity, and live route cutover.
 - **Docs touched:** `docs/AGENTS.md`, `docs/desktop-codebase.md`,
   `docs/desktop-tasks.md`.

@@ -13,6 +13,7 @@ _EXPORTS = {
     "resolve_application_database_path": (".database_path", "resolve_application_database_path"),
     "SnapshotReport": (".backup", "SnapshotReport"),
     "create_verified_snapshot": (".backup", "create_verified_snapshot"),
+    "create_operation_snapshot": (".snapshot_service", "create_operation_snapshot"),
     "content_hash": (".content_hash", "content_hash"),
     "normalize_hash_text": (".content_hash", "normalize_hash_text"),
     "stamp_create": (".metadata", "stamp_create"),

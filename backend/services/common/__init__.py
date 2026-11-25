@@ -5,6 +5,8 @@ from backend._package_api import package_dir, resolve_export
 _EXPORTS = {
     "consume_recovery_warnings": (".excel_utils", "consume_recovery_warnings"),
     "snapshot_before_write": (".excel_utils", "snapshot_before_write"),
+    "snapshot_before_operation": (".sqlite_snapshots", "snapshot_before_operation"),
+    "replace_records_for_reviewed_import": (".sqlite_snapshots", "replace_records_for_reviewed_import"),
     "mirror_data_directory_to_safety_copy": (".excel_utils", "mirror_data_directory_to_safety_copy"),
     "safe_load_workbook": (".excel_utils", "safe_load_workbook"),
     "find_most_recent_valid_backup": (".excel_utils", "find_most_recent_valid_backup"),
@@ -63,6 +65,8 @@ _EXPORTS = {
     "build_yearly_overview_png": (".summary_graph_service", "build_yearly_overview_png"),
     "build_yearly_share_png": (".summary_graph_service", "build_yearly_share_png"),
     "merge_workbook_files": (".workbook_merge", "merge_workbook_files"),
+    "ImportConflictResolution": (".import_conflicts", "ImportConflictResolution"),
+    "resolve_import_record_conflict": (".import_conflicts", "resolve_import_record_conflict"),
 }
 
 __all__ = list(_EXPORTS)

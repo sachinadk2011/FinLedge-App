@@ -5,6 +5,8 @@ from backend._package_api import package_dir, resolve_export
 _EXPORTS = {
     "RecordSpec": (".record_repository", "RecordSpec"),
     "RecordRepository": (".record_repository", "RecordRepository"),
+    "find_other_entity_owner": (".record_repository", "find_other_entity_owner"),
+    "DEVICE_LABELS": (".support_repository", "DEVICE_LABELS"),
     "SPECS": (".record_repository", "SPECS"),
     "replace_share_holding": (".record_repository", "replace_share_holding"),
     "BankRepository": (".bank_repository", "BankRepository"),
@@ -16,9 +18,11 @@ _EXPORTS = {
     "SipRepository": (".sip_repository", "SipRepository"),
     "allocate_sequence": (".support_repository", "allocate_sequence"),
     "add_tombstone": (".support_repository", "add_tombstone"),
+    "get_tombstone": (".support_repository", "get_tombstone"),
     "resolve_legacy_row_id": (".support_repository", "resolve_legacy_row_id"),
     "import_legacy_identity_entries": (".support_repository", "import_legacy_identity_entries"),
     "record_conflict": (".support_repository", "record_conflict"),
+    "resolve_conflict": (".support_repository", "resolve_conflict"),
     "TransferRepository": (".transfer_repository", "TransferRepository"),
 }
 

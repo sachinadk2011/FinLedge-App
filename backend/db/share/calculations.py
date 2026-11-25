@@ -81,22 +81,19 @@ def calculate_share_replay(connection) -> ShareReplay:
                     state["quantity"] += quantity
                     state["total_cost_scaled"] += total_amount_scaled
             elif event_type == "buy":
-                if charge_scaled != 0:
-                    raise _event_error(
-                        "invalid_charge", "Secondary buy charges must be zero.", row_id, share_name, txn_date
-                    )
-                total_amount_scaled = price_scaled * quantity
+                total_amount_scaled = price_scaled * quantity + charge_scaled
                 state["quantity"] += quantity
                 state["total_cost_scaled"] += total_amount_scaled
             elif event_type == "sell":
-                if charge_scaled != 0:
-                    raise _event_error(
-                        "invalid_charge", "Secondary sell charges must be zero.", row_id, share_name, txn_date
-                    )
                 if quantity <= 0 or quantity > state["quantity"]:
                     message = "Not enough available quantity to sell for this share."
                     raise _event_error("insufficient_quantity", message, row_id, share_name, txn_date)
-                total_amount_scaled = price_scaled * quantity
+                total_amount_scaled = price_scaled * quantity - charge_scaled
+                if total_amount_scaled <= 0:
+                    raise _event_error(
+                        "invalid_net_proceeds", "Sell charge must be less than gross sale proceeds.",
+                        row_id, share_name, txn_date,
+                    )
                 if quantity == state["quantity"]:
                     cost_basis_scaled = state["total_cost_scaled"]
                 else:

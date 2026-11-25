@@ -90,16 +90,35 @@ Desktop SQLite foundation (Phase 2):
   backend/_package_api.py — shared lazy resolver for stable package-level exports
   desktop/scripts/pyinstaller_hooks/hook-backend.py — include lazy facade targets in packaged sidecars
   backend/db/core/ — connection, data paths, transactions, row mapping, metadata, hashes,
-    migration runner/schema, and verified SQLite snapshots
+    migration runner/schema, verified SQLite snapshots, and operation snapshot service
   backend/db/repositories/ — shared record and support repositories plus Bank, Personal
     Finance, Share, SIP, dividend, transfer, and holdings repositories
   backend/db/share/ — canonical share identity and weighted-average replay/rebuild logic
   backend/db/sip/ — SIP event replay and plan-summary rebuilding
   backend/db/core/migrations/ — ordered, checksummed SQL schema migrations
-  backend/db/imports/ — Desktop-only read-only workbook staging and shared import metadata normalization
+  backend/db/imports/ — Desktop-only Bank, Personal Finance, Share, and transfer workbook staging/import and shared normalization
+  backend/db/imports/personal_finance/ — Bank/Cash Flow staging models and worksheet validation
+  backend/db/imports/share/ — Share/SIP/dividend staging models and legacy worksheet validation
+  backend/db/imports/transfer/ — Transfer Flow staging models, workbook validation, and atomic SQLite import
+  backend/db/imports/common/rows.py — shared date and UUID normalization for staged rows
   backend/db/imports/common/identities.py — explicit-path legacy identity JSON validation and transactional SQLite import
+  backend/db/imports/share/import_service.py — snapshot-gated atomic Share/SIP/dividend import and summary rebuild
+  backend/db/imports/transfer/import_service.py — snapshot-gated atomic transfer import with dated income replay validation
   backend/services/bank/import_service.py — snapshot-gated atomic commit of reviewed Bank imports
   backend/services/bank/review_service.py — read-only Smart Merge classification for staged Bank rows
+  backend/services/bank/conflict_service.py — snapshot-gated, atomic keep-local/keep-incoming Bank conflict decisions
+  backend/services/bank/replace_service.py — snapshot-gated atomic replacement of reviewed Bank records
+  backend/services/common/import_conflicts.py — shared snapshot-gated, atomic import-conflict resolution
+  backend/services/common/sqlite_snapshots.py — shared default verified-snapshot boundary for SQLite writes
+  backend/services/personal_finance/import_service.py — snapshot-gated, atomic reviewed Bank/Cash flow imports
+  backend/services/personal_finance/review_service.py — read-only Smart Merge classification for staged Bank/Cash Flow rows
+  backend/services/personal_finance/conflict_service.py — snapshot-gated, atomic keep-local/keep-incoming Personal Finance conflict decisions
+  backend/services/personal_finance/replace_service.py — snapshot-gated replacement of only the reviewed Bank Flow or Cash Flow set
+  backend/services/personal_finance/transfer_import_validation.py — exact dated replay validation for transfer balances
+  backend/services/personal_finance/transfer_import_review_service.py — read-only transfer Smart Merge classification
+  backend/services/personal_finance/transfer_conflict_service.py — snapshot-gated transfer conflict choices with balance replay
+  backend/services/share/import_review_service.py — read-only Smart Merge classification for staged Share/SIP/dividend rows
+  backend/services/share/conflict_service.py — snapshot-gated atomic Share/SIP/dividend conflict decisions with summary rebuild
   backend/services/bank/ — workbook and SQLite Bank services
   backend/services/personal_finance/ — workbook, SQLite, summary, transfer, and direction logic
   backend/services/share/ — workbook and SQLite Share services, summaries, and calculations

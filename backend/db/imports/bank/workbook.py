@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime
 from pathlib import Path
 import re
-from uuid import UUID
 
 from openpyxl import load_workbook
 
@@ -13,7 +11,7 @@ from backend.db.imports.bank.models import BankImportIssue, BankImportPlan, Stag
 from backend.models import BankCategory
 from backend.db.core import content_hash, normalize_hash_text
 from backend.db.core.metadata import utc_timestamp_now
-from backend.db.imports.common import normalize_import_timestamps
+from backend.db.imports.common import normalize_import_date, normalize_import_row_id, normalize_import_timestamps
 from backend.services.bank import legacy_bank_amount_to_scaled
 from backend.services.common.workbook_merge import calculate_content_hash, legacy_identity_keys, normalize_device_label
 from backend.services.common.workbook_headers import header_key, header_indexes
@@ -240,23 +238,20 @@ def _normalize_row_id(
     issues: list[BankImportIssue],
     seen_ids: set[str],
 ) -> str | None:
-    text = str(value or "").strip()
-    if not text:
-        return None
     try:
-        canonical = str(UUID(text))
-    except (ValueError, AttributeError):
-        issues.append(_invalid_issue(row_number, "malformed_row_id", f"Malformed Row ID {text!r}; review before re-minting."))
+        canonical, duplicate = normalize_import_row_id(value, seen_ids)
+    except ValueError as error:
+        issues.append(_invalid_issue(row_number, "malformed_row_id", str(error)))
         return None
-    if canonical in seen_ids:
+    if canonical is None:
+        return None
+    if duplicate:
         issues.append(BankImportIssue(
             code="duplicate_row_id",
             severity="warning",
             message=f"Row ID {canonical} already appeared earlier in this workbook; review as a possible duplicate.",
             row_number=row_number,
         ))
-    else:
-        seen_ids.add(canonical)
     return canonical
 
 
@@ -266,14 +261,7 @@ def _value(row: list[object], indexes: dict[str, int], name: str) -> object | No
 
 
 def _normalize_date(value: object | None) -> str | None:
-    if isinstance(value, datetime):
-        return value.date().isoformat()
-    if isinstance(value, date):
-        return value.isoformat()
-    try:
-        return date.fromisoformat(str(value or "").strip()[:10]).isoformat()
-    except ValueError:
-        return None
+    return normalize_import_date(value)
 
 
 def _invalid_issue(row_number: int, code: str, message: str) -> BankImportIssue:

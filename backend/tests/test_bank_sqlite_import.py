@@ -146,17 +146,21 @@ def test_bank_import_preserves_legacy_income_without_adding_it_to_the_category_e
         connection.close()
 
 
-def test_bank_import_requires_snapshot_callback_and_rejects_active_transaction(tmp_path: Path):
+def test_bank_import_uses_configured_snapshot_by_default_and_rejects_active_transaction(tmp_path: Path, monkeypatch):
     workbook_path = tmp_path / "one-bank-row.xlsx"
     _write_bank_workbook(workbook_path, [["2026-11-01", "Interest Earned", 15, "entry", "2026-11-01T10:00:00Z"]])
     plan = stage_bank_workbook(workbook_path)
     connection = _database(tmp_path / "bank-import-preconditions.db")
+    backup_root = tmp_path / "backups"
+    monkeypatch.setenv("FINLEDGE_BACKUP_DIR", str(backup_root))
     try:
-        with pytest.raises(TypeError, match="snapshot callback is required"):
-            import_staged_bank_workbook(connection, plan, before_import_snapshot=None)
+        result = import_staged_bank_workbook(connection, plan)
+        assert result.imported_count == 1
+        snapshot_manifests = list(backup_root.glob("pre-import/*/manifest.json"))
+        assert len(snapshot_manifests) == 1
         with transaction(connection):
             with pytest.raises(RuntimeError, match="own its transaction boundary"):
-                import_staged_bank_workbook(connection, plan, before_import_snapshot=lambda: None)
-        assert connection.execute("SELECT COUNT(*) FROM bank_transactions").fetchone()[0] == 0
+                import_staged_bank_workbook(connection, plan)
+        assert connection.execute("SELECT COUNT(*) FROM bank_transactions").fetchone()[0] == 1
     finally:
         connection.close()
